@@ -16,7 +16,34 @@ from litellm import acompletion
 import json
 import asyncio
 from openai import OpenAI
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+# Try to use the real Emergent integrations if available; otherwise fall back to a stub
+try:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage  # type: ignore
+except ModuleNotFoundError:
+    from typing import TypedDict, List
+
+
+    class UserMessage(TypedDict):
+        role: str
+        content: str
+
+
+    class LlmChat:
+        """
+        Fallback stub used when the private emergent_plugins package is not installed.
+        This keeps the app importable on local / Emergent environments.
+        Any code that actually calls LlmChat.chat() will get a clear runtime error.
+        """
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def chat(self, messages: List[UserMessage], **kwargs):
+            raise RuntimeError(
+                "Emergent LLM integrations are not available in this environment "
+                "(missing emergent_plugins / emergentintegrations package)."
+            )
+
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -57,7 +84,14 @@ elif OPENAI_API_KEY:
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 mongo_client = AsyncIOMotorClient(mongo_url)
-db = mongo_client[os.environ['DB_NAME']]
+db_name = os.getenv("DB_NAME")
+if not db_name:
+    raise RuntimeError(
+        "DB_NAME is not set. Please define it in your .env file."
+    )
+
+db = mongo_client[db_name]
+
 
 # OpenAI client for world generation (using Emergent key)
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None

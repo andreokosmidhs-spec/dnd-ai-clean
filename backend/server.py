@@ -1278,7 +1278,7 @@ async def dm_chat_proxy(request: DMChatRequest):
             return ai_response
     
     # Try external DM API (secondary)
-    external_dm_api = os.getenv('EXTERNAL_DM_API_URL', 'https://prompt-architect-23.preview.emergentagent.com/api/rpg_dm')
+    external_dm_api = os.getenv('EXTERNAL_DM_API_URL', 'https://dnd-ai-clean-test.preview.emergentagent.com/api/rpg_dm')
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(

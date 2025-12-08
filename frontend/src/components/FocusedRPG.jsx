@@ -118,7 +118,7 @@ const FocusedRPG = ({
             console.log('🎲 Rolling:', formula, 'for', skill, 'check, DC:', dc);
             
             // Call dice API
-            const diceResponse = await fetch('https://prompt-architect-23.preview.emergentagent.com/api/dice', {
+            const diceResponse = await fetch('https://dnd-ai-clean-test.preview.emergentagent.com/api/dice', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ formula })

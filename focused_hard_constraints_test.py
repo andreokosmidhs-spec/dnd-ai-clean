@@ -9,7 +9,7 @@ import json
 import sys
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://prompt-architect-23.preview.emergentagent.com/api"
+BACKEND_URL = "https://dnd-ai-clean-test.preview.emergentagent.com/api"
 
 def test_critical_scenarios():
     """Test the 4 high-priority scenarios from the review request"""

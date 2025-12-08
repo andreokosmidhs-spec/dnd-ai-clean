@@ -7,7 +7,7 @@ Shows: Intent Tagger → DM → Repair pipeline in action
 import requests
 import json
 
-BACKEND_URL = "https://prompt-architect-23.preview.emergentagent.com/api"
+BACKEND_URL = "https://dnd-ai-clean-test.preview.emergentagent.com/api"
 
 def test_scenario(scenario_name, player_message):
     """Test a single scenario and show the complete pipeline"""

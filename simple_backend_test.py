@@ -7,7 +7,7 @@ import requests
 import json
 import sys
 
-BACKEND_URL = "https://prompt-architect-23.preview.emergentagent.com/api"
+BACKEND_URL = "https://dnd-ai-clean-test.preview.emergentagent.com/api"
 
 def test_dice_endpoint():
     """Test the dice endpoint that was failing"""

@@ -11,7 +11,7 @@ import time
 from typing import Dict, Any, List, Optional
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://prompt-architect-23.preview.emergentagent.com/api"
+BACKEND_URL = "https://dnd-ai-clean-test.preview.emergentagent.com/api"
 
 class CombatTestResults:
     def __init__(self):

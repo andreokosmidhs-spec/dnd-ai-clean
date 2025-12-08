@@ -475,11 +475,15 @@ const RPGGame = () => {
       // Step 3: Process intro (50% -> 70%)
       updateProgress(55);
       
+      // Extract and clean intro narration
+      const cleanIntro = extractNarration(intro_markdown);
+      console.log('🧹 Cleaned intro:', cleanIntro.substring(0, 100));
+      
       // CRITICAL: Store intro in worldBlueprint so AdventureLogWithDM can find it
-      // Use cleanIntro (already extracted above) to ensure consistency
       const worldBlueprintWithIntro = {
         ...world_blueprint,
-        intro: cleanIntro
+        intro: cleanIntro,
+        entity_mentions: entity_mentions || []
       };
       setWorldBlueprint(worldBlueprintWithIntro);
       console.log('📝 [FLOW] Stored intro in worldBlueprint for AdventureLogWithDM');

@@ -1,0 +1,219 @@
+{
+  "active_tasks": [],
+  "in_progress_tasks": [],
+  "completed_tasks": [
+    {
+      "id": "task-001",
+      "title": "Phase 2: NPC Personality, Improvisation, Session Flow",
+      "type": "feature",
+      "status": "completed",
+      "created_at": "2025-11-23T00:00:00Z",
+      "completed_at": "2025-11-23T08:00:00Z",
+      "linked_issues": [],
+      "files_created": [
+        "/app/backend/services/npc_personality_service.py",
+        "/app/backend/services/improvisation_service.py",
+        "/app/backend/services/session_flow_service.py"
+      ],
+      "files_modified": [
+        "/app/backend/routers/dungeon_forge.py",
+        "/app/backend/services/npc_activation_service.py"
+      ],
+      "tests_run": true,
+      "test_results": "8/8 passed",
+      "documentation": [
+        "/app/PHASE2_IMPLEMENTATION_COMPLETE.md"
+      ]
+    },
+    {
+      "id": "task-002",
+      "title": "Phase 2.5: Exposition Mode",
+      "type": "feature",
+      "status": "completed",
+      "created_at": "2025-11-23T08:00:00Z",
+      "completed_at": "2025-11-23T09:00:00Z",
+      "linked_issues": [],
+      "files_modified": [
+        "/app/backend/services/session_flow_service.py"
+      ],
+      "tests_run": true,
+      "test_results": "4/4 passed",
+      "documentation": [
+        "/app/PHASE2.5_EXPOSITION_MODE_COMPLETE.md"
+      ]
+    },
+    {
+      "id": "task-003",
+      "title": "Phase 2.6: Matt Mercer Narration Framework",
+      "type": "feature",
+      "status": "completed",
+      "created_at": "2025-11-23T09:30:00Z",
+      "completed_at": "2025-11-23T11:00:00Z",
+      "linked_issues": [],
+      "files_created": [
+        "/app/backend/services/matt_mercer_narration.py"
+      ],
+      "files_modified": [
+        "/app/backend/services/prompts.py",
+        "/app/backend/routers/dungeon_forge.py"
+      ],
+      "tests_run": false,
+      "test_results": "awaiting user testing",
+      "documentation": [
+        "/app/PHASE2.6_MATT_MERCER_NARRATION_COMPLETE.md"
+      ]
+    },
+    {
+      "id": "task-004",
+      "title": "Fix frontend intro loading error",
+      "type": "bugfix",
+      "status": "completed",
+      "created_at": "2025-11-23T11:00:00Z",
+      "completed_at": "2025-11-23T11:30:00Z",
+      "linked_issues": [
+        "issue-001"
+      ],
+      "files_modified": [
+        "/app/frontend/src/components/AdventureLogWithDM.jsx"
+      ],
+      "tests_run": false,
+      "test_results": "frontend restarted, no errors in logs",
+      "documentation": []
+    },
+    {
+      "id": "task-005",
+      "title": "Complete E1 V2 Architecture Upgrade",
+      "type": "meta-refactor",
+      "status": "completed",
+      "priority": "P0",
+      "created_at": "2025-11-23T22:56:28.825524+00:00",
+      "description": "Migrate from monolithic markdown handoff to normalized JSON state store",
+      "files_created": [
+        "/app/meta/project_state.json",
+        "/app/meta/issues.json",
+        "/app/meta/tasks.json",
+        "/app/meta/testing_history.json",
+        "/app/meta/architecture.json",
+        "/app/meta/state_manager.py"
+      ],
+      "linked_issues": [],
+      "tests_run": false,
+      "completed_at": "2025-11-23T22:56:41.719365+00:00"
+    },
+    {
+      "id": "task-006",
+      "title": "Phase A: Backend API Response Normalization",
+      "type": "infrastructure",
+      "status": "completed",
+      "created_at": "2025-11-23T23:22:57.848619",
+      "completed_at": "2025-11-23T23:22:57.848621",
+      "files_created": [
+        "/app/backend/utils/api_response.py"
+      ],
+      "files_modified": [
+        "/app/backend/server.py",
+        "/app/backend/routers/dungeon_forge.py"
+      ],
+      "tests_run": true,
+      "test_results": "L1 smoke test passed"
+    },
+    {
+      "id": "task-007",
+      "title": "Phase B: Frontend Data Contracts & API Client",
+      "type": "infrastructure",
+      "status": "completed",
+      "created_at": "2025-11-23T23:22:57.848623",
+      "completed_at": "2025-11-23T23:22:57.848624",
+      "files_created": [
+        "/app/frontend/src/contracts/api.js",
+        "/app/frontend/src/lib/apiClient.js"
+      ],
+      "files_modified": [
+        "/app/frontend/src/components/MainMenu.jsx"
+      ],
+      "tests_run": true,
+      "test_results": "L1 smoke test passed - frontend compiling"
+    },
+    {
+      "id": "task-008",
+      "title": "Phase C: Global Error & Loading UX",
+      "type": "infrastructure",
+      "status": "completed",
+      "completed_at": "2025-11-24T00:33:47.546293"
+    },
+    {
+      "id": "task-009",
+      "title": "Phase D: React Query Integration",
+      "type": "infrastructure",
+      "status": "completed",
+      "completed_at": "2025-11-24T00:33:47.546298"
+    },
+    {
+      "id": "task-010",
+      "title": "Phase E: Design Tokens",
+      "type": "infrastructure",
+      "status": "completed",
+      "completed_at": "2025-11-24T00:33:47.546299"
+    }
+  ],
+  "upcoming_tasks": [],
+  "backlog": [
+    {
+      "id": "task-backlog-001",
+      "title": "Fix background variant selector",
+      "type": "bugfix",
+      "status": "backlog",
+      "priority": "P2",
+      "linked_issues": [
+        "issue-002"
+      ],
+      "estimated_effort": "small",
+      "files_affected": [
+        "/app/frontend/src/components/CharacterCreation.jsx"
+      ]
+    },
+    {
+      "id": "task-backlog-002",
+      "title": "Zustand state management migration",
+      "type": "refactor",
+      "status": "backlog",
+      "priority": "P3",
+      "linked_issues": [],
+      "estimated_effort": "large"
+    },
+    {
+      "id": "task-backlog-003",
+      "title": "Long-term memory for AI DM",
+      "type": "feature",
+      "status": "backlog",
+      "priority": "P3",
+      "linked_issues": [],
+      "estimated_effort": "large"
+    },
+    {
+      "id": "task-backlog-004",
+      "title": "AI-generated images and battle maps",
+      "type": "feature",
+      "status": "backlog",
+      "priority": "P3",
+      "linked_issues": [],
+      "estimated_effort": "medium"
+    },
+    {
+      "id": "task-backlog-005",
+      "title": "Multiplayer co-op",
+      "type": "feature",
+      "status": "backlog",
+      "priority": "P3",
+      "linked_issues": [],
+      "estimated_effort": "xlarge"
+    }
+  ],
+  "task_stats": {
+    "total": 15,
+    "active": 0,
+    "in_progress": 0,
+    "completed": 10,
+    "backlog": 5
+  }
+}

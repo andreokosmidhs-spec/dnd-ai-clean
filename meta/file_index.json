@@ -1,0 +1,1455 @@
+{
+  "files": {
+    "backend/server.py": {
+      "sha256": "79aa7db05ceefd30993698c795002fb5b181650100ce1a04b1881b057d512322",
+      "summary": "File: server.py",
+      "tags": [
+        "backend",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/data/example_worlds.py": {
+      "sha256": "3cd1975572462c4008e36807b04a9191e2aa73f3a5724e2e5f83b3879c8f8f69",
+      "summary": "File: example_worlds.py",
+      "tags": [
+        "backend",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/models/character.py": {
+      "sha256": "d9735520b809dd0f7cf2b56176314152b3b59803c46a8b53d9f1f6316ddca266",
+      "summary": "Data model: character",
+      "tags": [
+        "backend",
+        "model",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/models/game_models.py": {
+      "sha256": "644d6cb3b7e41589ffeaccdb7b7baba06452c72f3947cfaaa17a5bae509e9269",
+      "summary": "Data model: game_models",
+      "tags": [
+        "backend",
+        "model",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/models/__init__.py": {
+      "sha256": "4185dd6522096912aaa2254210e2bf10383ced8312931e2ce536670f5f33bb3e",
+      "summary": "Data model: __init__",
+      "tags": [
+        "backend",
+        "model",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/models/npc.py": {
+      "sha256": "dbad639797c17d56d7cf75c2e6ee6aa143eb0274ac6da5aaa74a1a33474e2133",
+      "summary": "Data model: npc",
+      "tags": [
+        "backend",
+        "model",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/models/normalized_entities.py": {
+      "sha256": "e6a9e9ec908e384cdec32e82d163b7753f9d5c269518bb5627f5cf439b42e2cc",
+      "summary": "Data model: normalized_entities",
+      "tags": [
+        "backend",
+        "model",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/models/world.py": {
+      "sha256": "56bef1c953a9b83605b3e907ccb01d0e6327513058b21a6ea3f92dcd25bae5cd",
+      "summary": "Data model: world",
+      "tags": [
+        "backend",
+        "model",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/api/__init__.py": {
+      "sha256": "7f4bbf4cca213b23c2f8643eb9f046e5e2c0a1c589c0237b2526a25a07daf95d",
+      "summary": "File: __init__.py",
+      "tags": [
+        "backend",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/api/game_routes.py": {
+      "sha256": "f1e0282c33b6cde4cfd3edb314e694ad0972bd46ed041bede4a2d1e288ba6e2f",
+      "summary": "File: game_routes.py",
+      "tags": [
+        "backend",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/api/world_routes.py": {
+      "sha256": "c9133bf4a6e15d3e9229e783b952b1dd4292b9e9ec1b21eecd380df13ed19263",
+      "summary": "File: world_routes.py",
+      "tags": [
+        "backend",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/api/npc_routes.py": {
+      "sha256": "a9eb7bea99191bb30f4f8678bda541f65d40709a0b2d2aeeaf4e2e129e598f04",
+      "summary": "File: npc_routes.py",
+      "tags": [
+        "backend",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/api/character_routes.py": {
+      "sha256": "07cd460504996e5a5559f7919545949e3bc6dc1d3c208f9a5dfb38ba1a271378",
+      "summary": "File: character_routes.py",
+      "tags": [
+        "backend",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/enemy_sourcing_service.py": {
+      "sha256": "5c37d47a0efdf7ec8894d6fe20f873785a530c926596217488d50964e1e2062b",
+      "summary": "Backend service: enemy_sourcing_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/matt_mercer_narration.py": {
+      "sha256": "d434534d59d0404a266a6eaf30791aed8c2ba4ebfc210cc367727a3ad6d56426",
+      "summary": "Backend service: matt_mercer_narration",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/quest_service.py": {
+      "sha256": "889d30d93bf6128b032e9e31f12e8d90b8597932b30314fa7b243611a98daa52",
+      "summary": "Backend service: quest_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/npc_activation_service.py": {
+      "sha256": "b5da89171d8a40c2fbc148407a130b997bb8f8183b2b748bfb8d95fe06ca10c3",
+      "summary": "Backend service: npc_activation_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/information_service.py": {
+      "sha256": "959cadd00f5b32009fb9593f25678b813789ae6168d38d063093b5802f17c0aa",
+      "summary": "Backend service: information_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/pacing_service.py": {
+      "sha256": "cbbc445972289bee6157c5ecb28acdcd626c825c9bb4b6b7a6a24d20d266a39c",
+      "summary": "Backend service: pacing_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/target_resolver.py": {
+      "sha256": "50f72d73be12395385ba8b268c2d738aa1170e516b3cc63ffd0b707e3d1d577c",
+      "summary": "Backend service: target_resolver",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/state_utils.py": {
+      "sha256": "af3ac50afd723eaee66dc636d2af9ce3e79907a2a63f7624dcaf800227ebc076",
+      "summary": "Backend service: state_utils",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/game_engine.py": {
+      "sha256": "6b92859e65aeebdcaba9816fbb80fbc35a7b84a244c9e2bd03b43ecc6ad7b682",
+      "summary": "Backend service: game_engine",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/lore_checker_service.py": {
+      "sha256": "c3988ec1eb4da6571e61d5ef99a9c7f163ae183c989a6248c670e64ba304c05c",
+      "summary": "Backend service: lore_checker_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/llm_client.py": {
+      "sha256": "95854f5a3fadcca024fbc21bbe901f9ae4a52a45cdd587710a3d543e54634a68",
+      "summary": "Backend service: llm_client",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/__init__.py": {
+      "sha256": "92e60f69b7d0bddd83a719c5cda9ffa2552efd446d979b3687dbdd20fdb18402",
+      "summary": "Backend service: __init__",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/ai_service.py": {
+      "sha256": "1464e1eb905853194480ff15ea11bf569162a0cd833fad5b4ca7e45f3fc6a5c8",
+      "summary": "Backend service: ai_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/intro_service.py": {
+      "sha256": "b214bb9041759097bd65242b4c766f89b8009d7ce11a9b3d7793e467677f2e27",
+      "summary": "Backend service: intro_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/combat_engine_service_old.py": {
+      "sha256": "be976c9e5b7ae018721bcc30c08d3fdb31cf60956c9287871b9d500de772d11c",
+      "summary": "Backend service: combat_engine_service_old",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/session_flow_service.py": {
+      "sha256": "e03033a0754943ed4e7269233325a243fb5da7df16aaca21989937ab17356998",
+      "summary": "Backend service: session_flow_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/plot_armor_service.py": {
+      "sha256": "a9f782d3b39beb46ad5981d06b568c9a1686d9b0e5bca20f1164720f69fe5055",
+      "summary": "Backend service: plot_armor_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/npc_personality_service.py": {
+      "sha256": "d9a30ce6e67a454aa844dc80a886ba1f8a62dbade395363d85f025fd9ea88e2a",
+      "summary": "Backend service: npc_personality_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/improvisation_service.py": {
+      "sha256": "cc61a812f39314ca82413cfbe260565fd9b1dc7370ebcfb852e3b8423cb5526f",
+      "summary": "Backend service: improvisation_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/dnd_rules.py": {
+      "sha256": "74d3a7c07fe463bd41fd4ac1bad762d63649c9e0c4dd3ff848042d666f596e20",
+      "summary": "Backend service: dnd_rules",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/context_memory_service.py": {
+      "sha256": "1d6e108684c327412022b28b5b394ec3fa19acc190210b32687bba1ce9ad9951",
+      "summary": "Backend service: context_memory_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/prompts.py": {
+      "sha256": "172ab12b68b61983ce92cbf21a0101ee546a046fbcba59f283994c76a22c5826",
+      "summary": "Backend service: prompts",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/world_forge_service.py": {
+      "sha256": "19c2214196be1a04bcd64bfdbd864a6c1c341aca0ceeb51eb99a0d5a35ed76e2",
+      "summary": "Backend service: world_forge_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/progression_service.py": {
+      "sha256": "a80c213920c493ff6e5790751497cbdf90c1ea2c79e7820b994c4356d231ffeb",
+      "summary": "Backend service: progression_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/consequence_service.py": {
+      "sha256": "90b6f7359ab1305f04316c96e71e32274092f41ffb1a42842a60ed6f8a9b7901",
+      "summary": "Backend service: consequence_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/combat_engine_service.py": {
+      "sha256": "7de3d3162b7aef694d9feae5b3a439baa0535f74ff413043b09bc47e23026b39",
+      "summary": "Backend service: combat_engine_service",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/services/dm_response_validator.py": {
+      "sha256": "cd1c329243044da979cf406c4d64b1741616e580e87421130c5b2771e91c3de2",
+      "summary": "Backend service: dm_response_validator",
+      "tags": [
+        "backend",
+        "service",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/routers/dungeon_forge.py": {
+      "sha256": "bb5d2e831d58c07b8b1f3cb5e5442352c8c77e99d09687768c19ac75db7c6f79",
+      "summary": "API router: dungeon_forge",
+      "tags": [
+        "backend",
+        "router",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "backend/routers/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "summary": "API router: __init__",
+      "tags": [
+        "backend",
+        "router",
+        "python"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/App.js": {
+      "sha256": "25cbb541f9c1c85dfb24e19b6a8a7b17c6255c70178bef42f22e5cf0fd667a47",
+      "summary": "File: App.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/index.js": {
+      "sha256": "290c458b79a28d09f081292928bac37ebe8211ac7e3b42ed64d6d922fd304803",
+      "summary": "File: index.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/devStoreDebug.js": {
+      "sha256": "e876808a70d7960bde7f1784ebef4a3b3b163a188ddc0f96a879554874ef511c",
+      "summary": "File: devStoreDebug.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/data/mockData.js": {
+      "sha256": "90ea186b0aa589c43dead78df8a5a614958d5549483b39136aac03d24ac8456c",
+      "summary": "File: mockData.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/data/raceData.js": {
+      "sha256": "c35bb17d6610e4427b49eebd8fd33b6ebc74414b30fb3d87d181a3efd07f72ed",
+      "summary": "File: raceData.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/hooks/use-toast.js": {
+      "sha256": "767e0227c5c9406b5d00e25a57c6d01e9f6e083d36e803ccb0a5e260992a5225",
+      "summary": "File: use-toast.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/hooks/useTTS.js": {
+      "sha256": "8f4d8ad665feec3c76364acc588af1514eaf48cd08e9b770c22af0b06014aa98",
+      "summary": "File: useTTS.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/hooks/useDungeonSelectors.js": {
+      "sha256": "fcf060574e4c5120e089a00992a5ae29e2e663f1f69c628a9624377c77cc1bc8",
+      "summary": "File: useDungeonSelectors.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/contexts/GameStateContext.jsx": {
+      "sha256": "1f587b1a658ad52a14497d82827abefb018da19d7691302d96e5ba01ad406085",
+      "summary": "React context: GameStateContext",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/utils/stateHydration.js": {
+      "sha256": "74c93ad28b149a616d3f47657015055caf2cbc3b15ba04ec6305e33ea704ba62",
+      "summary": "File: stateHydration.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/utils/normalizers.js": {
+      "sha256": "d48db5da2a73898f85d28faeb8e101f1e9df9f439d973c6387896c7c97f5c512",
+      "summary": "File: normalizers.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/utils/raceHelpers.js": {
+      "sha256": "2967ae97d1c15ee87b9abd2673b008e9744eb5150659696873739dcb228bea2d",
+      "summary": "File: raceHelpers.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/utils/devMode.js": {
+      "sha256": "f441fde3010e8f4bc67c8a059387826145d563816ae9f9ae48b6b59ef2df56a4",
+      "summary": "File: devMode.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/utils/dndMechanics.js": {
+      "sha256": "224953157adbb261dcedd71df8a645a549bd8689ff3544a59de898cf64e36538",
+      "summary": "File: dndMechanics.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/services/gameService.js": {
+      "sha256": "c7ecdfbd3ae2a5694417af36acf4604f56c55f9668894748de0a0289a7c10c0b",
+      "summary": "File: gameService.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/lib/utils.js": {
+      "sha256": "5ba0ae526d768600bbfb4a4d345c47f6208cb941adbf456de80804a4cf938350",
+      "summary": "File: utils.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/StartScreen.jsx": {
+      "sha256": "6faad5ceceb079b6c8e4ecdae84fd12c9697e6b92938c7e9c5696d377b0108ba",
+      "summary": "React component: StartScreen",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ActionDock.jsx": {
+      "sha256": "66117eb7a70739374ea635ea89b1c432dc068687b673e422f2282844fd06fe37",
+      "summary": "React component: ActionDock",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/DMChatAdaptive.jsx": {
+      "sha256": "6eda38e1e5e3afff947f6f34cb8017c789ff0b59067f3f795f5a267ddefc56a4",
+      "summary": "React component: DMChatAdaptive",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/AdventureLog.jsx": {
+      "sha256": "895eafdaeb53256c4d763d4a44911720068e5a5fde5f9a355e00a1378251c4ed",
+      "summary": "React component: AdventureLog",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/CombatHUD.jsx": {
+      "sha256": "744f2a6eaa6279b1ea6f663e24e4791d60627ae43a1104a6f04f047274cd0101",
+      "summary": "React component: CombatHUD",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/RPGGame.jsx": {
+      "sha256": "09c128f973cc154de2bf665e97077f4ddfc079c2d781cda6f564abd21352a569",
+      "summary": "React component: RPGGame",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/Inventory.jsx": {
+      "sha256": "28fb1cd9bb0784da75756375201dec780ff42582d55dfc2e96ff0f9a86efdcc5",
+      "summary": "React component: Inventory",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/QuestLogPanel.jsx": {
+      "sha256": "2f19072d2766265e0bd03f19c7b80dc2e8ae6bdcebccaa5f50fcb55752dac89c",
+      "summary": "React component: QuestLogPanel",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/WorldInfoPanel.jsx": {
+      "sha256": "da6fe98c32753f1e453ece6bddca180022010d50e552b8971618478a6280817d",
+      "summary": "React component: WorldInfoPanel",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/InfoDrawer.jsx": {
+      "sha256": "61fcc53445246b38371948b378aeae9c408f015fbed45defe33c00d18fc0a0fe",
+      "summary": "React component: InfoDrawer",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/StatForge.jsx": {
+      "sha256": "2dab1e4901171c427e4d8a7d09c18100c38542fecb58fc3564a4e0621d7c925b",
+      "summary": "React component: StatForge",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/GameChat.jsx": {
+      "sha256": "8cc09749e76d0399f19c586908fa35d04a31d9c67ea4233864cdb2b719e26127",
+      "summary": "React component: GameChat",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/CharacterSidebar.jsx": {
+      "sha256": "9809733a8de83affdc597328855d721784ae06d25f121f4dbde59ab7a1a55742",
+      "summary": "React component: CharacterSidebar",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/CharacterSheet.jsx": {
+      "sha256": "454abbb9d758875eda0b3be121e9da995d2786f39254b142e05f70fb16e2b4a6",
+      "summary": "React component: CharacterSheet",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/CharacterCreation.jsx": {
+      "sha256": "5738c3d83d7bb9c2834a8c6a00110ae272c8ff065a413c371bdaaee64876ab30",
+      "summary": "React component: CharacterCreation",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/RollResultCard.jsx": {
+      "sha256": "609746cd1bf14aa9c60fab8e48ee1dfffde57a982aab4d50ae3242c569ee2216",
+      "summary": "React component: RollResultCard",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/MainMenu.jsx": {
+      "sha256": "44151c1e3e1e161c5ae8bceffac43c95ace8f00b47858b87027ecb1cd6d2894c",
+      "summary": "React component: MainMenu",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/FocusedRPG.jsx": {
+      "sha256": "c857d8d69eb893a1c103ac85b8b7d1914b4db3ec6bbab9e5a8b97797be3c8d50",
+      "summary": "React component: FocusedRPG",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/AdventureLogWithDM.jsx": {
+      "sha256": "0e06e74c2c8f01fcff00b090446d7162ab5fc7434dabc096cd90814a3d5a864b",
+      "summary": "React component: AdventureLogWithDM",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/WorldMap.jsx": {
+      "sha256": "09158bb19694e95d41543ec5007710beea6395f857d66cdb1042d1bf8502e12c",
+      "summary": "React component: WorldMap",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/StateModifierPanel.jsx": {
+      "sha256": "b83e50b7fc1f6076cb446c408532c5c16c7b0494a5a18074fb070b746e18d242",
+      "summary": "React component: StateModifierPanel",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/DefeatModal.jsx": {
+      "sha256": "f5d2ba2a1875b64f0103e7e5ad633abb8758de74db6f77d7cb156842bb5f805e",
+      "summary": "React component: DefeatModal",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/CheckRequestCard.jsx": {
+      "sha256": "7d6731e04f8cbda648a466356e6009c9e905fa795198ec9c6c35850ee4216528",
+      "summary": "React component: CheckRequestCard",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/NarrationAudioPlayer.jsx": {
+      "sha256": "24cb772178f92d481587fb3cfda95f840389c1172c27b41e844cd7070cf73654",
+      "summary": "React component: NarrationAudioPlayer",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/Toast.jsx": {
+      "sha256": "7d1abe61067436b24585d42770373cf040a48f9e0790521a0cc4202049d1aac4",
+      "summary": "React component: Toast",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/DMChat.jsx": {
+      "sha256": "4bde4b2e15fad96be0c1b36b25dcc6de08228f7648afbf13873b9e451311a0f3",
+      "summary": "React component: DMChat",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/GameDetailsDrawer.jsx": {
+      "sha256": "922c99b138198980f885a633af38029cbfd22b86e99cdc1ae32a129ac5af5d1b",
+      "summary": "React component: GameDetailsDrawer",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/NPCMentionHighlighter.jsx": {
+      "sha256": "73f9ada9bb64a9c8bd8a5dc8d786480c53edec35373602dac56ebeda6865eb0d",
+      "summary": "React component: NPCMentionHighlighter",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/AdventureLogWithDM_MIGRATED.jsx": {
+      "sha256": "756e8385998b70841dc7a133a7e8d48e876866e9f4b84762f617c4341f1156ef",
+      "summary": "React component: AdventureLogWithDM_MIGRATED",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/toaster.jsx": {
+      "sha256": "7dd63e25d99c02b93b3868eef5b0c261ecc63b5f5542c4bf7155731ec234ef5d",
+      "summary": "React component: toaster",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/card.jsx": {
+      "sha256": "ab9c297427cdfb9b4ddb38772d5cfa89d9e456013f96de40ad5e32e6f96b186f",
+      "summary": "React component: card",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/scroll-area.jsx": {
+      "sha256": "18b1312977ad2cdab5df66062f8d13476ec9489e789f495ce631799a5bf74766",
+      "summary": "React component: scroll-area",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/checkbox.jsx": {
+      "sha256": "c0eaf42330b272caef82e675ca75a4d4e68faae35fa64c67074f3cc88b3467b1",
+      "summary": "React component: checkbox",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/input-otp.jsx": {
+      "sha256": "8b8f4e99787501755e37348d9cebe3059636f9f6739a26cfd37291d119397878",
+      "summary": "React component: input-otp",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/separator.jsx": {
+      "sha256": "37de504218dbc5eac8b648d9661a12aa5bea5479917ca34beef752ba271a5724",
+      "summary": "React component: separator",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/command.jsx": {
+      "sha256": "0d921bb0ab97becd734f3e3ec57cc46ced8f11acd0f4fe9429501bf80deb7895",
+      "summary": "React component: command",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/avatar.jsx": {
+      "sha256": "2b0db5681642ef3fa55f2e656d25d138b804538c910fb7b54da7ded1b46d5108",
+      "summary": "React component: avatar",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/toggle-group.jsx": {
+      "sha256": "fd4e4af49ad26f0ca0c04251827f18a1a12ddf07850e4a4d0d92add0084318b6",
+      "summary": "React component: toggle-group",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/popover.jsx": {
+      "sha256": "f077990932bcc97cf65b2c962c975492a564dd90c7d755fd448f4ed5ea8f94d5",
+      "summary": "React component: popover",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/table.jsx": {
+      "sha256": "38b02300ccfed6dff792685b8a1267f1c297e18c2212ca31e61bb73c72b0b4ab",
+      "summary": "React component: table",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/sonner.jsx": {
+      "sha256": "850136a3f1a2af05920e77d6acbbe5e941afe70143fb5041b92f22b3a4e173ea",
+      "summary": "React component: sonner",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/slider.jsx": {
+      "sha256": "ba641f9de76c816e7e308f30cc888856707a503ff6580e90a1c468dbf2a476a8",
+      "summary": "React component: slider",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/aspect-ratio.jsx": {
+      "sha256": "08b0aa0b05efc573c7d63363c03e83d4b101bfeb54140764e96ddea30659cfcc",
+      "summary": "React component: aspect-ratio",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/alert.jsx": {
+      "sha256": "5def40fbfe922fe8fb1f36f72c8957f5f7fa202ea19a6f95de15cafebf403815",
+      "summary": "React component: alert",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/tabs.jsx": {
+      "sha256": "b836f082764f5441257636905b7976b114c9ded6498a4f8650b96c91e2696b20",
+      "summary": "React component: tabs",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/accordion.jsx": {
+      "sha256": "443b99858d2fcf99a71fc0dccdcdf6f4386a2cbe5e520067f639b66807312b0c",
+      "summary": "React component: accordion",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/resizable.jsx": {
+      "sha256": "4ffcc53302cc594a3ec9b50ae97ea7429d47b6b1e5ca258e56c55e1ab06af252",
+      "summary": "React component: resizable",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/tooltip.jsx": {
+      "sha256": "6e6632e5a214489572f5db3cec4943f6f3e0b7df748d9bad458a658ad2972bf7",
+      "summary": "React component: tooltip",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/form.jsx": {
+      "sha256": "c0abdbb85d3564124fccf6af919b222bdb7ad2e7fdc556fddbda4e43bd3317ea",
+      "summary": "React component: form",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/carousel.jsx": {
+      "sha256": "d4d44b14b7ecf90e54948f4e7f974642169734f1756454e5544da6cde6c5ca31",
+      "summary": "React component: carousel",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/dropdown-menu.jsx": {
+      "sha256": "6ec04bbe85d76fb652b62460785af8a198ce79cd3da44aab808f075c7cc5d1a6",
+      "summary": "React component: dropdown-menu",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/context-menu.jsx": {
+      "sha256": "ab7502c75b679cc5325cd54615ea2a9b7d3ba08a26fec1486915a9be8510a55e",
+      "summary": "React component: context-menu",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/skeleton.jsx": {
+      "sha256": "6d4ef3016a2e4ddc148a134be551e609184a6445830f304da12710000d9b4670",
+      "summary": "React component: skeleton",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/input.jsx": {
+      "sha256": "fb11d32db16d460dfb5d19c883ac2c76d23ca0781f37cc5a7b6a7145c1a77955",
+      "summary": "React component: input",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/hover-card.jsx": {
+      "sha256": "de47232f9ff8c0ccae1a5918d401ce2330a11bf49b6151514219a5e0c7730984",
+      "summary": "React component: hover-card",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/select.jsx": {
+      "sha256": "6c2c938128a631bb3fcbd5bf640b9d7f45aac8e93138dadc580526b3516e24dd",
+      "summary": "React component: select",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/toggle.jsx": {
+      "sha256": "89458b082523db0d51ed394f9bce9885ab71846b4894de37ec9f6e1690438d45",
+      "summary": "React component: toggle",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/pagination.jsx": {
+      "sha256": "7c80ce05880b455467de25fd4122c7f8aa20f4a07ed1d5fb402358c56c4c4ea7",
+      "summary": "React component: pagination",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/drawer.jsx": {
+      "sha256": "75c167e073754bc649b6f904ad4fc1a564cd57cc1774029e52e70d3474f01b56",
+      "summary": "React component: drawer",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/toast.jsx": {
+      "sha256": "33219a8b5f0b6f3f314f855b3ff656cf182c567b0e2d42a8e0dc0b79f5676bdd",
+      "summary": "React component: toast",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/textarea.jsx": {
+      "sha256": "bcb5b7a923beb7ff55cdd37969c52c9bfc6a995db19b0f4f9238791e654452ac",
+      "summary": "React component: textarea",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/menubar.jsx": {
+      "sha256": "8934d57a20427ce8e2131a2edbef1bab227b99d7b06a290aec9a3190a61d6b03",
+      "summary": "React component: menubar",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/breadcrumb.jsx": {
+      "sha256": "3191ff31959493b5955387cb7828f6bae7eef1f0377605880d08c00d5c313248",
+      "summary": "React component: breadcrumb",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/calendar.jsx": {
+      "sha256": "4ffbf83f0d8fca367d147441a37b5be095c874f4f5b06989137c93d2af1dd6d3",
+      "summary": "React component: calendar",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/progress.jsx": {
+      "sha256": "67eb6ed0f44d2b436cce0ec0a5a1f4b1031a25dd28ed3db7aa6c70695c2c5efc",
+      "summary": "React component: progress",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/button.jsx": {
+      "sha256": "b102eaba3e1eba835de59e0a8667508ad4a00e722f838357862c2c35fe028ca5",
+      "summary": "React component: button",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/switch.jsx": {
+      "sha256": "dfda47cbbcdb7df24bd7244c17814c281c4d0250528cf19a37d577c9d2dd7e13",
+      "summary": "React component: switch",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/navigation-menu.jsx": {
+      "sha256": "f6e7de7b80ab70e1937c4a2752ed204098d6bdf4681804efd3b8d2c0566b8340",
+      "summary": "React component: navigation-menu",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/badge.jsx": {
+      "sha256": "2e145ab4de752da8f070c8f73319a45f6bfb2a131076204fb78029f9e2936807",
+      "summary": "React component: badge",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/radio-group.jsx": {
+      "sha256": "9a89c038f1364f974cbbf50006614284f279fbc11d08e02d41261e3d5fcd6e5c",
+      "summary": "React component: radio-group",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/dialog.jsx": {
+      "sha256": "0418000f01f7940e1929f2447c3484112703b50cc80cc4c7b317ba6031f4912c",
+      "summary": "React component: dialog",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/collapsible.jsx": {
+      "sha256": "6f5be8ba164c177759bf63cc25ad4d49391f162f6784ba624d72e5d5c0c0dde2",
+      "summary": "React component: collapsible",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/alert-dialog.jsx": {
+      "sha256": "bee882f6e1dcb71dc78cd7f58657948dd675d854765afa7909ebd5874df015f0",
+      "summary": "React component: alert-dialog",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/label.jsx": {
+      "sha256": "0ac16d8d061f872a5bd7ff487d1ca1af46d17db0669a03c686f55dc620b4cbd2",
+      "summary": "React component: label",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/components/ui/sheet.jsx": {
+      "sha256": "5bd28fdff6eedaad48871b1749a019fe11b4cb1a6a21dda9126402ca3474c323",
+      "summary": "React component: sheet",
+      "tags": [
+        "frontend",
+        "component",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    },
+    "frontend/src/store/useDungeonStore.js": {
+      "sha256": "bf2ed23cf4ec83c3af5a67cc4eca35a15b3766131972f8e32606bc8fa760468c",
+      "summary": "File: useDungeonStore.js",
+      "tags": [
+        "frontend",
+        "javascript"
+      ],
+      "dependencies": [],
+      "last_updated": null
+    }
+  },
+  "last_updated": "2025-11-23T23:10:49.638551+00:00"
+}

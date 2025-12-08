@@ -1,0 +1,305 @@
+{
+  "backend": {
+    "api_response_normalization": {
+      "enabled": true,
+      "location": "/app/backend/utils/api_response.py",
+      "format": {
+        "success": "{success: true, data: <payload>, error: null}",
+        "error": "{success: false, data: null, error: {type, message, details}}"
+      },
+      "global_handlers": [
+        "ValidationError -> validation_error (422)",
+        "HTTPException -> http_error (4xx/5xx)",
+        "Exception -> internal_error (500)"
+      ],
+      "functions": [
+        "api_success(data, status_code=200)",
+        "api_error(error_type, message, details, status_code)",
+        "validation_error(message, details)",
+        "not_found_error(message)",
+        "internal_error(message)"
+      ]
+    },
+    "structure": {
+      "utils": {
+        "path": "/app/backend/utils",
+        "files": [
+          "api_response.py"
+        ],
+        "purpose": "API response normalization and utilities"
+      },
+      "routers": {
+        "path": "/app/backend/routers",
+        "files": [
+          "dungeon_forge.py"
+        ],
+        "purpose": "FastAPI route handlers (using normalized responses)"
+      },
+      "services": {
+        "path": "/app/backend/services",
+        "categories": {
+          "phase1_dmg_systems": [
+            "pacing_service.py",
+            "information_service.py",
+            "consequence_service.py",
+            "context_memory_service.py",
+            "combat_engine_service.py",
+            "plot_armor_service.py",
+            "target_resolver.py",
+            "dnd_rules.py"
+          ],
+          "phase2_aversion_systems": [
+            "npc_personality_service.py",
+            "improvisation_service.py",
+            "session_flow_service.py",
+            "npc_activation_service.py"
+          ],
+          "phase2_6_narration": [
+            "matt_mercer_narration.py"
+          ],
+          "core_services": [
+            "llm_client.py",
+            "intro_service.py",
+            "prompts.py"
+          ],
+          "validation": [
+            "dm_response_validator.py"
+          ]
+        }
+      },
+      "models": {
+        "path": "/app/backend/models",
+        "files": [
+          "game_models.py"
+        ],
+        "purpose": "Pydantic models for game state, combat, characters"
+      }
+    },
+    "key_endpoints": {
+      "world_generation": "/api/world-blueprint/generate",
+      "character_creation": "/api/characters/create",
+      "intro_generation": "/api/intro/generate",
+      "action_processing": "/api/rpg_dm/action",
+      "campaign_list": "/api/campaigns/latest"
+    },
+    "important_env_vars": {
+      "MONGO_URL": "Database connection (PROTECTED)",
+      "OPENAI_API_KEY": "Optional (can use Emergent LLM key)",
+      "ANTHROPIC_API_KEY": "Optional (can use Emergent LLM key)",
+      "GOOGLE_API_KEY": "Optional (can use Emergent LLM key)"
+    }
+  },
+  "frontend": {
+    "interaction_stability_layer": {
+      "enabled": true,
+      "api_contracts": "/app/frontend/src/contracts/api.ts",
+      "api_client": "/app/frontend/src/lib/apiClient.ts",
+      "features": [
+        "Type-safe API responses (ApiResponse<T>)",
+        "Centralized error handling",
+        "Environment-based URL configuration",
+        "Automatic JSON parsing",
+        "Error mapping for network/parse failures"
+      ],
+      "error_handling": {
+        "error_boundary": "/app/frontend/src/components/common/ErrorBoundary.jsx",
+        "loading_state": "/app/frontend/src/components/common/LoadingState.jsx",
+        "error_state": "/app/frontend/src/components/common/ErrorState.jsx"
+      }
+    },
+    "structure": {
+      "contracts": {
+        "path": "/app/frontend/src/contracts",
+        "files": [
+          "api.ts"
+        ],
+        "purpose": "TypeScript interfaces for API communication"
+      },
+      "lib": {
+        "path": "/app/frontend/src/lib",
+        "files": [
+          "apiClient.ts"
+        ],
+        "purpose": "Centralized API client with type safety"
+      },
+      "components": {
+        "path": "/app/frontend/src/components",
+        "key_files": [
+          "AdventureLogWithDM.jsx",
+          "CharacterCreation.jsx",
+          "WorldBlueprint.jsx",
+          "GameStateContext.jsx",
+          "MainMenu.jsx (updated with new API client)"
+        ]
+      },
+      "contexts": {
+        "path": "/app/frontend/src/contexts",
+        "files": [
+          "GameStateContext.jsx"
+        ]
+      },
+      "hooks": {
+        "path": "/app/frontend/src/hooks",
+        "custom_hooks": [
+          "useTTS.js"
+        ]
+      }
+    },
+    "key_flows": {
+      "campaign_creation": [
+        "WorldBlueprint.jsx",
+        "CharacterCreation.jsx",
+        "intro/generate API",
+        "AdventureLogWithDM.jsx"
+      ],
+      "action_processing": [
+        "AdventureLogWithDM.jsx",
+        "rpg_dm/action API",
+        "Message display",
+        "TTS generation (optional)"
+      ]
+    },
+    "important_env_vars": {
+      "REACT_APP_BACKEND_URL": "Backend API URL (PROTECTED)"
+    },
+    "react_query": {
+      "enabled": true,
+      "version": "@tanstack/react-query@5.90.10",
+      "hooks": [
+        "/app/frontend/src/hooks/useCampaigns.js",
+        "/app/frontend/src/hooks/useCharacters.js",
+        "/app/frontend/src/hooks/useDMActions.js"
+      ],
+      "features": [
+        "Automatic caching",
+        "Query invalidation on mutations",
+        "Loading/error states",
+        "Optimistic updates ready"
+      ]
+    },
+    "design_tokens": {
+      "location": "/app/frontend/src/theme/tokens.js",
+      "includes": [
+        "colors",
+        "spacing",
+        "typography",
+        "radius",
+        "shadows",
+        "transitions"
+      ],
+      "purpose": "Foundation for UI polish"
+    }
+  },
+  "database": {
+    "collections": {
+      "campaigns": {
+        "purpose": "Campaign/world data",
+        "key_fields": [
+          "campaign_id",
+          "world_blueprint",
+          "world_state",
+          "intro"
+        ]
+      },
+      "characters": {
+        "purpose": "Character data",
+        "key_fields": [
+          "character_id",
+          "campaign_id",
+          "character_state"
+        ]
+      },
+      "combats": {
+        "purpose": "Combat state",
+        "key_fields": [
+          "combat_id",
+          "campaign_id",
+          "combat_state"
+        ]
+      }
+    },
+    "world_state_schema": {
+      "current_location": "string",
+      "active_npcs": "array",
+      "npc_personalities": "object (Phase 2)",
+      "transgressions": "object (consequence tracking)",
+      "tension_state": "string (pacing)",
+      "guard_alert": "boolean",
+      "bounties": "array"
+    }
+  },
+  "integration_points": {
+    "llm_services": {
+      "openai": {
+        "models": [
+          "gpt-4",
+          "gpt-4-turbo",
+          "gpt-5"
+        ],
+        "uses": [
+          "DM narration",
+          "world generation",
+          "NPC dialogue"
+        ],
+        "emergent_key_compatible": true
+      },
+      "anthropic": {
+        "models": [
+          "claude-3-opus",
+          "claude-sonnet-4"
+        ],
+        "uses": [
+          "Alternative to OpenAI"
+        ],
+        "emergent_key_compatible": true
+      },
+      "google": {
+        "models": [
+          "gemini-pro",
+          "nano-banana"
+        ],
+        "uses": [
+          "Alternative LLM",
+          "image generation"
+        ],
+        "emergent_key_compatible": true
+      }
+    },
+    "audio": {
+      "tts": {
+        "provider": "OpenAI",
+        "models": [
+          "tts-1"
+        ],
+        "emergent_key_compatible": false
+      }
+    }
+  },
+  "deployment": {
+    "platform": "Kubernetes",
+    "services": {
+      "backend": {
+        "container": "FastAPI + uvicorn",
+        "supervisor": true,
+        "hot_reload": true,
+        "port": 8001,
+        "health_check": "/docs"
+      },
+      "frontend": {
+        "container": "React dev server",
+        "supervisor": true,
+        "hot_reload": true,
+        "port": 3000,
+        "health_check": "/"
+      },
+      "mongodb": {
+        "container": "MongoDB",
+        "supervisor": true,
+        "port": 27017
+      }
+    },
+    "ingress": {
+      "rule": "/api/* \u2192 backend:8001, /* \u2192 frontend:3000"
+    }
+  }
+}

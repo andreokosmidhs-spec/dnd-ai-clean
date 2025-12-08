@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TaskEnvelope",
+  "description": "Standard format for sub-agent task requests",
+  "type": "object",
+  "required": ["task_id", "task_type", "goal", "context", "constraints", "success_criteria", "expected_outputs"],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier for this task (e.g., 'bug-123', 'feature-456')",
+      "pattern": "^[a-z]+-[0-9]+$"
+    },
+    "task_type": {
+      "type": "string",
+      "enum": ["feature", "bug_fix", "integration", "deployment", "exploration", "refactor", "test"],
+      "description": "Type of work to be performed"
+    },
+    "goal": {
+      "type": "string",
+      "description": "Clear, concise statement of what needs to be achieved",
+      "minLength": 10,
+      "maxLength": 500
+    },
+    "context": {
+      "type": "object",
+      "required": ["project_state_path"],
+      "properties": {
+        "project_state_path": {
+          "type": "string",
+          "description": "Path to project_state.json",
+          "default": "/app/meta/project_state.json"
+        },
+        "related_files": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Files that are relevant to this task"
+        },
+        "related_issues": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Issue IDs this task addresses"
+        },
+        "related_tasks": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Other task IDs this depends on or relates to"
+        },
+        "background": {
+          "type": "string",
+          "description": "Additional context or history"
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "max_steps": {
+          "type": "integer",
+          "description": "Maximum number of actions/steps allowed",
+          "minimum": 1,
+          "default": 10
+        },
+        "time_budget": {
+          "type": "string",
+          "enum": ["short", "medium", "long"],
+          "description": "Expected time investment (short: <10min, medium: 10-30min, long: >30min)"
+        },
+        "must_not": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Actions/changes that are forbidden"
+        },
+        "must_preserve": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Functionality that must remain working"
+        }
+      }
+    },
+    "success_criteria": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of conditions that must be true when task is complete",
+      "minItems": 1
+    },
+    "expected_outputs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["summary", "file_changes", "test_results", "documentation", "git_diff"]
+      },
+      "description": "What the sub-agent should return"
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "policy_version": "1.0",
+  "package_managers": {
+    "frontend": {
+      "allowed": ["yarn"],
+      "forbidden": ["npm"],
+      "rules": [
+        "Always use 'yarn add <package>' to install",
+        "Never use 'npm install'",
+        "package.json is auto-updated by yarn"
+      ]
+    },
+    "backend": {
+      "allowed": ["pip"],
+      "forbidden": ["pip install without freeze"],
+      "rules": [
+        "Always run 'pip install <package> && pip freeze > requirements.txt'",
+        "Never modify requirements.txt manually",
+        "Use 'pip freeze' to capture exact versions"
+      ]
+    }
+  },
+  "forbidden_operations": [
+    "npm install",
+    "npm i",
+    "pip install <package> (without updating requirements.txt)",
+    "manual edits to package.json dependencies",
+    "manual edits to requirements.txt"
+  ],
+  "allowed_operations": [
+    "yarn add <package>",
+    "yarn add -D <package>",
+    "pip install <package> && pip freeze > /app/backend/requirements.txt"
+  ],
+  "validation_rules": {
+    "before_dependency_change": [
+      "Verify package manager is allowed",
+      "Ensure requirements.txt or package.json will be updated",
+      "Check for supervisor restart if needed"
+    ]
+  },
+  "post_install_actions": {
+    "backend": [
+      "pip freeze > requirements.txt",
+      "sudo supervisorctl restart backend"
+    ],
+    "frontend": [
+      "yarn add updates package.json automatically",
+      "sudo supervisorctl restart frontend (only if .env changed)"
+    ]
+  },
+  "violation_response": "BLOCK and provide correct command syntax"
+}

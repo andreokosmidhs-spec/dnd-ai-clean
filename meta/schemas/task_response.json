@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TaskResponse",
+  "description": "Standard format for sub-agent task responses",
+  "type": "object",
+  "required": ["task_id", "status", "summary"],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Matches the task_id from TaskEnvelope"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["completed", "failed", "partial", "blocked"],
+      "description": "Outcome of the task execution"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Brief description of what was done",
+      "minLength": 20,
+      "maxLength": 1000
+    },
+    "file_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "change_type"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to /app"
+          },
+          "change_type": {
+            "type": "string",
+            "enum": ["created", "modified", "deleted"],
+            "description": "Type of change made"
+          },
+          "lines_added": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lines_removed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "test_results": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["L0", "L1", "L2", "L3"],
+          "description": "Testing level applied"
+        },
+        "backend_smoke": {
+          "type": "string",
+          "enum": ["passed", "failed", "skipped", "partial"]
+        },
+        "frontend_smoke": {
+          "type": "string",
+          "enum": ["passed", "failed", "skipped", "partial"]
+        },
+        "regression_suite": {
+          "type": "string",
+          "enum": ["passed", "failed", "skipped", "partial"]
+        },
+        "details": {
+          "type": "string",
+          "description": "Additional test result details"
+        }
+      }
+    },
+    "documentation": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Paths to documentation files created/updated"
+    },
+    "git_diff": {
+      "type": "string",
+      "description": "Output of git diff showing changes made"
+    },
+    "notes": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Additional observations, warnings, or recommendations"
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {"type": "string"},
+          "requires": {"type": "string"}
+        }
+      },
+      "description": "Issues preventing completion (only if status is 'blocked')"
+    }
+  }
+}

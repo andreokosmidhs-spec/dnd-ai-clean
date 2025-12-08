@@ -1,0 +1,225 @@
+/* Focus First RPG Layout - Global Styles */
+
+/* Prevent overflow & ensure wrapping */
+*,
+*::before,
+*::after { 
+  box-sizing: border-box; 
+}
+
+.app, .column, .panel {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.log, .log *, .message, .chip, .drawer, .panel {
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+  hyphens: auto;
+}
+
+.log {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  max-width: 100% !important;
+}
+
+.log p {
+  max-width: 70ch !important;
+  line-height: 1.6 !important;
+  margin-bottom: 0.5rem !important;
+}
+
+/* Action Chips */
+.action-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 6px 10px !important;
+  border-radius: 999px !important;
+  font-size: 0.9rem !important;
+  line-height: 1.1 !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+.action-chip:focus-visible { 
+  outline: 2px solid hsl(var(--ring)) !important; 
+  outline-offset: 2px !important; 
+}
+
+.action-chip span {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  min-width: 0 !important;
+}
+
+/* Minimal default density */
+:root {
+  --padding-sm: 0.5rem;
+  --padding-md: 1rem;
+  --padding-lg: 1.5rem;
+  --gap-sm: 0.5rem;
+  --gap-md: 1rem;
+  --gap-lg: 1.5rem;
+  --radius: 0.5rem;
+  --text-measure: 65ch;
+}
+
+/* Typography for readability */
+.adventure-text {
+  font-size: 0.9rem !important;
+  line-height: 1.6 !important;
+  max-width: var(--text-measure) !important;
+  word-spacing: 0.1em !important;
+}
+
+.adventure-text p + p {
+  margin-top: 0.75rem !important;
+}
+
+/* Responsive behavior */
+@media (max-width: 768px) {
+  .action-dock {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+  
+  .action-chip {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+  
+  .character-sidebar {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 200px !important;
+    overflow-y: auto !important;
+  }
+  
+  .log p {
+    max-width: 100% !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .action-chip {
+    font-size: 0.8rem !important;
+    padding: 4px 8px !important;
+  }
+  
+  .adventure-text {
+    font-size: 0.85rem !important;
+  }
+}
+
+/* Accessibility improvements */
+.action-chip:focus,
+.action-chip:focus-visible {
+  z-index: 10 !important;
+}
+
+/* Prevent text selection on UI elements */
+.action-dock,
+.character-sidebar,
+.info-drawer {
+  user-select: none !important;
+}
+
+/* Allow text selection in content areas */
+.log,
+.adventure-text,
+.message-content {
+  user-select: text !important;
+}
+
+/* Smooth transitions */
+.collapsible {
+  transition: width 0.3s ease, height 0.3s ease, opacity 0.2s ease !important;
+}
+
+/* Input enhancements */
+.game-input {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.game-input:focus {
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.1) !important;
+}
+
+/* Help overlay */
+.help-overlay {
+  backdrop-filter: blur(8px) !important;
+  animation: fadeIn 0.2s ease !important;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Scroll area customization */
+.scroll-area {
+  scrollbar-width: thin !important;
+  scrollbar-color: hsl(var(--muted)) transparent !important;
+}
+
+.scroll-area::-webkit-scrollbar {
+  width: 6px !important;
+}
+
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.scroll-area::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted)) !important;
+  border-radius: 3px !important;
+}
+
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground)) !important;
+}
+
+/* Loading states */
+.processing {
+  opacity: 0.7 !important;
+  pointer-events: none !important;
+}
+
+/* Message animations */
+.message-enter {
+  animation: messageSlideIn 0.3s ease !important;
+}
+
+@keyframes messageSlideIn {
+  from { 
+    opacity: 0; 
+    transform: translateX(-20px) scale(0.95); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateX(0) scale(1); 
+  }
+}
+
+/* Ensure proper stacking */
+.sidebar {
+  z-index: 20 !important;
+}
+
+.main-content {
+  z-index: 10 !important;
+}
+
+.overlay {
+  z-index: 50 !important;
+}
+
+.dropdown {
+  z-index: 60 !important;
+}

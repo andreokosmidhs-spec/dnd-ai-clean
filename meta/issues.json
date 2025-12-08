@@ -1,0 +1,48 @@
+{
+  "issues": [
+    {
+      "id": "issue-001",
+      "title": "Frontend intro loading error fixed",
+      "type": "bug",
+      "priority": "P0",
+      "status": "resolved",
+      "created_at": "2025-11-23T10:00:00Z",
+      "resolved_at": "2025-11-23T11:00:00Z",
+      "recurrence_count": 0,
+      "tags": ["frontend", "intro", "javascript-error"],
+      "files_affected": [
+        "/app/frontend/src/components/AdventureLogWithDM.jsx"
+      ],
+      "description": "Cannot read properties of undefined (reading 'toLowerCase')",
+      "resolution": "Added safety checks for worldBlueprint and intro validation"
+    },
+    {
+      "id": "issue-002",
+      "title": "Background variant selector not working",
+      "type": "bug",
+      "priority": "P2",
+      "status": "open",
+      "created_at": "2025-11-15T00:00:00Z",
+      "resolved_at": null,
+      "recurrence_count": 1,
+      "tags": ["frontend", "character-creation"],
+      "files_affected": [
+        "/app/frontend/src/components/CharacterCreation.jsx"
+      ],
+      "description": "User cannot select background variant during character creation",
+      "resolution": null
+    }
+  ],
+  "issue_stats": {
+    "total": 2,
+    "open": 1,
+    "in_progress": 0,
+    "resolved": 1,
+    "by_priority": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "version": "5e_srd_v1.0",
+  "core": {
+    "abilityModFormula": "(ability_score - 10) / 2 (rounded down)",
+    "proficiencyFormula": "2 + ((level - 1) / 4) (rounded down)",
+    "advantageRoll": "2d20kh1 (keep highest)",
+    "disadvantageRoll": "2d20kl1 (keep lowest)",
+    "criticalHit": "Natural 20 on attack roll",
+    "criticalMiss": "Natural 1 on attack roll"
+  },
+  "abilities": {
+    "strength": {
+      "abbr": "STR",
+      "description": "Physical power, athletic prowess, melee attacks",
+      "saves": ["Resisting being moved", "Breaking free from restraints"],
+      "checks": ["Climbing", "Jumping", "Lifting", "Pushing"]
+    },
+    "dexterity": {
+      "abbr": "DEX",
+      "description": "Agility, reflexes, balance, ranged attacks",
+      "saves": ["Dodging fireballs", "Avoiding traps"],
+      "checks": ["Acrobatics", "Stealth", "Sleight of Hand"]
+    },
+    "constitution": {
+      "abbr": "CON",
+      "description": "Endurance, health, stamina",
+      "saves": ["Resisting poison", "Surviving harsh environments"],
+      "checks": ["Holding breath", "Marching for hours"]
+    },
+    "intelligence": {
+      "abbr": "INT",
+      "description": "Reasoning, memory, analysis",
+      "saves": ["Resisting illusions", "Mind control"],
+      "checks": ["Arcana", "History", "Investigation", "Nature", "Religion"]
+    },
+    "wisdom": {
+      "abbr": "WIS",
+      "description": "Awareness, intuition, insight",
+      "saves": ["Resisting charms", "Fear effects"],
+      "checks": ["Animal Handling", "Insight", "Medicine", "Perception", "Survival"]
+    },
+    "charisma": {
+      "abbr": "CHA",
+      "description": "Force of personality, persuasiveness, leadership",
+      "saves": ["Resisting banishment", "Possession"],
+      "checks": ["Deception", "Intimidation", "Performance", "Persuasion"]
+    }
+  },
+  "skills": {
+    "acrobatics": { "ability": "dexterity", "description": "Balance, tumbling, diving, rolling" },
+    "animal_handling": { "ability": "wisdom", "description": "Calming, riding, or understanding animals" },
+    "arcana": { "ability": "intelligence", "description": "Magic, spells, magical items, planes" },
+    "athletics": { "ability": "strength", "description": "Climbing, jumping, swimming, grappling" },
+    "deception": { "ability": "charisma", "description": "Lying, disguising, misleading" },
+    "history": { "ability": "intelligence", "description": "Historical events, legends, ancient knowledge" },
+    "insight": { "ability": "wisdom", "description": "Reading intentions, detecting lies" },
+    "intimidation": { "ability": "charisma", "description": "Threats, hostile actions, coercion" },
+    "investigation": { "ability": "intelligence", "description": "Looking for clues, deducing, researching" },
+    "medicine": { "ability": "wisdom", "description": "Stabilizing dying, diagnosing illness" },
+    "nature": { "ability": "intelligence", "description": "Terrain, plants, animals, weather" },
+    "perception": { "ability": "wisdom", "description": "Spotting, hearing, detecting hidden things" },
+    "performance": { "ability": "charisma", "description": "Music, acting, storytelling, entertaining" },
+    "persuasion": { "ability": "charisma", "description": "Diplomacy, negotiation, friendly influence" },
+    "religion": { "ability": "intelligence", "description": "Deities, rites, holy symbols, undead" },
+    "sleight_of_hand": { "ability": "dexterity", "description": "Pickpocketing, concealing objects, tricks" },
+    "stealth": { "ability": "dexterity", "description": "Hiding, moving silently, avoiding detection" },
+    "survival": { "ability": "wisdom", "description": "Tracking, hunting, navigating wilderness" }
+  },
+  "difficulty_classes": {
+    "very_easy": 5,
+    "easy": 10,
+    "medium": 15,
+    "hard": 20,
+    "very_hard": 25,
+    "nearly_impossible": 30
+  },
+  "conditions": {
+    "blinded": "Can't see, auto-fail sight checks, attacks against you have advantage, your attacks have disadvantage",
+    "charmed": "Can't attack charmer, charmer has advantage on social checks",
+    "deafened": "Can't hear, auto-fail hearing checks",
+    "frightened": "Disadvantage on checks and attacks while source of fear is visible, can't willingly move closer",
+    "grappled": "Speed becomes 0, ends if grappler is incapacitated",
+    "incapacitated": "Can't take actions or reactions",
+    "invisible": "Impossible to see without magic, attacks against you have disadvantage, your attacks have advantage",
+    "paralyzed": "Incapacitated, can't move or speak, auto-fail STR and DEX saves, attacks against you have advantage, hits within 5ft are critical",
+    "petrified": "Transformed to stone, incapacitated, can't move, resistant to all damage",
+    "poisoned": "Disadvantage on attack rolls and ability checks",
+    "prone": "Disadvantage on attacks, attacks against you have advantage if within 5ft (disadvantage if farther), costs half movement to stand",
+    "restrained": "Speed becomes 0, attacks have disadvantage, attacks against you have advantage, disadvantage on DEX saves",
+    "stunned": "Incapacitated, can't move, can speak only falteringly, auto-fail STR and DEX saves, attacks against you have advantage",
+    "unconscious": "Incapacitated, can't move or speak, unaware, drops held items, falls prone, auto-fail STR and DEX saves, attacks have advantage, hits within 5ft are critical"
+  },
+  "combat": {
+    "attack_roll": "1d20 + ability_modifier + proficiency_bonus (if proficient)",
+    "armor_class": "Base AC (from armor) + DEX modifier",
+    "initiative": "1d20 + DEX modifier",
+    "damage_roll": "Weapon dice + ability modifier",
+    "critical_damage": "Roll all weapon dice twice, then add modifiers"
+  },
+  "rest": {
+    "short_rest": {
+      "duration": "At least 1 hour",
+      "benefits": ["Spend Hit Dice to heal", "Some class features recharge"]
+    },
+    "long_rest": {
+      "duration": "At least 8 hours (6 sleeping, 2 light activity)",
+      "benefits": ["Regain all HP", "Regain half of total Hit Dice", "Most abilities recharge"]
+    }
+  },
+  "death_saves": {
+    "rule": "When at 0 HP, roll 1d20 each turn (no modifiers)",
+    "success": "10+ is success, 3 successes = stabilized",
+    "failure": "9 or less is failure, 3 failures = death",
+    "critical": "Natural 20 = regain 1 HP, Natural 1 = 2 failures",
+    "damage_while_down": "Any damage = 1 failure, critical hit = 2 failures"
+  },
+  "languages": {
+    "standard": ["Common", "Dwarvish", "Elvish", "Giant", "Gnomish", "Goblin", "Halfling", "Orc"],
+    "exotic": ["Abyssal", "Celestial", "Draconic", "Deep Speech", "Infernal", "Primordial", "Sylvan", "Undercommon"],
+    "secret": ["Druidic", "Thieves' Cant"]
+  },
+  "rule_of_cool": {
+    "description": "Reward creative, cinematic actions by reducing DC or granting advantage",
+    "formula": "dc_reduction = ceil(rule_of_cool_value * 5)",
+    "range": "0.0 to 0.5",
+    "guidelines": [
+      "Must be justified by fiction and character abilities",
+      "Apply before roll, not after",
+      "Can add minor cost or consequence if benefit is large",
+      "Don't erase danger completely",
+      "Hint at it in narration: 'Your creative use makes this easier'"
+    ]
+  }
+}

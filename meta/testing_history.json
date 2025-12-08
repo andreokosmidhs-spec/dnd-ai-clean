@@ -1,0 +1,149 @@
+{
+  "test_runs": [
+    {
+      "run_id": "test-run-001",
+      "timestamp": "2025-11-23T08:00:00Z",
+      "test_suite": "Phase 2 Regression Tests",
+      "type": "comprehensive",
+      "agent_used": "manual_python_script",
+      "results": {
+        "total": 8,
+        "passed": 5,
+        "partial": 3,
+        "failed": 0
+      },
+      "test_cases": [
+        {
+          "name": "NPC Personality Test",
+          "status": "passed",
+          "details": "Frederick shows humming mannerism, whispers, neutral state"
+        },
+        {
+          "name": "Improvisation Test",
+          "status": "partial",
+          "details": "System works but plot armor takes precedence (by design)"
+        },
+        {
+          "name": "Session Flow - Exploration",
+          "status": "passed",
+          "details": "658 chars, descriptive atmosphere"
+        },
+        {
+          "name": "Session Flow - Investigation",
+          "status": "passed",
+          "details": "478 chars, detail-oriented"
+        },
+        {
+          "name": "Session Flow - Conversation",
+          "status": "partial",
+          "details": "Works but mixed with exploration"
+        },
+        {
+          "name": "Stress Test (10 actions)",
+          "status": "passed",
+          "details": "10/10 actions handled properly"
+        }
+      ],
+      "known_issues": [
+        "Improvisation vs Plot Armor interaction",
+        "Conversation mode detection needs tuning"
+      ],
+      "documentation": "/app/PHASE2_IMPLEMENTATION_COMPLETE.md"
+    },
+    {
+      "run_id": "test-run-002",
+      "timestamp": "2025-11-23T09:30:00Z",
+      "test_suite": "Phase 2.5 Exposition Mode Tests",
+      "type": "focused",
+      "agent_used": "manual_python_script",
+      "results": {
+        "total": 4,
+        "passed": 3,
+        "partial": 1,
+        "failed": 0
+      },
+      "test_cases": [
+        {
+          "name": "Baseline Conversation",
+          "status": "passed",
+          "details": "No false positives for exposition mode"
+        },
+        {
+          "name": "Explicit Listening",
+          "status": "passed",
+          "details": "6 concrete facts delivered about cult, timeline, stakes"
+        },
+        {
+          "name": "Wait for Information",
+          "status": "passed",
+          "details": "Revealed location, threat, timeline, urgency"
+        },
+        {
+          "name": "Direct Question Control",
+          "status": "passed",
+          "details": "Uses conversation mode as expected"
+        }
+      ],
+      "documentation": "/app/PHASE2.5_EXPOSITION_MODE_COMPLETE.md"
+    },
+    {
+      "run_id": "test-2025-11-23-003",
+      "timestamp": "2025-11-23T23:18:26.823807",
+      "test_suite": "Phase A: Backend Response Normalization",
+      "type": "smoke",
+      "agent_used": "self",
+      "results": {
+        "total": 1,
+        "passed": 0,
+        "failed": 0
+      },
+      "test_cases": []
+    }
+  ],
+  "coverage_notes": {
+    "backend": {
+      "services": {
+        "tested": [
+          "npc_personality_service.py",
+          "improvisation_service.py",
+          "session_flow_service.py",
+          "pacing_service.py",
+          "consequence_service.py"
+        ],
+        "untested": [
+          "dm_response_validator.py"
+        ]
+      },
+      "routes": {
+        "tested": [
+          "/api/rpg_dm/action",
+          "/api/intro/generate",
+          "/api/characters/create"
+        ],
+        "untested": []
+      }
+    },
+    "frontend": {
+      "components": {
+        "tested": [],
+        "untested": [
+          "AdventureLogWithDM.jsx",
+          "CharacterCreation.jsx"
+        ]
+      }
+    }
+  },
+  "flaky_tests": [],
+  "known_test_gaps": [
+    "Frontend components not tested via Playwright",
+    "DM response validator not tested",
+    "Combat mechanics partially tested",
+    "Plot armor + improvisation interaction edge cases"
+  ],
+  "test_stats": {
+    "total_runs": 2,
+    "total_tests": 12,
+    "overall_pass_rate": 0.67,
+    "last_run": "2025-11-23T09:30:00Z"
+  }
+}

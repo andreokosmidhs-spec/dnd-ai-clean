@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TestingPlan",
+  "description": "Structured testing plan with tiered levels (L0-L3)",
+  "type": "object",
+  "required": ["plan_id", "level", "scope", "reason"],
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "description": "Unique identifier (e.g., 'test-2025-11-24-001')",
+      "pattern": "^test-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{3}$"
+    },
+    "level": {
+      "type": "integer",
+      "enum": [0, 1, 2, 3],
+      "description": "Testing level: 0=none, 1=smoke, 2=focused, 3=full regression"
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "endpoints": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Backend endpoints to test"
+        },
+        "ui_flows": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Frontend flows to test"
+        },
+        "services": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Backend services to test"
+        },
+        "components": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Frontend components to test"
+        }
+      }
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why this testing level was chosen",
+      "minLength": 10
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "max_duration_seconds": {
+          "type": "integer",
+          "description": "Maximum time allowed for testing",
+          "minimum": 5
+        },
+        "must_pass": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Tests that must pass for success"
+        }
+      }
+    },
+    "test_methods": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["curl", "python_script", "playwright", "testing_agent", "screenshot"]
+      },
+      "description": "Methods to be used for testing"
+    },
+    "expected_results": {
+      "type": "object",
+      "properties": {
+        "min_pass_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Minimum pass rate (0.0-1.0) to consider test successful"
+        },
+        "critical_tests": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Tests that must pass (100% required)"
+        }
+      }
+    }
+  }
+}

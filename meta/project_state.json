@@ -1,0 +1,70 @@
+{
+  "project_name": "DUNGEON FORGE",
+  "project_id": "ai-dungeon-master-9",
+  "created_at": "2025-11-23T00:00:00Z",
+  "last_updated": "2025-11-24T00:33:47.544463",
+  "health_status": "healthy",
+  "current_phase": "Interaction Stability Layer - Complete",
+  "stack": {
+    "frontend": {
+      "framework": "React",
+      "port": 3000,
+      "hot_reload": true,
+      "package_manager": "yarn"
+    },
+    "backend": {
+      "framework": "FastAPI",
+      "port": 8001,
+      "hot_reload": true,
+      "package_manager": "pip"
+    },
+    "database": {
+      "type": "MongoDB",
+      "connection_var": "MONGO_URL"
+    },
+    "deployment": {
+      "platform": "Kubernetes",
+      "ingress_prefix": "/api",
+      "frontend_url_var": "REACT_APP_BACKEND_URL"
+    }
+  },
+  "critical_constraints": {
+    "protected_dirs": [
+      ".git",
+      ".emergent"
+    ],
+    "protected_env_vars": [
+      "REACT_APP_BACKEND_URL",
+      "MONGO_URL"
+    ],
+    "never_use": [
+      "npm",
+      "uvicorn",
+      "git reset --hard"
+    ],
+    "always_use": [
+      "yarn",
+      "supervisor",
+      "pip freeze"
+    ]
+  },
+  "agent_version": "E1_V2_BETA",
+  "token_budget": {
+    "total": 200000,
+    "warning_threshold": 10000,
+    "current_usage": 130000
+  },
+  "metrics": {
+    "tasks_completed": 12,
+    "tasks_failed": 0,
+    "tests_run": 4,
+    "test_pass_rate": 0.67,
+    "issues_resolved": 1,
+    "issues_open": 1,
+    "regressions_detected": 0,
+    "sub_agent_calls": 0,
+    "sub_agent_failures": 0,
+    "policy_violations_prevented": 0,
+    "avg_task_completion_time_minutes": 25
+  }
+}

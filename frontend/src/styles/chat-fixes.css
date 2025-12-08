@@ -1,0 +1,101 @@
+/* Chat Text Wrapping and Overflow Fixes */
+
+/* Ensure all text containers wrap properly */
+.chat-container,
+.message,
+.chat-box,
+.response,
+.game-message {
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+  overflow-x: hidden !important;
+  hyphens: auto !important;
+}
+
+/* Specific fixes for chat messages */
+.chat-message-content {
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+/* Chat container responsive behavior */
+.chat-container {
+  display: flex !important;
+  flex-direction: column !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding: 8px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* Prevent long URLs or code from breaking layout */
+.chat-message-content a,
+.chat-message-content code,
+.chat-message-content pre {
+  word-break: break-all !important;
+  overflow-wrap: break-word !important;
+  max-width: 100% !important;
+}
+
+/* Responsive grid adjustments */
+@media (max-width: 768px) {
+  .rpg-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+  
+  .rpg-sidebar {
+    order: 2 !important;
+  }
+  
+  .rpg-main {
+    order: 1 !important;
+  }
+}
+
+/* Ensure input fields don't overflow */
+.chat-input,
+.game-input {
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Fix for very long single words */
+.break-all {
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* Ensure flex containers don't overflow */
+.flex-container {
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.flex-item {
+  min-width: 0 !important;
+  flex-shrink: 1 !important;
+}
+
+/* Scrollable areas */
+.scrollable {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  max-height: 100% !important;
+}
+
+/* Text truncation for very long titles */
+.truncate-text {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  max-width: 100% !important;
+}

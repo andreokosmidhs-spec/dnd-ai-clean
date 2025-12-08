@@ -1,0 +1,41 @@
+{
+  "policy_version": "1.0",
+  "protected_variables": {
+    "frontend": [
+      "REACT_APP_BACKEND_URL"
+    ],
+    "backend": [
+      "MONGO_URL"
+    ],
+    "description": "These variables are configured for Kubernetes deployment and must never be modified"
+  },
+  "forbidden_patterns": [
+    "*_URL",
+    "*_KEY",
+    "*_SECRET",
+    "*_TOKEN"
+  ],
+  "allowed_modifications": {
+    "description": "Variables that can be added/modified",
+    "patterns": [
+      "OPENAI_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "GOOGLE_API_KEY",
+      "STRIPE_*",
+      "CUSTOM_*"
+    ],
+    "rules": [
+      "Must not override protected_variables",
+      "Must not hardcode values in code",
+      "Must use os.environ.get() or process.env in code"
+    ]
+  },
+  "validation_rules": {
+    "before_env_edit": [
+      "Check if variable is in protected_variables",
+      "Check if variable matches forbidden_patterns",
+      "Verify no hardcoded URLs/keys in related code files"
+    ]
+  },
+  "violation_response": "BLOCK and suggest using environment variables correctly"
+}

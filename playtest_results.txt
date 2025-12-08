@@ -1,0 +1,55 @@
+========================================
+A-VERSION REGRESSION PLAYTEST
+Started: Sun Nov 23 10:20:56 UTC 2025
+========================================
+
+STEP 1: Creating test campaign...
+✅ Campaign created: bb90306f-7eb3-4bf2-97a5-928b234d56c4
+
+STEP 2: Creating test character...
+✅ Character created: 4beab239-48e9-4fee-996e-0c5515aee533
+
+STEP 3: Generating intro...
+Intro: N/A
+
+
+========================================
+PLAYTEST SCRIPT 1: Plot Armor & Consequences
+========================================
+
+--- Attack 1: First punch to essential NPC ---
+Response:
+Narration: N/A
+World State Update: {}
+
+--- Attack 2: Second punch ---
+Narration: N/A
+Escalation Check: N/A
+
+--- Attack 3: Third punch (severe escalation expected) ---
+Narration: N/A
+Combat Started: False
+Transgressions: N/A
+
+
+========================================
+PLAYTEST SCRIPT 3: Location & NPC Continuity
+========================================
+
+--- Traveling to ruins ---
+Narration: N/A
+Location: N/A
+
+--- Test: Looking for merchant in ruins (should fail) ---
+Narration: N/A
+Active NPCs: N/A
+⚠️ PARTIAL: Response unclear
+
+--- Test: Looking for innkeeper in ruins (should fail) ---
+Narration: N/A
+⚠️ PARTIAL: Response unclear
+
+========================================
+Playtest completed: Sun Nov 23 10:21:26 UTC 2025
+Full results saved to: /app/playtest_results.txt
+========================================

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException,
+from fastapi import FastAPI, APIRouter, HTTPException
 from backend.api.character_v2_routes import router as character_v2_router
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv

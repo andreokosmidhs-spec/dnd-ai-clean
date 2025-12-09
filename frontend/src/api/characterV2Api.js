@@ -1,7 +1,4 @@
-// frontend/src/components/CharacterCreationV2/CharacterCreationV2.jsx
-import React, { useState } from 'react';
-import IdentityStep from './IdentityStep';
-import { createCharacterV2 } from '../../api/characterV2Api';
+// API function for creating V2 characters
 import axios from './axiosConfig';
 
 export const createCharacterV2 = async (characterData) => {

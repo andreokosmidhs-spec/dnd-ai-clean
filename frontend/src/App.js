@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import "./App.css";
 import "./styles/chat-fixes.css";
 import "./styles/focus-first.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import RPGGame from "./components/RPGGame";
 import Toast from "./components/Toast";

@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException,
+from backend.api.character_v2_routes import router as character_v2_router
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -4138,6 +4139,7 @@ app.include_router(quests_router.router)  # Quest System endpoints
 app.include_router(debug_router.router)  # Debug endpoints
 app.include_router(knowledge_router.router)  # Knowledge & Player Notes endpoints
 app.include_router(campaign_log_router.router)  # Campaign Log System endpoints
+app.include_router(character_v2_router, prefix="/api/v2/characters")
 
 # Import and mount scene refresh router (dev tool for testing advanced hooks)
 from routers import scene_refresh as scene_refresh_router

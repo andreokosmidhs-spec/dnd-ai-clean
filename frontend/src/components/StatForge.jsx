@@ -311,12 +311,17 @@ const StatForge = ({ onComplete, character, setCharacter }) => {
                       </div>
                     ) : (
                       <Button
-                        disabled={!selectedStat}
-                        size="sm"
-                        className="h-6 px-2 text-xs bg-amber-700 hover:bg-amber-600 disabled:opacity-50"
-                      >
-                        {selectedStat ? `Assign ${selectedStat}` : 'Select Score'}
-                      </Button>
+  onClick={(e) => {
+    e.stopPropagation();
+    selectedStat && assignStat(selectedStat, ability.key);
+  }}
+  disabled={!selectedStat}
+  size="sm"
+  className="h-6 px-2 text-xs bg-amber-700 hover:bg-amber-600 disabled:opacity-50"
+>
+  {selectedStat ? `Assign ${selectedStat}` : 'Select Score'}
+</Button>
+
                     )}
                   </div>
                   

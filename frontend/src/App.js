@@ -1,3 +1,4 @@
+import CharacterCreationV2 from './pages/CharacterCreationV2';
 import { useEffect } from "react";
 import "./App.css";
 import "./styles/chat-fixes.css";
@@ -63,6 +64,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />}>
               <Route index element={<Home />} />
+              <Route path="/character-v2" element={<CharacterCreationV2 />} />
             </Route>
           </Routes>
         </BrowserRouter>

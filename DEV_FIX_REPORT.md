@@ -68,12 +68,27 @@ INFO:     Application startup complete.
 
 ## Frontend Fixes ✅
 
-### Issue: Dependency Installation
+### Issue 1: Dependency Installation
 **Error:** None - just needed proper installation
 
 **Actions Taken:**
 1. Ran `yarn install` in `/app/frontend`
 2. Successfully installed all dependencies (41.29s)
+
+### Issue 2: Missing ajv Module
+**Error:** `Error: Cannot find module 'ajv/dist/compile/codegen'`
+
+**Root Cause:**
+- The `ajv` package was missing or had incorrect version
+- Required by `ajv-keywords` which is used by webpack loaders
+
+**Fix Applied:**
+```bash
+cd /app/frontend
+yarn add ajv ajv-keywords
+```
+
+**Result:** ✅ Installed ajv@8.17.1 and ajv-keywords@5.1.0
 
 ### Verification
 ```bash

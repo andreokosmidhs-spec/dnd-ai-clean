@@ -23,12 +23,12 @@ class ClassInfo(BaseModel):
 
 
 class AbilityScores(BaseModel):
-    str: Optional[int] = Field(default=None, ge=1, le=30)
-    dex: Optional[int] = Field(default=None, ge=1, le=30)
-    con: Optional[int] = Field(default=None, ge=1, le=30)
-    int: Optional[int] = Field(default=None, ge=1, le=30)
-    wis: Optional[int] = Field(default=None, ge=1, le=30)
-    cha: Optional[int] = Field(default=None, ge=1, le=30)
+    str: Optional[int] = None
+    dex: Optional[int] = None
+    con: Optional[int] = None
+    int: Optional[int] = None
+    wis: Optional[int] = None
+    cha: Optional[int] = None
     method: str = "standard_array"
 
 

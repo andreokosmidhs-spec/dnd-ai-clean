@@ -42,6 +42,11 @@ const ReviewStep = ({ characterData, onBack }) => {
 
   const abilities = characterData.abilityScores || {};
   const appearance = characterData.appearance || {};
+  const languagesText = backgroundInfo
+    ? backgroundInfo.languages?.count
+      ? `Choose ${backgroundInfo.languages.count} language${backgroundInfo.languages.count > 1 ? "s" : ""}`
+      : "—"
+    : "—";
 
   const canSubmit = Boolean(
     characterData.identity?.name?.trim() &&
@@ -172,13 +177,7 @@ const ReviewStep = ({ characterData, onBack }) => {
             <p className="text-sm text-slate-200">Background: {backgroundInfo?.name || "—"}</p>
             <p className="text-sm text-slate-200">Skills: {backgroundInfo?.skillProficiencies?.join(", ") || "—"}</p>
             <p className="text-sm text-slate-200">Tools: {backgroundInfo?.toolProficiencies?.join(", ") || "—"}</p>
-            <p className="text-sm text-slate-200">
-              Languages: {backgroundInfo
-                ? backgroundInfo.languages?.count
-                  ? `Choose ${backgroundInfo.languages.count} language${backgroundInfo.languages.count > 1 ? "s" : ""}`
-                  : "—"
-                : "—"}
-            </p>
+            <p className="text-sm text-slate-200">Languages: {languagesText}</p>
             {backgroundInfo?.feature && (
               <p className="text-sm text-slate-200">
                 Feature: {backgroundInfo.feature.name} — {backgroundInfo.feature.description}

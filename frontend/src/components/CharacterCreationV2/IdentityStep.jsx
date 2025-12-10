@@ -30,6 +30,7 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
     (sexValue === "male" || sexValue === "female") &&
     Number(ageValue) > 0;
 
+  // Navigation handlers are passed directly; gating is handled by WizardCard's nextDisabled.
   return (
     <WizardCard
       stepTitle="Step 1 – Identity"

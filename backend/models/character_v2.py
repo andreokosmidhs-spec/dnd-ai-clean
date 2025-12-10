@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class Identity(BaseModel):
@@ -12,35 +12,39 @@ class Identity(BaseModel):
 
 
 class RaceInfo(BaseModel):
-    key: Optional[str] = None
+    key: str
     variantKey: Optional[str] = None
 
 
 class ClassInfo(BaseModel):
-    key: Optional[str] = None
+    key: str
     subclassKey: Optional[str] = None
     level: int = Field(default=1, ge=1)
+    skillProficiencies: List[str] = Field(default_factory=list)
 
 
 class AbilityScores(BaseModel):
-    str: Optional[int] = None
-    dex: Optional[int] = None
-    con: Optional[int] = None
-    int: Optional[int] = None
-    wis: Optional[int] = None
-    cha: Optional[int] = None
+    str_: int = Field(alias="str", ge=1, le=30)
+    dex: int = Field(ge=1, le=30)
+    con: int = Field(ge=1, le=30)
+    int_: int = Field(alias="int", ge=1, le=30)
+    wis: int = Field(ge=1, le=30)
+    cha: int = Field(ge=1, le=30)
     method: str = "standard_array"
+
+    # allow using "str"/"int" when constructing from dicts
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class BackgroundInfo(BaseModel):
-    key: Optional[str] = None
+    key: str
     variantKey: Optional[str] = None
 
 
 class AppearanceInfo(BaseModel):
-    ageCategory: Optional[str] = None
-    heightCm: Optional[int] = None
-    build: Optional[str] = None
+    ageCategory: str
+    heightCm: int
+    build: str
     skinTone: Optional[str] = None
     hairColor: Optional[str] = None
     eyeColor: Optional[str] = None
@@ -49,7 +53,7 @@ class AppearanceInfo(BaseModel):
 
 class MetaInfo(BaseModel):
     version: int = 2
-    createdAt: Optional[datetime]
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
 
 
 class CharacterV2Base(BaseModel):
@@ -59,10 +63,10 @@ class CharacterV2Base(BaseModel):
     abilityScores: AbilityScores
     background: BackgroundInfo
     appearance: AppearanceInfo
-    meta: MetaInfo
+    meta: MetaInfo = Field(default_factory=MetaInfo)
 
-    class Config:
-        allow_population_by_field_name = True
+    # allow aliases like "class" and "str" when constructing from dicts
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class CharacterV2Create(CharacterV2Base):
@@ -71,4 +75,3 @@ class CharacterV2Create(CharacterV2Base):
 
 class CharacterV2Stored(CharacterV2Base):
     id: str
-

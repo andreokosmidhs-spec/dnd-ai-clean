@@ -1,9 +1,9 @@
-import axios from './axiosConfig';
+import axios from "../axiosConfig";
 
 // Create a new character using the V2 schema
 export const createCharacterV2 = async (characterData) => {
   const res = await axios.post(
-    '/api/v2/characters/api/characters/v2/create',
+    "/api/v2/characters/create",
     characterData
   );
   return res.data;
@@ -11,6 +11,6 @@ export const createCharacterV2 = async (characterData) => {
 
 // Get all V2 characters (temporary debug endpoint)
 export const getCharactersV2 = async () => {
-  const res = await axios.get('/api/v2/characters/api/characters/v2');
+  const res = await axios.get("/api/v2/characters/list");
   return res.data;
 };

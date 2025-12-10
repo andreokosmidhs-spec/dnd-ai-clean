@@ -1,5 +1,6 @@
 import React from "react";
 import { BACKGROUNDS, BACKGROUNDS_BY_KEY } from "../../data/backgroundData";
+import WizardCard from "./WizardCard";
 
 const BackgroundStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
   const currentBackground = characterData.background || { key: null, variantKey: null };
@@ -74,13 +75,20 @@ const BackgroundStep = ({ characterData, updateCharacterData, onNext, onBack }) 
   };
 
   return (
-    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg text-slate-100">
-      <h2 className="text-2xl font-bold text-amber-400 mb-4">Step 5 – Choose Your Background</h2>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <WizardCard
+      stepTitle="Step 5 – Choose Your Background"
+      stepNumber={5}
+      totalSteps={7}
+      onBack={onBack}
+      onNext={() => {
+        if (isValid) onNext();
+      }}
+      nextDisabled={!isValid}
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-slate-100">
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-slate-300 mb-1">Background</label>
+          <div className="space-y-2">
+            <label className="block text-sm text-slate-300">Background</label>
             <select
               value={currentBackground.key || ""}
               onChange={handleBackgroundChange}
@@ -98,8 +106,8 @@ const BackgroundStep = ({ characterData, updateCharacterData, onNext, onBack }) 
           </div>
 
           {variants.length > 0 && (
-            <div>
-              <label className="block text-sm text-slate-300 mb-1">Variant</label>
+            <div className="space-y-2">
+              <label className="block text-sm text-slate-300">Variant</label>
               <select
                 value={currentBackground.variantKey || ""}
                 onChange={handleVariantChange}
@@ -123,31 +131,7 @@ const BackgroundStep = ({ characterData, updateCharacterData, onNext, onBack }) 
           {renderDetails()}
         </div>
       </div>
-
-      <div className="mt-6 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="px-4 py-2 rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800"
-        >
-          Back
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (isValid) onNext();
-          }}
-          disabled={!isValid}
-          className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-            isValid
-              ? "bg-amber-500 text-black hover:bg-amber-400"
-              : "bg-slate-700 text-slate-400 cursor-not-allowed"
-          }`}
-        >
-          Next
-        </button>
-      </div>
-    </div>
+    </WizardCard>
   );
 };
 

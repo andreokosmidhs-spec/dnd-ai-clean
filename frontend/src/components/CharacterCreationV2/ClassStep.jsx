@@ -2,6 +2,7 @@ import React from "react";
 import { CLASS_SKILLS } from "../../data/classSkills";
 import { CLASS_PROFICIENCIES } from "../../data/classProficiencies";
 import { HIT_DICE } from "../../data/levelingData";
+import WizardCard from "./WizardCard";
 
 const ClassStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
   const currentClass =
@@ -59,12 +60,17 @@ const ClassStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
   const canContinue = Boolean(classKey) && selectedSkills.length === requiredSkills;
 
   return (
-    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg text-slate-100">
-      <h2 className="text-2xl font-bold text-amber-400 mb-4">Step 3 – Choose Your Class</h2>
-
-      <div className="space-y-6">
-        <div>
-          <label className="block text-sm text-slate-300 mb-1">Class</label>
+    <WizardCard
+      stepTitle="Step 3 – Choose Your Class"
+      stepNumber={3}
+      totalSteps={7}
+      onBack={onBack}
+      onNext={onNext}
+      nextDisabled={!canContinue}
+    >
+      <div className="space-y-6 text-slate-100">
+        <div className="space-y-2">
+          <label className="block text-sm text-slate-300">Class</label>
           <select
             value={classKey || ""}
             onChange={handleClassChange}
@@ -158,29 +164,7 @@ const ClassStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
           )}
         </div>
       </div>
-
-      <div className="mt-6 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="px-4 py-2 rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800"
-        >
-          Back
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={!canContinue}
-          className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-            canContinue
-              ? "bg-amber-500 text-black hover:bg-amber-400"
-              : "bg-slate-700 text-slate-400 cursor-not-allowed"
-          }`}
-        >
-          Next
-        </button>
-      </div>
-    </div>
+    </WizardCard>
   );
 };
 

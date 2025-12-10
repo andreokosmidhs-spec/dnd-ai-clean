@@ -1,13 +1,17 @@
 from fastapi import FastAPI, APIRouter, HTTPException
-from api.character_v2_routes import router as character_v2_router
+from fastapi import FastAPI, APIRouter, HTTPException
+from uuid import uuid4
+from typing import List
+
+from backend.api.character_v2_routes import router as character_v2_router
+
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
-from pathlib import Path
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, ConfigDict
 from typing import List, Dict, Optional, Any, Literal
 import uuid
 from datetime import datetime
@@ -82,16 +86,17 @@ elif EMERGENT_LLM_KEY:
 elif OPENAI_API_KEY:
     print("✅ OpenAI API key loaded successfully")
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-mongo_client = AsyncIOMotorClient(mongo_url)
+# MongoDB connection (optional for local/dev environments)
+mongo_url = os.getenv('MONGO_URL')
+mongo_client = AsyncIOMotorClient(mongo_url) if mongo_url else None
 db_name = os.getenv("DB_NAME")
-if not db_name:
-    raise RuntimeError(
-        "DB_NAME is not set. Please define it in your .env file."
+if mongo_client and db_name:
+    db = mongo_client[db_name]
+else:
+    db = None
+    logging.getLogger(__name__).warning(
+        "MongoDB is not configured (missing MONGO_URL or DB_NAME); running without a database."
     )
-
-db = mongo_client[db_name]
 
 
 # OpenAI client for world generation (using Emergent key)
@@ -1149,9 +1154,10 @@ class DnDStats(BaseModel):
 
 class SpeechProfile(BaseModel):
     voice: str = "neutral"
-    register: str = "neutral"
+    register_: str = Field("neutral", alias="register")
     favorite_phrases: List[str] = Field(default_factory=list)
     taboos: List[str] = Field(default_factory=list)
+    model_config = ConfigDict(protected_namespaces=(), populate_by_name=True)
 
 class Motivations(BaseModel):
     short_term: List[str] = Field(default_factory=list)
@@ -4208,4 +4214,5 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()
+    if mongo_client:
+        mongo_client.close()

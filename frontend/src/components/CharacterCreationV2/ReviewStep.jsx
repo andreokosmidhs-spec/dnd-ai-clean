@@ -141,7 +141,9 @@ const ReviewStep = ({ characterData, onBack }) => {
         </section>
 
         <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
-          <h3 className="text-lg font-semibold text-amber-300 mb-2">Background</h3>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-lg font-semibold text-amber-300">Background</h3>
+          </div>
           <p className="text-sm text-slate-200">Background: {backgroundInfo?.name || "—"}</p>
           <p className="text-sm text-slate-200">Skills: {backgroundInfo?.skillProficiencies?.join(", ") || "—"}</p>
           <p className="text-sm text-slate-200">Tools: {backgroundInfo?.toolProficiencies?.join(", ") || "—"}</p>
@@ -156,7 +158,9 @@ const ReviewStep = ({ characterData, onBack }) => {
         </section>
 
         <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
-          <h3 className="text-lg font-semibold text-amber-300 mb-2">Appearance</h3>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-lg font-semibold text-amber-300">Appearance</h3>
+          </div>
           <p className="text-sm text-slate-200">Age Category: {appearance.ageCategory || "—"}</p>
           <p className="text-sm text-slate-200">Height: {appearance.heightCm ? `${appearance.heightCm} cm` : "—"}</p>
           <p className="text-sm text-slate-200">Build: {appearance.build || "—"}</p>
@@ -174,41 +178,19 @@ const ReviewStep = ({ characterData, onBack }) => {
             </ul>
           </div>
         </section>
-      </div>
 
-      {submitError && (
-        <div className="rounded border border-red-500 bg-red-900/40 text-red-200 px-4 py-2 text-sm">
-          {submitError}
-        </div>
-      )}
-      {submitSuccess && (
-        <div className="rounded border border-green-500 bg-green-900/40 text-green-200 px-4 py-2 text-sm">
-          {submitSuccess}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="px-4 py-2 rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800"
-        >
-          Back
-        </button>
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!canSubmit || isSubmitting}
-          className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-            canSubmit && !isSubmitting
-              ? "bg-amber-500 text-black hover:bg-amber-400"
-              : "bg-slate-700 text-slate-400 cursor-not-allowed"
-          }`}
-        >
-          {isSubmitting ? "Submitting..." : "Create Character"}
-        </button>
+        {submitError && (
+          <div className="rounded border border-red-500 bg-red-900/40 text-red-200 px-4 py-2 text-sm">
+            {submitError}
+          </div>
+        )}
+        {submitSuccess && (
+          <div className="rounded border border-green-500 bg-green-900/40 text-green-200 px-4 py-2 text-sm">
+            {submitSuccess}
+          </div>
+        )}
       </div>
-    </div>
+    </WizardCard>
   );
 };
 

@@ -14,9 +14,9 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
   const ageValue = identity?.age === "" ? "" : identity?.age ?? 25;
 
   const handleNameChange = (e) => {
-    const { value } = e.target;
+    const raw = e.target.value;
     const capitalizedValue =
-      value.length > 0 ? value[0].toUpperCase() + value.slice(1) : "";
+      raw.length === 0 ? "" : raw[0].toUpperCase() + raw.slice(1);
 
     onChange({ name: capitalizedValue });
   };
@@ -54,7 +54,7 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
             type="text"
             value={nameValue}
             onChange={handleNameChange}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 text-center focus:outline-none focus:ring-2 focus:ring-amber-500"
             placeholder="Give your hero a name"
           />
         </div>
@@ -118,7 +118,7 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
               max="100"
               value={genderExpressionValue}
               onChange={handleGenderExpression}
-              className="flex-1 accent-slate-500"
+              className="flex-1 accent-slate-400"
             />
             <span>Masc</span>
           </div>

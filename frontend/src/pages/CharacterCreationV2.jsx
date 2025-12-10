@@ -176,6 +176,12 @@ const CharacterCreationV2 = () => {
         <div className="mb-6 text-center">
           <h1 className="text-3xl font-bold text-amber-400">Character Creation V2</h1>
           <p className="text-sm text-slate-400">Forge your hero through seven guided steps.</p>
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/70 px-4 py-2 text-xs text-slate-300">
+            <span className="font-semibold text-amber-300">Step {stepIndex + 1}</span>
+            <span className="text-slate-500">/ {STEPS.length}</span>
+            <span className="text-slate-400">·</span>
+            <span className="text-slate-200 capitalize">{currentStep.replace(/([A-Z])/g, " $1")}</span>
+          </div>
         </div>
         {stepContent}
       </div>

@@ -14,11 +14,7 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
   const ageValue = identity?.age === "" ? "" : identity?.age ?? 25;
 
   const handleNameChange = (e) => {
-    const raw = e.target.value;
-    const capitalizedValue =
-      raw.length === 0 ? "" : raw[0].toUpperCase() + raw.slice(1);
-
-    onChange({ name: capitalizedValue });
+    onChange({ name: e.target.value });
   };
 
   const handleGenderExpression = (e) => {
@@ -54,13 +50,14 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
             type="text"
             value={nameValue}
             onChange={handleNameChange}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 text-center focus:outline-none focus:ring-2 focus:ring-amber-500"
+            autoCapitalize="words"
+            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 text-center [text-transform:capitalize] focus:outline-none focus:ring-2 focus:ring-slate-400"
             placeholder="Give your hero a name"
           />
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm text-slate-300">Sex</label>
+          <label className="block text-center text-sm text-slate-300">Sex</label>
           <div className="flex gap-3">
             {[
               { key: "female", label: "♀ Female" },
@@ -74,8 +71,8 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
                   onClick={() => onChange({ sex: option.key })}
                   className={`flex-1 rounded-full border px-3 py-2 text-sm font-semibold transition-colors ${
                     selected
-                      ? "border-amber-500 bg-amber-500/20 text-amber-100"
-                      : "border-slate-700 bg-slate-800 text-slate-200 hover:border-amber-500/60"
+                      ? "border-slate-400 bg-slate-700 text-slate-100"
+                      : "border-slate-700 bg-slate-800 text-slate-200 hover:border-slate-500"
                   }`}
                 >
                   {option.label}
@@ -100,14 +97,16 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
             onChange={(e) =>
               onChange({ age: e.target.value === "" ? "" : Number(e.target.value) })
             }
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
             placeholder="25"
           />
         </div>
 
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm text-slate-300">
-            <span>Appearance Expression</span>
+          <label className="block text-center text-sm text-slate-300">
+            Appearance Expression
+          </label>
+          <div className="flex items-center justify-center text-sm text-slate-300">
             <span className="font-semibold text-slate-200">{genderExpressionValue}</span>
           </div>
           <div className="flex items-center gap-3 text-xs text-slate-400">

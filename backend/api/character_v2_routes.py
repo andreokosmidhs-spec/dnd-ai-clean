@@ -1,33 +1,55 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
+from uuid import uuid4
 
-from backend.models.character_v2 import CharacterV2
+from backend.models.character_v2 import CharacterV2Create, CharacterV2Stored
 
 router = APIRouter(
-    prefix="/api/characters/v2",
+    prefix="",
     tags=["characters_v2"],
 )
 
 
 # Simple in-memory store for now (we'll swap this for Mongo later)
-FAKE_CHAR_STORE: List[CharacterV2] = []
+FAKE_CHAR_STORE: List[CharacterV2Stored] = []
 
 
-@router.post("/create", response_model=CharacterV2)
-async def create_character_v2(character: CharacterV2):
+@router.post("/create", response_model=CharacterV2Stored)
+async def create_character_v2(character: CharacterV2Create):
     """
     Create a new Character using the V2 schema.
     For now this just stores it in memory and echoes it back.
     Later we'll persist to the real database.
     """
-    FAKE_CHAR_STORE.append(character)
-    return character
+    stored_character = CharacterV2Stored(id=str(uuid4()), **character.dict(by_alias=True))
+    FAKE_CHAR_STORE.append(stored_character)
+    return stored_character
 
 
-@router.get("/", response_model=List[CharacterV2])
+@router.get("/", response_model=List[CharacterV2Stored])
 async def list_characters_v2():
     """
     List all V2 characters (from the in-memory store).
     Mainly useful for debugging while we build this.
     """
     return FAKE_CHAR_STORE
+
+
+@router.get("/list", response_model=List[CharacterV2Stored])
+async def list_characters_v2_alias():
+    """
+    List all V2 characters (from the in-memory store).
+    Mainly useful for debugging while we build this.
+    """
+    return FAKE_CHAR_STORE
+
+
+@router.get("/{character_id}", response_model=CharacterV2Stored)
+async def get_character_v2(character_id: str):
+    """
+    Fetch a single V2 character by id from the in-memory store.
+    """
+    for character in FAKE_CHAR_STORE:
+        if character.id == character_id:
+            return character
+    raise HTTPException(status_code=404, detail="Character not found")

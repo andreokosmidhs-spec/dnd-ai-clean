@@ -1,0 +1,218 @@
+import React, { useMemo, useState } from "react";
+import { raceData } from "../../data/raceData";
+import { CLASS_PROFICIENCIES } from "../../data/classProficiencies";
+import { BACKGROUNDS_BY_KEY } from "../../data/backgroundData";
+import { createCharacterV2 } from "../../api/characterV2Api";
+import WizardCard from "./WizardCard";
+
+const ABILITIES = [
+  { key: "str", label: "STR" },
+  { key: "dex", label: "DEX" },
+  { key: "con", label: "CON" },
+  { key: "int", label: "INT" },
+  { key: "wis", label: "WIS" },
+  { key: "cha", label: "CHA" },
+];
+
+const abilityModifier = (score) => {
+  if (score == null || Number.isNaN(score)) return null;
+  return Math.floor((score - 10) / 2);
+};
+
+const ReviewStep = ({ characterData, onBack }) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+  const [submitSuccess, setSubmitSuccess] = useState(null);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+
+  const raceInfo = useMemo(() => {
+    if (!characterData.race?.key) return null;
+    const base = raceData[characterData.race.key];
+    const subrace = characterData.race.variantKey
+      ? base?.subraces?.[characterData.race.variantKey]
+      : null;
+    return { base, subrace };
+  }, [characterData.race]);
+
+  const classInfo = characterData.class?.key
+    ? CLASS_PROFICIENCIES[characterData.class.key]
+    : null;
+
+  const backgroundInfo = characterData.background?.key
+    ? BACKGROUNDS_BY_KEY[characterData.background.key]
+    : null;
+
+  const abilities = characterData.abilityScores || {};
+  const appearance = characterData.appearance || {};
+  const meta = characterData.meta || {};
+
+  const canSubmit = Boolean(
+    characterData.identity?.name?.trim() &&
+      characterData.race?.key &&
+      characterData.class?.key &&
+      characterData.identity?.age &&
+      characterData.identity?.sex &&
+      ABILITIES.every((a) => typeof abilities[a.key] === "number") &&
+      characterData.background?.key &&
+      appearance.ageCategory &&
+      appearance.heightCm &&
+      appearance.build
+  );
+
+  const handleSubmit = async () => {
+    if (!canSubmit || isSubmitting || hasSubmitted) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+
+    try {
+      const payload = {
+        ...characterData,
+        meta: {
+          version: meta.version || 2,
+          createdAt: meta.createdAt || new Date().toISOString(),
+        },
+      };
+
+      const data = await createCharacterV2(payload);
+      if (!data || !data.id) {
+        throw new Error("Failed to create character");
+      }
+      console.log("Character V2 created", data);
+      setSubmitSuccess("Character created successfully!");
+      setHasSubmitted(true);
+    } catch (err) {
+      setSubmitError(err.message || "Failed to create character");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <WizardCard
+      stepTitle="Step 7 – Review & Submit"
+      stepNumber={7}
+      totalSteps={7}
+      onBack={onBack}
+      onNext={handleSubmit}
+      nextLabel={isSubmitting ? "Submitting..." : hasSubmitted ? "Submitted" : "Create Character"}
+      nextDisabled={!canSubmit || isSubmitting || hasSubmitted}
+    >
+      <div className="space-y-4 text-slate-100">
+        <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-lg font-semibold text-amber-300">Identity</h3>
+          </div>
+          <p className="text-sm text-slate-200">Name: {characterData.identity?.name || "—"}</p>
+          <p className="text-sm text-slate-200">Age: {characterData.identity?.age ?? "—"}</p>
+          <p className="text-sm text-slate-200">Alignment: {characterData.identity?.alignment || "—"}</p>
+          <p className="text-sm text-slate-200">Sex: {characterData.identity?.sex || "—"}</p>
+        </section>
+
+        <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-lg font-semibold text-amber-300">Race</h3>
+          </div>
+          <p className="text-sm text-slate-200">Race: {raceInfo?.base?.name || "—"}</p>
+          {raceInfo?.subrace && (
+            <p className="text-sm text-slate-200">Subrace: {raceInfo.subrace.name}</p>
+          )}
+          <p className="text-sm text-slate-200">ASI: {raceInfo?.base?.asi?.map((asi) => `${asi.ability}+${asi.value}`).join(", ") || "—"}</p>
+          <div className="text-sm text-slate-200">
+            <p className="text-slate-300">Traits:</p>
+            <ul className="list-disc list-inside text-slate-300">
+              {(raceInfo?.base?.traits || []).slice(0, 3).map((trait) => (
+                <li key={trait.name}>{trait.name}: {trait.summary}</li>
+              ))}
+              {!raceInfo?.base?.traits?.length && <li className="text-slate-500">—</li>}
+            </ul>
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-lg font-semibold text-amber-300">Class</h3>
+          </div>
+          <p className="text-sm text-slate-200">Class: {characterData.class?.key || "—"}</p>
+          <p className="text-sm text-slate-200">Saving Throws: {classInfo?.savingThrows?.join(", ") || "—"}</p>
+          <p className="text-sm text-slate-200">Proficiencies: {classInfo ? [
+            ...(classInfo.armor || []),
+            ...(classInfo.weapons || []),
+            ...(classInfo.tools || []),
+          ].filter(Boolean).join(", ") || "—" : "—"}</p>
+        </section>
+
+        <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-lg font-semibold text-amber-300">Ability Scores</h3>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {ABILITIES.map(({ key, label }) => {
+              const score = abilities[key];
+              const mod = abilityModifier(score);
+              return (
+                <div key={key} className="rounded border border-slate-800 bg-slate-800/70 p-3 text-sm text-slate-200">
+                  <p className="font-semibold text-amber-200">{label}</p>
+                  <p>Score: {score ?? "—"}</p>
+                  <p>Mod: {mod != null ? (mod >= 0 ? `+${mod}` : mod) : "—"}</p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-lg font-semibold text-amber-300">Background</h3>
+          </div>
+          <p className="text-sm text-slate-200">Background: {backgroundInfo?.name || "—"}</p>
+          <p className="text-sm text-slate-200">Skills: {backgroundInfo?.skillProficiencies?.join(", ") || "—"}</p>
+          <p className="text-sm text-slate-200">Tools: {backgroundInfo?.toolProficiencies?.join(", ") || "—"}</p>
+          <p className="text-sm text-slate-200">
+            Languages: {backgroundInfo ? (backgroundInfo.languages?.count
+              ? `Choose ${backgroundInfo.languages.count} language${backgroundInfo.languages.count > 1 ? "s" : ""}`
+              : "—") : "—"}
+          </p>
+          {backgroundInfo?.feature && (
+            <p className="text-sm text-slate-200">Feature: {backgroundInfo.feature.name} — {backgroundInfo.feature.description}</p>
+          )}
+        </section>
+
+        <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-lg font-semibold text-amber-300">Appearance</h3>
+          </div>
+          <p className="text-sm text-slate-200">Age Category: {appearance.ageCategory || "—"}</p>
+          <p className="text-sm text-slate-200">Height: {appearance.heightCm ? `${appearance.heightCm} cm` : "—"}</p>
+          <p className="text-sm text-slate-200">Build: {appearance.build || "—"}</p>
+          <p className="text-sm text-slate-200">Skin Tone: {appearance.skinTone || "—"}</p>
+          <p className="text-sm text-slate-200">Hair Color: {appearance.hairColor || "—"}</p>
+          <p className="text-sm text-slate-200">Eye Color: {appearance.eyeColor || "—"}</p>
+          <div className="text-sm text-slate-200">
+            <p className="text-slate-300">Notable Features:</p>
+            <ul className="list-disc list-inside text-slate-300">
+              {(appearance.notableFeatures || []).length > 0 ? (
+                appearance.notableFeatures.map((feature) => <li key={feature}>{feature}</li>)
+              ) : (
+                <li className="text-slate-500">—</li>
+              )}
+            </ul>
+          </div>
+        </section>
+
+        {submitError && (
+          <div className="rounded border border-red-500 bg-red-900/40 text-red-200 px-4 py-2 text-sm">
+            {submitError}
+          </div>
+        )}
+        {submitSuccess && (
+          <div className="rounded border border-green-500 bg-green-900/40 text-green-200 px-4 py-2 text-sm">
+            {submitSuccess}
+          </div>
+        )}
+      </div>
+    </WizardCard>
+  );
+};
+
+export default ReviewStep;

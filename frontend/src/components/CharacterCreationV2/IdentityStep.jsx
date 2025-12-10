@@ -1,71 +1,110 @@
 import React from "react";
+import WizardCard from "./WizardCard";
 
 const IdentityStep = ({ identity, onChange, onNext }) => {
+  const sexValue =
+    identity?.sex === "male" || identity?.sex === "female"
+      ? identity.sex
+      : "male";
+  const nameValue = identity?.name ?? "";
+  const genderExpressionValue =
+    typeof identity?.genderExpression === "number"
+      ? identity.genderExpression
+      : 50;
+  const ageValue = identity?.age === "" ? "" : identity?.age ?? 25;
 
   const handleGenderExpression = (e) => {
     onChange({ genderExpression: Number(e.target.value) });
   };
 
-  const canContinue = identity.name.trim().length > 0;
+  const canContinue =
+    nameValue.trim().length > 0 &&
+    (sexValue === "male" || sexValue === "female") &&
+    Number(ageValue) > 0;
 
   return (
-    <div className="p-4">
-      {/* Name input */}
-      <div className="mb-4">
-        <label className="block text-white text-sm">Name</label>
-        <input
-          type="text"
-          value={identity.name}
-          onChange={(e) => onChange({ name: e.target.value })}
-          className="w-full p-2 rounded bg-gray-800 text-white"
-        />
-      </div>
+    <WizardCard
+      stepTitle="Step 1 – Identity"
+      stepNumber={1}
+      totalSteps={7}
+      onBack={() => {}}
+      backDisabled
+      onNext={onNext}
+      nextDisabled={!canContinue}
+    >
+      <div className="space-y-5">
+        <div className="space-y-2">
+          <label className="text-sm text-slate-300">Character Name</label>
+          <input
+            type="text"
+            value={nameValue}
+            onChange={(e) => onChange({ name: e.target.value })}
+            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            placeholder="Give your hero a name"
+          />
+        </div>
 
-      {/* Sex selector */}
-      <div className="mb-4">
-        <label className="block text-white text-sm">Sex</label>
-        <select
-          value={identity.sex}
-          onChange={(e) => onChange({ sex: e.target.value })}
-          className="p-2 rounded bg-gray-800 text-white"
-        >
-          <option value="male">Male</option>
-          <option value="female">Female</option>
-          <option value="unspecified">Unspecified</option>
-        </select>
-      </div>
+        <div className="space-y-2">
+          <label className="text-sm text-slate-300">Sex</label>
+          <div className="flex gap-3">
+            {[
+              { key: "female", label: "♀ Female" },
+              { key: "male", label: "♂ Male" },
+            ].map((option) => {
+              const selected = sexValue === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => onChange({ sex: option.key })}
+                  className={`flex-1 rounded-full border px-3 py-2 text-sm font-semibold transition-colors ${
+                    selected
+                      ? "border-amber-500 bg-amber-500/20 text-amber-100"
+                      : "border-slate-700 bg-slate-800 text-slate-200 hover:border-amber-500/60"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-      {/* Gender Expression Slider */}
-      <div className="mb-4">
-        <label className="block text-white text-sm">
-          Gender Expression ({identity.genderExpression})
-        </label>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={identity.genderExpression}
-          onChange={handleGenderExpression}
-          className="w-full"
-        />
-      </div>
+        <div className="space-y-2">
+          <label className="text-sm text-slate-300">Age</label>
+          <input
+            type="number"
+            min="1"
+            value={ageValue}
+            onChange={(e) =>
+              onChange({ age: e.target.value === "" ? "" : Number(e.target.value) })
+            }
+            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            placeholder="25"
+          />
+        </div>
 
-      {/* Next button */}
-      <div className="text-right">
-        <button
-          disabled={!canContinue}
-          onClick={onNext}
-          className={
-            "px-4 py-2 rounded text-sm font-semibold " +
-            (canContinue
-              ? "bg-amber-500 hover:bg-amber-600 text-black"
-              : "bg-gray-700 cursor-not-allowed text-gray-500")
-          }
-        >
-          Next
-        </button>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm text-slate-300">
+            <span>Appearance Expression</span>
+            <span className="text-amber-300 font-semibold">{genderExpressionValue}</span>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <span>Fem</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={genderExpressionValue}
+              onChange={handleGenderExpression}
+              className="flex-1 accent-amber-500"
+            />
+            <span>Masc</span>
+          </div>
+          <p className="text-xs text-slate-500">How your character looks, not their gender.</p>
+        </div>
       </div>
-    </div>
+    </WizardCard>
   );
 };
 

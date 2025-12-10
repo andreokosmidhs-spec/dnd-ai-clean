@@ -1,114 +1,74 @@
-from typing import List, Optional
-from pydantic import BaseModel
+from datetime import datetime
+from typing import List, Literal, Optional
+
+from pydantic import BaseModel, Field, ConfigDict
 
 
-# -----------------------
-#  Ability Scores
-# -----------------------
+class Identity(BaseModel):
+    name: str
+    sex: Literal["male", "female"]
+    genderExpression: int = Field(ge=0, le=100)
+    age: int = Field(gt=0)
+
+
+class RaceInfo(BaseModel):
+    key: str
+    variantKey: Optional[str] = None
+
+
+class ClassInfo(BaseModel):
+    key: str
+    subclassKey: Optional[str] = None
+    level: int = Field(default=1, ge=1)
+    skillProficiencies: List[str] = Field(default_factory=list)
+
+
 class AbilityScores(BaseModel):
-    STR: int
-    DEX: int
-    CON: int
-    INT: int
-    WIS: int
-    CHA: int
+    str_: int = Field(alias="str", ge=1, le=30)
+    dex: int = Field(ge=1, le=30)
+    con: int = Field(ge=1, le=30)
+    int_: int = Field(alias="int", ge=1, le=30)
+    wis: int = Field(ge=1, le=30)
+    cha: int = Field(ge=1, le=30)
+    method: str = "standard_array"
+    model_config = ConfigDict(populate_by_name=True)
 
 
-# -----------------------
-#  Race Model
-# -----------------------
-class AppearanceOptions(BaseModel):
-    skin_colors: List[str]
-    hair_colors: List[str]
-    eye_colors: List[str]
-    height_range: List[int]     # e.g. [150, 190]
-    age_range: List[int]        # adjusted per-race
-    can_have_tail: bool = False
-    can_have_horns: bool = False
-    can_have_wings: bool = False
+class BackgroundInfo(BaseModel):
+    key: str
+    variantKey: Optional[str] = None
 
 
-class RaceModel(BaseModel):
-    name: str
-    traits: List[str]
-    ability_bonuses: dict       # {"DEX": 2, "WIS": 1}
-    languages: List[str]
-    appearance: AppearanceOptions
+class AppearanceInfo(BaseModel):
+    ageCategory: str
+    heightCm: int
+    build: str
+    skinTone: Optional[str] = None
+    hairColor: Optional[str] = None
+    eyeColor: Optional[str] = None
+    notableFeatures: List[str] = Field(default_factory=list)
 
 
-# -----------------------
-#  Class Model
-# -----------------------
-class ClassFeature(BaseModel):
-    level: int
-    name: str
-    description: str
+class MetaInfo(BaseModel):
+    version: int = 2
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
 
 
-class SubclassModel(BaseModel):
-    name: str
-    level_unlock: int
-    features: List[ClassFeature]
+class CharacterV2Base(BaseModel):
+    identity: Identity
+    race: RaceInfo
+    class_: ClassInfo = Field(alias="class")
+    abilityScores: AbilityScores
+    background: BackgroundInfo
+    appearance: AppearanceInfo
+    meta: MetaInfo = Field(default_factory=MetaInfo)
+    model_config = ConfigDict(populate_by_name=True)
 
 
-class ClassModel(BaseModel):
-    name: str
-    hit_die: str
-    primary_ability: str
-    saving_throws: List[str]
-    proficiencies: List[str]
-    starting_equipment: List[str]
-    spells_known: Optional[List[str]] = None
-    features: List[ClassFeature]
-    subclasses: Optional[List[SubclassModel]] = None
+class CharacterV2Create(CharacterV2Base):
+    pass
 
 
-# -----------------------
-#  Background Model
-# -----------------------
-class BackgroundModel(BaseModel):
-    name: str
-    skill_proficiencies: List[str]
-    tool_proficiencies: List[str]
-    languages: List[str]
-    equipment: List[str]
-    personality_traits: List[str]
-    ideals: List[str]
-    bonds: List[str]
-    flaws: List[str]
+class CharacterV2Stored(CharacterV2Base):
+    id: str
 
-
-# -----------------------
-#  Appearance Model (final chosen values)
-# -----------------------
-class Appearance(BaseModel):
-    sex: str                    # "male", "female", "other"
-    masc_fem_balance: int       # slider 0–100
-    skin_color: str
-    hair_color: str
-    eye_color: str
-    height_cm: int
-    age: int
-    has_tail: bool = False
-    has_horns: bool = False
-    has_wings: bool = False
-    scars: Optional[List[str]] = None
-    tattoos: Optional[List[str]] = None
-
-
-# -----------------------
-#  Final Character V2 Model
-# -----------------------
-class CharacterV2(BaseModel):
-    name: str
-    race: RaceModel
-    char_class: ClassModel
-    subclass: Optional[SubclassModel] = None
-    background: BackgroundModel
-    level: int = 1
-
-    abilities: AbilityScores
-    appearance: Appearance
-
-    # For DM + portrait generation
-    appearance_tags: List[str] = []

@@ -1,69 +1,186 @@
 import React, { useState } from "react";
 
-// Steps
 import IdentityStep from "../components/CharacterCreationV2/IdentityStep";
+import RaceStep from "../components/CharacterCreationV2/RaceStep";
+import ClassStep from "../components/CharacterCreationV2/ClassStep";
+import AbilityScoresStep from "../components/CharacterCreationV2/AbilityScoresStep";
+import BackgroundStep from "../components/CharacterCreationV2/BackgroundStep";
+import AppearanceStep from "../components/CharacterCreationV2/AppearanceStep";
+import ReviewStep from "../components/CharacterCreationV2/ReviewStep";
 
-// API
-import { createCharacterV2 } from "../api/characterV2Api";
-
-// Steps list
-const STEPS = ["identity"]; 
-// Later we add: race, class, background, stats, appearance, review
+const STEPS = [
+  "identity",
+  "race",
+  "class",
+  "abilityScores",
+  "background",
+  "appearance",
+  "review",
+];
 
 const CharacterCreationV2 = () => {
-    // master character state (V2 schema)
-    const [character, setCharacter] = useState({
-        identity: {
-            name: "",
-            sex: null,                     // "male" | "female" | "other"
-            genderExpression: 50,          // 0 = masculine, 100 = feminine
-        },
-    });
+  const [character, setCharacter] = useState({
+    identity: {
+      name: "",
+      sex: "male",
+      genderExpression: 50,
+      age: 25,
+    },
+    race: {
+      key: null,
+      variantKey: null,
+    },
+    class: {
+      key: null,
+      subclassKey: null,
+      level: 1,
+      skillProficiencies: [],
+    },
+    abilityScores: {
+      str: null,
+      dex: null,
+      con: null,
+      int: null,
+      wis: null,
+      cha: null,
+      method: "standard_array",
+    },
+    background: {
+      key: null,
+      variantKey: null,
+    },
+    appearance: {
+      ageCategory: null,
+      heightCm: null,
+      build: null,
+      skinTone: "",
+      hairColor: "",
+      eyeColor: "",
+      notableFeatures: [],
+    },
+    meta: {
+      version: 2,
+      createdAt: new Date().toISOString(),
+    },
+  });
 
-    const [stepIndex, setStepIndex] = useState(0);
-    const currentStep = STEPS[stepIndex];
+  const [stepIndex, setStepIndex] = useState(0);
+  const currentStep = STEPS[stepIndex];
 
-    // Called by each step to update a specific nested section
-    const updateCharacter = (patch) => {
-        setCharacter((prev) => ({
-            ...prev,
-            ...patch,
-        }));
-    };
+  const updateCharacter = (patch) => {
+    setCharacter((prev) => ({
+      ...prev,
+      ...patch,
+    }));
+  };
 
-    const next = async () => {
-        // More steps coming soon
-        if (stepIndex < STEPS.length - 1) {
-            setStepIndex(stepIndex + 1);
-        } else {
-            console.log("Submitting character:", character);
-            await createCharacterV2(character);
-            alert("Character created!");
-        }
-    };
+  const updateIdentity = (partialIdentity) => {
+    setCharacter((prev) => ({
+      ...prev,
+      identity: {
+        ...prev.identity,
+        ...partialIdentity,
+      },
+    }));
+  };
 
-    // Render the correct step
-    let stepContent = null;
-
-    switch (currentStep) {
-        case "identity":
-        default:
-            stepContent = (
-                <IdentityStep
-                    value={character.identity}
-                    onChange={(v) => updateCharacter({ identity: v })}
-                    onNext={next}
-                />
-            );
-            break;
+  const prev = () => {
+    if (stepIndex > 0) {
+      setStepIndex(stepIndex - 1);
     }
+  };
 
-    return (
-        <div className="p-6 max-w-3xl mx-auto">
-            <h1 className="text-3xl font-bold mb-4">Character Creation V2</h1>
-            {stepContent}
+  const next = () => {
+    if (stepIndex < STEPS.length - 1) {
+      setStepIndex(stepIndex + 1);
+    }
+  };
+
+  let stepContent = null;
+
+  switch (currentStep) {
+    case "identity":
+      stepContent = (
+        <IdentityStep
+          identity={character.identity}
+          onChange={updateIdentity}
+          onNext={next}
+        />
+      );
+      break;
+    case "race":
+      stepContent = (
+        <RaceStep
+          characterData={character}
+          updateCharacterData={updateCharacter}
+          onBack={prev}
+          onNext={next}
+        />
+      );
+      break;
+    case "class":
+      stepContent = (
+        <ClassStep
+          characterData={character}
+          updateCharacterData={updateCharacter}
+          onBack={prev}
+          onNext={next}
+        />
+      );
+      break;
+    case "abilityScores":
+      stepContent = (
+        <AbilityScoresStep
+          characterData={character}
+          updateCharacterData={updateCharacter}
+          onBack={prev}
+          onNext={next}
+        />
+      );
+      break;
+    case "background":
+      stepContent = (
+        <BackgroundStep
+          characterData={character}
+          updateCharacterData={updateCharacter}
+          onBack={prev}
+          onNext={next}
+        />
+      );
+      break;
+    case "appearance":
+      stepContent = (
+        <AppearanceStep
+          characterData={character}
+          updateCharacterData={updateCharacter}
+          onBack={prev}
+          onNext={next}
+        />
+      );
+      break;
+    case "review":
+      stepContent = (
+        <ReviewStep
+          characterData={character}
+          onBack={prev}
+        />
+      );
+      break;
+    default:
+      stepContent = <div>Unknown step</div>;
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 py-10 px-4">
+      <div className="max-w-5xl mx-auto">
+        <div className="mb-6 text-center">
+          <h1 className="text-3xl font-bold text-amber-400">Character Creation V2</h1>
+          <p className="text-sm text-slate-400">Forge your hero through seven guided steps.</p>
         </div>
-    );
+        {stepContent}
+      </div>
+    </div>
+  );
 };
 
 export default CharacterCreationV2;

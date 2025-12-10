@@ -13,6 +13,14 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
       : 50;
   const ageValue = identity?.age === "" ? "" : identity?.age ?? 25;
 
+  const handleNameChange = (e) => {
+    const { value } = e.target;
+    const capitalizedValue =
+      value.length > 0 ? value[0].toUpperCase() + value.slice(1) : "";
+
+    onChange({ name: capitalizedValue });
+  };
+
   const handleGenderExpression = (e) => {
     onChange({ genderExpression: Number(e.target.value) });
   };
@@ -34,11 +42,17 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
     >
       <div className="space-y-5">
         <div className="space-y-2">
-          <label className="text-sm text-slate-300">Character Name</label>
+          <label
+            htmlFor="character-name"
+            className="block text-center text-sm text-slate-300"
+          >
+            Character Name
+          </label>
           <input
+            id="character-name"
             type="text"
             value={nameValue}
-            onChange={(e) => onChange({ name: e.target.value })}
+            onChange={handleNameChange}
             className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
             placeholder="Give your hero a name"
           />
@@ -71,8 +85,14 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm text-slate-300">Age</label>
+          <label
+            htmlFor="character-age"
+            className="block text-center text-sm text-slate-300"
+          >
+            Age
+          </label>
           <input
+            id="character-age"
             type="number"
             min="1"
             value={ageValue}
@@ -87,7 +107,7 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm text-slate-300">
             <span>Appearance Expression</span>
-            <span className="text-amber-300 font-semibold">{genderExpressionValue}</span>
+            <span className="font-semibold text-slate-200">{genderExpressionValue}</span>
           </div>
           <div className="flex items-center gap-3 text-xs text-slate-400">
             <span>Fem</span>
@@ -97,11 +117,13 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
               max="100"
               value={genderExpressionValue}
               onChange={handleGenderExpression}
-              className="flex-1 accent-amber-500"
+              className="flex-1 accent-slate-500"
             />
             <span>Masc</span>
           </div>
-          <p className="text-xs text-slate-500">How your character looks, not their gender.</p>
+          <p className="text-center text-xs text-slate-500">
+            How your character looks, not their gender.
+          </p>
         </div>
       </div>
     </WizardCard>

@@ -94,8 +94,9 @@ const ReviewStep = ({ characterData, onBack }) => {
       totalSteps={7}
       onBack={onBack}
       onNext={handleSubmit}
+      backDisabled={isSubmitting}
       nextDisabled={!canSubmit || isSubmitting}
-      nextLabel={isSubmitting ? "Submitting..." : "Submit"}
+      nextLabel={isSubmitting ? "Creating..." : "Create Character"}
     >
       <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg text-slate-100 space-y-6">
         <h2 className="text-2xl font-bold text-amber-400">Step 7 – Review & Submit</h2>

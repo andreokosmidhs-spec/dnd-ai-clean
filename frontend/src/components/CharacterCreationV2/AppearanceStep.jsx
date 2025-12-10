@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import WizardCard from "./WizardCard";
 
 const AGE_CATEGORIES = ["Young", "Adult", "Veteran", "Elder"];
 const BUILDS = ["Slim", "Average", "Athletic", "Muscular", "Heavy"];

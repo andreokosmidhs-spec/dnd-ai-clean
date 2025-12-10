@@ -31,6 +31,8 @@ class AbilityScores(BaseModel):
     wis: int = Field(ge=1, le=30)
     cha: int = Field(ge=1, le=30)
     method: str = "standard_array"
+
+    # allow using "str"/"int" when constructing from dicts
     model_config = ConfigDict(populate_by_name=True)
 
 
@@ -62,6 +64,8 @@ class CharacterV2Base(BaseModel):
     background: BackgroundInfo
     appearance: AppearanceInfo
     meta: MetaInfo = Field(default_factory=MetaInfo)
+
+    # allow aliases like "class" and "str" when constructing from dicts
     model_config = ConfigDict(populate_by_name=True)
 
 
@@ -71,4 +75,3 @@ class CharacterV2Create(CharacterV2Base):
 
 class CharacterV2Stored(CharacterV2Base):
     id: str
-

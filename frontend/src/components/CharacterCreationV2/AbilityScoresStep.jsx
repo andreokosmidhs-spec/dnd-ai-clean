@@ -1,5 +1,4 @@
 import React from "react";
-import WizardCard from "./WizardCard";
 
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
 const POINT_COST = {
@@ -225,41 +224,54 @@ const AbilityScoresStep = ({ characterData, updateCharacterData, onNext, onBack 
   const canContinue = isValid();
 
   return (
-    <WizardCard
-      stepTitle="Step 4 – Assign Ability Scores"
-      stepNumber={4}
-      totalSteps={7}
-      onBack={onBack}
-      onNext={() => {
-        if (canContinue) onNext();
-      }}
-      nextDisabled={!canContinue}
-    >
-      <div className="space-y-5 text-slate-100">
-        <div className="space-y-2">
-          <label className="block text-sm text-slate-300">Method</label>
-          <select
-            value={method}
-            onChange={handleMethodChange}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
-          >
-            <option value="standard_array">Standard Array</option>
-            <option value="point_buy">Point Buy</option>
-            <option value="manual">Manual Entry</option>
-          </select>
-        </div>
+    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg text-slate-100">
+      <h2 className="text-2xl font-bold text-amber-400 mb-4">Step 4 – Assign Ability Scores</h2>
 
-        {method === "point_buy" && (
-          <div className="mb-2 text-sm text-slate-200">Points remaining: {pointsRemaining}</div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {abilities.map((key) => renderAbilityRow(key))}
-        </div>
-
-        <p className="text-xs text-slate-500">Racial bonuses will be applied automatically.</p>
+      <div className="mb-4">
+        <label className="block text-sm text-slate-300 mb-1">Method</label>
+        <select
+          value={method}
+          onChange={handleMethodChange}
+          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+        >
+          <option value="standard_array">Standard Array</option>
+          <option value="point_buy">Point Buy</option>
+          <option value="manual">Manual Entry</option>
+        </select>
       </div>
-    </WizardCard>
+
+      {method === "point_buy" && (
+        <div className="mb-4 text-sm text-slate-200">Points remaining: {pointsRemaining}</div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {abilities.map((key) => renderAbilityRow(key))}
+      </div>
+
+      <div className="mt-6 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onBack}
+          className="px-4 py-2 rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800"
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (canContinue) onNext();
+          }}
+          disabled={!canContinue}
+          className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+            canContinue
+              ? "bg-amber-500 text-black hover:bg-amber-400"
+              : "bg-slate-700 text-slate-400 cursor-not-allowed"
+          }`}
+        >
+          Next
+        </button>
+      </div>
+    </div>
   );
 };
 

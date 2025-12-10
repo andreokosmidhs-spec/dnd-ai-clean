@@ -1,8 +1,7 @@
-from uuid import uuid4
 from typing import List
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
-
 from backend.models.character_v2 import CharacterV2Create, CharacterV2Stored
 
 router = APIRouter(
@@ -10,7 +9,7 @@ router = APIRouter(
     tags=["characters_v2"],
 )
 
-# In-memory store for now (we’ll swap this for Mongo later)
+# Simple in-memory store for now (we'll swap this for Mongo later)
 FAKE_CHAR_STORE: List[CharacterV2Stored] = []
 
 

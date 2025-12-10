@@ -2,8 +2,6 @@ import React, { useMemo, useState } from "react";
 import { raceData } from "../../data/raceData";
 import { CLASS_PROFICIENCIES } from "../../data/classProficiencies";
 import { BACKGROUNDS_BY_KEY } from "../../data/backgroundData";
-import { createCharacterV2 } from "../../api/characterV2Api";
-import WizardCard from "./WizardCard";
 
 const ABILITIES = [
   { key: "str", label: "STR" },
@@ -23,7 +21,6 @@ const ReviewStep = ({ characterData, onBack }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(null);
-  const [hasSubmitted, setHasSubmitted] = useState(false);
 
   const raceInfo = useMemo(() => {
     if (!characterData.race?.key) return null;
@@ -44,14 +41,11 @@ const ReviewStep = ({ characterData, onBack }) => {
 
   const abilities = characterData.abilityScores || {};
   const appearance = characterData.appearance || {};
-  const meta = characterData.meta || {};
 
   const canSubmit = Boolean(
     characterData.identity?.name?.trim() &&
       characterData.race?.key &&
       characterData.class?.key &&
-      characterData.identity?.age &&
-      characterData.identity?.sex &&
       ABILITIES.every((a) => typeof abilities[a.key] === "number") &&
       characterData.background?.key &&
       appearance.ageCategory &&
@@ -60,27 +54,26 @@ const ReviewStep = ({ characterData, onBack }) => {
   );
 
   const handleSubmit = async () => {
-    if (!canSubmit || isSubmitting || hasSubmitted) return;
+    if (!canSubmit || isSubmitting) return;
     setIsSubmitting(true);
     setSubmitError(null);
     setSubmitSuccess(null);
 
     try {
-      const payload = {
-        ...characterData,
-        meta: {
-          version: meta.version || 2,
-          createdAt: meta.createdAt || new Date().toISOString(),
-        },
-      };
+      const res = await fetch("/api/characters/v2/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(characterData),
+      });
 
-      const data = await createCharacterV2(payload);
-      if (!data || !data.id) {
-        throw new Error("Failed to create character");
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Failed to create character");
       }
+
+      const data = await res.json();
       console.log("Character V2 created", data);
       setSubmitSuccess("Character created successfully!");
-      setHasSubmitted(true);
     } catch (err) {
       setSubmitError(err.message || "Failed to create character");
     } finally {
@@ -89,20 +82,12 @@ const ReviewStep = ({ characterData, onBack }) => {
   };
 
   return (
-    <WizardCard
-      stepTitle="Step 7 – Review & Submit"
-      stepNumber={7}
-      totalSteps={7}
-      onBack={onBack}
-      onNext={handleSubmit}
-      nextLabel={isSubmitting ? "Submitting..." : hasSubmitted ? "Submitted" : "Create Character"}
-      nextDisabled={!canSubmit || isSubmitting || hasSubmitted}
-    >
-      <div className="space-y-4 text-slate-100">
+    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg text-slate-100 space-y-6">
+      <h2 className="text-2xl font-bold text-amber-400">Step 7 – Review & Submit</h2>
+
+      <div className="space-y-4">
         <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-lg font-semibold text-amber-300">Identity</h3>
-          </div>
+          <h3 className="text-lg font-semibold text-amber-300 mb-2">Identity</h3>
           <p className="text-sm text-slate-200">Name: {characterData.identity?.name || "—"}</p>
           <p className="text-sm text-slate-200">Age: {characterData.identity?.age ?? "—"}</p>
           <p className="text-sm text-slate-200">Alignment: {characterData.identity?.alignment || "—"}</p>
@@ -110,9 +95,7 @@ const ReviewStep = ({ characterData, onBack }) => {
         </section>
 
         <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-lg font-semibold text-amber-300">Race</h3>
-          </div>
+          <h3 className="text-lg font-semibold text-amber-300 mb-2">Race</h3>
           <p className="text-sm text-slate-200">Race: {raceInfo?.base?.name || "—"}</p>
           {raceInfo?.subrace && (
             <p className="text-sm text-slate-200">Subrace: {raceInfo.subrace.name}</p>
@@ -130,9 +113,7 @@ const ReviewStep = ({ characterData, onBack }) => {
         </section>
 
         <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-lg font-semibold text-amber-300">Class</h3>
-          </div>
+          <h3 className="text-lg font-semibold text-amber-300 mb-2">Class</h3>
           <p className="text-sm text-slate-200">Class: {characterData.class?.key || "—"}</p>
           <p className="text-sm text-slate-200">Saving Throws: {classInfo?.savingThrows?.join(", ") || "—"}</p>
           <p className="text-sm text-slate-200">Proficiencies: {classInfo ? [
@@ -143,9 +124,7 @@ const ReviewStep = ({ characterData, onBack }) => {
         </section>
 
         <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-lg font-semibold text-amber-300">Ability Scores</h3>
-          </div>
+          <h3 className="text-lg font-semibold text-amber-300 mb-2">Ability Scores</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {ABILITIES.map(({ key, label }) => {
               const score = abilities[key];

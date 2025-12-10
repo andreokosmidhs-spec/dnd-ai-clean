@@ -22,9 +22,8 @@ const CharacterCreationV2 = () => {
   const [character, setCharacter] = useState({
     identity: {
       name: "",
-      sex: "male",
+      sex: null,
       genderExpression: 50,
-      age: 25,
     },
     race: {
       key: null,
@@ -58,10 +57,6 @@ const CharacterCreationV2 = () => {
       eyeColor: "",
       notableFeatures: [],
     },
-    meta: {
-      version: 2,
-      createdAt: new Date().toISOString(),
-    },
   });
 
   const [stepIndex, setStepIndex] = useState(0);
@@ -71,16 +66,6 @@ const CharacterCreationV2 = () => {
     setCharacter((prev) => ({
       ...prev,
       ...patch,
-    }));
-  };
-
-  const updateIdentity = (partialIdentity) => {
-    setCharacter((prev) => ({
-      ...prev,
-      identity: {
-        ...prev.identity,
-        ...partialIdentity,
-      },
     }));
   };
 
@@ -103,7 +88,7 @@ const CharacterCreationV2 = () => {
       stepContent = (
         <IdentityStep
           identity={character.identity}
-          onChange={updateIdentity}
+          onChange={(v) => updateCharacter({ identity: v })}
           onNext={next}
         />
       );

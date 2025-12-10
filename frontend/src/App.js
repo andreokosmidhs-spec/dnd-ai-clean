@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import "./App.css";
 import "./styles/chat-fixes.css";
 import "./styles/focus-first.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import RPGGame from "./components/RPGGame";
 import Toast from "./components/Toast";
@@ -62,10 +62,15 @@ function App() {
       <GameStateProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Home />}>
-              <Route index element={<Home />} />
-              <Route path="/character-v2" element={<CharacterCreationV2 />} />
-            </Route>
+            {/* Root redirects to new Character Creation V2 */}
+            <Route path="/" element={<Navigate to="/character-v2" replace />} />
+            
+            {/* New Character Creation V2 Wizard */}
+            <Route path="/character-v2" element={<CharacterCreationV2 />} />
+            
+            {/* Old game/adventure flow (keep for existing campaigns) */}
+            <Route path="/adventure" element={<Home />} />
+            <Route path="/game" element={<Home />} />
           </Routes>
         </BrowserRouter>
         <Toast />

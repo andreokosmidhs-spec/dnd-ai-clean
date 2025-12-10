@@ -14,11 +14,7 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
   const ageValue = identity?.age === "" ? "" : identity?.age ?? 25;
 
   const handleNameChange = (e) => {
-    const raw = e.target.value;
-    const capitalizedValue =
-      raw.length === 0 ? "" : raw[0].toUpperCase() + raw.slice(1);
-
-    onChange({ name: capitalizedValue });
+    onChange({ name: e.target.value });
   };
 
   const handleGenderExpression = (e) => {
@@ -42,7 +38,7 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
       nextDisabled={!canContinue}
     >
       <div className="space-y-5">
-        <div className="space-y-2">
+        <div className="space-y-2 flex flex-col items-center">
           <label
             htmlFor="character-name"
             className="block text-center text-sm text-slate-300"
@@ -54,8 +50,9 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
             type="text"
             value={nameValue}
             onChange={handleNameChange}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 text-center focus:outline-none focus:ring-2 focus:ring-amber-500"
+            className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 text-center capitalize focus:outline-none focus:ring-2 focus:ring-amber-500"
             placeholder="Give your hero a name"
+            style={{ textTransform: "capitalize" }}
           />
         </div>
 
@@ -118,7 +115,7 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
               max="100"
               value={genderExpressionValue}
               onChange={handleGenderExpression}
-              className="flex-1 accent-slate-400"
+              className="flex-1 accent-slate-500"
             />
             <span>Masc</span>
           </div>

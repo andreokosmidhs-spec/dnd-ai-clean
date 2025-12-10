@@ -116,17 +116,13 @@ const ReviewStep = ({ characterData, onBack }) => {
               <p className="text-sm text-slate-200">Subrace: {raceInfo.subrace.name}</p>
             )}
             <p className="text-sm text-slate-200">
-              ASI: {raceInfo?.base?.asi
-                ?.map((asi) => `${asi.ability}+${asi.value}`)
-                .join(", ") || "—"}
+              ASI: {raceInfo?.base?.asi?.map((asi) => `${asi.ability}+${asi.value}`).join(", ") || "—"}
             </p>
             <div className="text-sm text-slate-200">
               <p className="text-slate-300">Traits:</p>
               <ul className="list-disc list-inside text-slate-300">
                 {(raceInfo?.base?.traits || []).slice(0, 3).map((trait) => (
-                  <li key={trait.name}>
-                    {trait.name}: {trait.summary}
-                  </li>
+                  <li key={trait.name}>{trait.name}: {trait.summary}</li>
                 ))}
                 {!raceInfo?.base?.traits?.length && <li className="text-slate-500">—</li>}
               </ul>
@@ -199,9 +195,7 @@ const ReviewStep = ({ characterData, onBack }) => {
               <p className="text-slate-300">Notable Features:</p>
               <ul className="list-disc list-inside text-slate-300">
                 {(appearance.notableFeatures || []).length > 0 ? (
-                  appearance.notableFeatures.map((feature) => (
-                    <li key={feature}>{feature}</li>
-                  ))
+                  appearance.notableFeatures.map((feature) => <li key={feature}>{feature}</li>)
                 ) : (
                   <li className="text-slate-500">—</li>
                 )}

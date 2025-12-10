@@ -38,7 +38,7 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
       nextDisabled={!canContinue}
     >
       <div className="space-y-5">
-        <div className="space-y-2">
+        <div className="space-y-2 flex flex-col items-center">
           <label
             htmlFor="character-name"
             className="block text-center text-sm text-slate-300"
@@ -53,6 +53,7 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
             autoCapitalize="words"
             className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 text-center [text-transform:capitalize] focus:outline-none focus:ring-2 focus:ring-slate-400"
             placeholder="Give your hero a name"
+            style={{ textTransform: "capitalize" }}
           />
         </div>
 
@@ -117,7 +118,7 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
               max="100"
               value={genderExpressionValue}
               onChange={handleGenderExpression}
-              className="flex-1 accent-slate-400"
+              className="flex-1 accent-slate-500"
             />
             <span>Masc</span>
           </div>

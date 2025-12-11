@@ -5,14 +5,14 @@ const isNonEmpty = (value) => typeof value === "string" && value.trim().length >
 
 export const validateIdentity = (state) => {
   const identity = state.identity || {};
-  const { name, sex, age, appearanceExpression } = identity;
+  const { name, sex, age, genderExpression } = identity;
   const hasName = isNonEmpty(name);
   const validSex = sex === "male" || sex === "female";
   const validAge = typeof age === "number" && age > 0;
   const validExpression =
-    typeof appearanceExpression === "number" &&
-    appearanceExpression >= 0 &&
-    appearanceExpression <= 100;
+    typeof genderExpression === "number" &&
+    genderExpression >= 0 &&
+    genderExpression <= 100;
   return hasName && validSex && validAge && validExpression;
 };
 

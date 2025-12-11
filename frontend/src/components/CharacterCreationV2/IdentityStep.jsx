@@ -14,7 +14,7 @@ const IdentityStep = ({
   const sexValue = identity?.sex === "male" || identity?.sex === "female" ? identity.sex : "";
   const nameValue = identity?.name ?? "";
   const appearanceExpressionValue =
-    typeof identity?.appearanceExpression === "number" ? identity.appearanceExpression : 50;
+    typeof identity?.genderExpression === "number" ? identity.genderExpression : 50;
   const ageValue = identity?.age === "" ? "" : identity?.age ?? "";
 
   const handleNameChange = (e) => {
@@ -22,7 +22,7 @@ const IdentityStep = ({
   };
 
   const handleAppearanceExpression = (e) => {
-    updateSection("identity", { appearanceExpression: Number(e.target.value) });
+    updateSection("identity", { genderExpression: Number(e.target.value) });
   };
 
   const canContinue = validateIdentity({ ...wizardState, identity: { ...identity, age: ageValue === "" ? null : ageValue } });

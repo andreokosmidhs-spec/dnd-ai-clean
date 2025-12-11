@@ -5,6 +5,7 @@ import { BACKGROUNDS_BY_KEY } from "../../data/backgroundData";
 import WizardCard from "./WizardCard";
 import { validateReview } from "./utils/validation";
 import { buildCharacterPayload } from "./utils/payload";
+import { useNavigate } from "react-router-dom";
 
 const ABILITIES = [
   { key: "str", label: "STR" },
@@ -20,10 +21,52 @@ const abilityModifier = (score) => {
   return Math.floor((score - 10) / 2);
 };
 
+const abilityKeys = ["str", "dex", "con", "int", "wis", "cha"];
+
+const getRacialAbilityBonuses = (raceState) => {
+  const race = raceState?.key ? raceData[raceState.key] : null;
+  const subrace = raceState?.variantKey && race?.subraces ? race.subraces[raceState.variantKey] : null;
+  const bonuses = [];
+
+  if (race?.asi) bonuses.push(...race.asi);
+  if (subrace?.asi) bonuses.push(...subrace.asi);
+
+  const bonusByAbility = abilityKeys.reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
+
+  bonuses.forEach(({ ability, value }) => {
+    if (!ability || value == null) return;
+    if (ability === "ALL") {
+      abilityKeys.forEach((key) => {
+        bonusByAbility[key] += value;
+      });
+      return;
+    }
+
+    const normalizedKey = ability.toLowerCase();
+    if (bonusByAbility[normalizedKey] != null) {
+      bonusByAbility[normalizedKey] += value;
+    }
+  });
+
+  return bonusByAbility;
+};
+
+const applyAbilityBonuses = (baseAbilities, bonusByAbility) => {
+  return abilityKeys.reduce((acc, key) => {
+    const base = baseAbilities[key];
+    const bonus = bonusByAbility[key] || 0;
+    return {
+      ...acc,
+      [key]: base != null ? base + bonus : null,
+    };
+  }, {});
+};
+
 const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(null);
+  const navigate = useNavigate();
 
   const raceInfo = useMemo(() => {
     if (!wizardState.race?.key) return null;
@@ -37,6 +80,11 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
   const backgroundInfo = wizardState.background?.key ? BACKGROUNDS_BY_KEY[wizardState.background.key] : null;
 
   const abilities = wizardState.abilityScores || {};
+  const racialBonuses = useMemo(() => getRacialAbilityBonuses(wizardState.race), [wizardState.race]);
+  const totalAbilities = useMemo(
+    () => applyAbilityBonuses(abilities, racialBonuses),
+    [abilities, racialBonuses]
+  );
   const appearance = wizardState.appearance || {};
   const identity = wizardState.identity || {};
   const languagesText = backgroundInfo
@@ -69,6 +117,7 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
       const data = await res.json();
       console.log("Character V2 created", data);
       setSubmitSuccess("Character created successfully!");
+      navigate("/adventure");
     } catch (err) {
       setSubmitError(err.message || "Failed to create character");
     } finally {
@@ -138,7 +187,9 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
             <h3 className="text-lg font-semibold text-amber-300 mb-2">Ability Scores</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {ABILITIES.map(({ key, label }) => {
-                const score = abilities[key];
+                const baseScore = abilities[key];
+                const bonus = racialBonuses[key] || 0;
+                const score = totalAbilities[key];
                 const mod = abilityModifier(score);
                 return (
                   <div
@@ -146,7 +197,9 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
                     className="rounded border border-slate-800 bg-slate-800/70 p-3 text-sm text-slate-200"
                   >
                     <p className="font-semibold text-amber-200">{label}</p>
-                    <p>Score: {score ?? "—"}</p>
+                    <p>Base: {baseScore ?? "—"}</p>
+                    {bonus !== 0 && <p>Racial Bonus: +{bonus}</p>}
+                    <p>Total: {score ?? "—"}</p>
                     <p>Mod: {mod != null ? (mod >= 0 ? `+${mod}` : mod) : "—"}</p>
                   </div>
                 );

@@ -1,4 +1,5 @@
 import { CLASS_SKILLS } from "../../data/classSkills";
+import { CLASS_SUBCLASSES } from "../../data/classSubclasses";
 
 const isNonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
 
@@ -23,6 +24,10 @@ export const validateRace = (state) => {
 export const validateClass = (state) => {
   const classState = state.class || {};
   if (!isNonEmpty(classState.key)) return false;
+  const subclassInfo = CLASS_SUBCLASSES[classState.key];
+  if (subclassInfo && (!classState.subclassKey || classState.subclassKey.trim() === "")) {
+    return false;
+  }
   const skillInfo = CLASS_SKILLS[classState.key];
   if (!skillInfo) return true;
   const required = skillInfo.count || 0;

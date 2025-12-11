@@ -82,15 +82,6 @@ function App() {
       <GameStateProvider>
         <BrowserRouter>
           <Routes>
-<<<<<<< HEAD
-            {/* Root redirects to adventure (MainMenu → Character Creation V2 flow) */}
-            <Route path="/" element={<Navigate to="/adventure" replace />} />
-            
-            {/* Standalone Character Creation V2 Wizard (direct access) */}
-            <Route path="/character-v2" element={<CharacterCreationV2 />} />
-            
-            {/* Main game flow: MainMenu → CharacterCreationV2 → Adventure */}
-=======
             {/* Root now lands on the legacy Main Menu (RPGGame entry) */}
             <Route path="/" element={<MainMenuPage />} />
 
@@ -100,7 +91,6 @@ function App() {
             {/* Legacy CharacterCreation component is retained in the repo but no longer routed; V2 is canonical. */}
 
             {/* Old game/adventure flow (keep for existing campaigns) */}
->>>>>>> origin/codex/replace-in-memory-store-with-mongodb-persistence
             <Route path="/adventure" element={<Home />} />
             <Route path="/game" element={<Home />} />
           </Routes>

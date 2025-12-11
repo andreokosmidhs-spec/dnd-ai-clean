@@ -4,7 +4,7 @@ export const buildCharacterPayload = (state) => {
       name: state.identity?.name || "",
       sex: state.identity?.sex || "",
       age: state.identity?.age ?? null,
-      appearanceExpression: state.identity?.appearanceExpression ?? 50,
+      genderExpression: state.identity?.genderExpression ?? 50,
     },
     race: {
       key: state.race?.key || "",
@@ -38,6 +38,5 @@ export const buildCharacterPayload = (state) => {
       eyeColor: state.appearance?.eyeColor || "",
       notableFeatures: state.appearance?.notableFeatures || [],
     },
-    review: state.review || {},
   };
 };

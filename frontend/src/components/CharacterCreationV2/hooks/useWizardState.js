@@ -23,7 +23,7 @@ export const initialWizardState = {
     name: "",
     sex: "",
     age: null,
-    appearanceExpression: 50,
+    genderExpression: 50,
   },
   race: {
     key: "",

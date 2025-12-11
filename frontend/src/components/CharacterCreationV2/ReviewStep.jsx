@@ -146,7 +146,7 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
             <h3 className="text-lg font-semibold text-amber-300 mb-2">Identity</h3>
             <p className="text-sm text-slate-200">Name: {identity.name || "—"}</p>
             <p className="text-sm text-slate-200">Age: {identity.age ?? "—"}</p>
-            <p className="text-sm text-slate-200">Appearance Expression: {identity.appearanceExpression ?? "—"}</p>
+            <p className="text-sm text-slate-200">Appearance Expression: {identity.genderExpression ?? "—"}</p>
             <p className="text-sm text-slate-200">Sex: {identity.sex || "—"}</p>
           </section>
 
@@ -245,10 +245,14 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
           </section>
 
           {submitError && (
-            <div className="rounded border border-red-500 bg-red-900/40 text-red-200 px-4 py-2 text-sm">{submitError}</div>
+            <div className="rounded border border-red-500 bg-red-900/40 text-red-200 px-4 py-2 text-sm">
+              {submitError}
+            </div>
           )}
           {submitSuccess && (
-            <div className="rounded border border-green-500 bg-green-900/40 text-green-200 px-4 py-2 text-sm">{submitSuccess}</div>
+            <div className="rounded border border-green-500 bg-green-900/40 text-green-200 px-4 py-2 text-sm">
+              {submitSuccess}
+            </div>
           )}
         </div>
       </div>

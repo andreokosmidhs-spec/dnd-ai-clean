@@ -24,6 +24,7 @@ const CharacterCreationV2 = () => {
       name: "",
       sex: null,
       genderExpression: 50,
+      age: null,
     },
     race: {
       key: null,
@@ -63,6 +64,14 @@ const CharacterCreationV2 = () => {
   const currentStep = STEPS[stepIndex];
 
   const updateCharacter = (patch) => {
+    if (typeof patch === "function") {
+      setCharacter((prev) => ({
+        ...prev,
+        ...patch(prev),
+      }));
+      return;
+    }
+
     setCharacter((prev) => ({
       ...prev,
       ...patch,
@@ -88,7 +97,14 @@ const CharacterCreationV2 = () => {
       stepContent = (
         <IdentityStep
           identity={character.identity}
-          onChange={(v) => updateCharacter({ identity: v })}
+          onChange={(patch) =>
+            updateCharacter((prev) => ({
+              identity: {
+                ...prev.identity,
+                ...patch,
+              },
+            }))
+          }
           onNext={next}
         />
       );

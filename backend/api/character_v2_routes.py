@@ -127,48 +127,76 @@ async def get_character_v2(character_id: str):
 async def update_character_v2(character_id: str, character: CharacterV2Create):
     """Replace a character document by id."""
 
-    collection = get_collection()
-    object_id = validate_object_id(character_id)
-    existing = await collection.find_one({"_id": object_id})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Character not found")
+    character_dict = character.model_dump(by_alias=True)
+    
+    if is_db_available():
+        collection = get_collection()
+        object_id = validate_object_id(character_id)
+        existing = await collection.find_one({"_id": object_id})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Character not found")
 
-    replacement = character.model_dump(by_alias=True)
-    # Preserve original creation timestamp when present
-    if isinstance(existing, dict) and existing.get("meta") and replacement.get("meta"):
-        replacement["meta"].setdefault("createdAt", existing["meta"].get("createdAt"))
+        # Preserve original creation timestamp when present
+        if isinstance(existing, dict) and existing.get("meta") and character_dict.get("meta"):
+            character_dict["meta"].setdefault("createdAt", existing["meta"].get("createdAt"))
 
-    await collection.replace_one({"_id": object_id}, replacement)
-    return CharacterV2Stored(id=str(object_id), **replacement)
+        await collection.replace_one({"_id": object_id}, character_dict)
+        return CharacterV2Stored(id=str(object_id), **character_dict)
+    else:
+        # In-memory fallback
+        if character_id not in _in_memory_store:
+            raise HTTPException(status_code=404, detail="Character not found")
+        stored = CharacterV2Stored(id=character_id, **character_dict)
+        _in_memory_store[character_id] = stored
+        return stored
 
 
 @router.patch("/{character_id}", response_model=CharacterV2Stored)
 async def patch_character_v2(character_id: str, character: CharacterV2Update):
     """Partially update a character document by id."""
 
-    collection = get_collection()
-    object_id = validate_object_id(character_id)
-    existing = await collection.find_one({"_id": object_id})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Character not found")
+    if is_db_available():
+        collection = get_collection()
+        object_id = validate_object_id(character_id)
+        existing = await collection.find_one({"_id": object_id})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Character not found")
 
-    update_data = character.model_dump(exclude_unset=True, by_alias=True)
-    if update_data:
-        await collection.update_one({"_id": object_id}, {"$set": update_data})
+        update_data = character.model_dump(exclude_unset=True, by_alias=True)
+        if update_data:
+            await collection.update_one({"_id": object_id}, {"$set": update_data})
 
-    updated = await collection.find_one({"_id": object_id})
-    return serialize_character(updated)
+        updated = await collection.find_one({"_id": object_id})
+        return serialize_character(updated)
+    else:
+        # In-memory fallback
+        if character_id not in _in_memory_store:
+            raise HTTPException(status_code=404, detail="Character not found")
+        existing = _in_memory_store[character_id]
+        update_data = character.model_dump(exclude_unset=True, by_alias=True)
+        # Merge update into existing
+        existing_dict = existing.model_dump(by_alias=True)
+        existing_dict.update(update_data)
+        updated = CharacterV2Stored(id=character_id, **{k: v for k, v in existing_dict.items() if k != 'id'})
+        _in_memory_store[character_id] = updated
+        return updated
 
 
 @router.delete("/{character_id}", status_code=204)
 async def delete_character_v2(character_id: str):
     """Delete a character document by id."""
 
-    collection = get_collection()
-    object_id = validate_object_id(character_id)
-    result = await collection.delete_one({"_id": object_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Character not found")
+    if is_db_available():
+        collection = get_collection()
+        object_id = validate_object_id(character_id)
+        result = await collection.delete_one({"_id": object_id})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Character not found")
+    else:
+        # In-memory fallback
+        if character_id not in _in_memory_store:
+            raise HTTPException(status_code=404, detail="Character not found")
+        del _in_memory_store[character_id]
 
 
 # Alias routes that maintain compatibility with clients using the alternate prefix

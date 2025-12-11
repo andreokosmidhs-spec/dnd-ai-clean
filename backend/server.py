@@ -3,7 +3,7 @@ from fastapi import FastAPI, APIRouter, HTTPException
 from uuid import uuid4
 from typing import List
 
-from backend.api.character_v2_routes import router as character_v2_router
+from api.character_v2_routes import router as character_v2_router
 
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv

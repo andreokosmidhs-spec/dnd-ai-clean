@@ -1,9 +1,10 @@
 import CharacterCreationV2 from './pages/CharacterCreationV2';
+import MainMenu from "./components/MainMenu";
 import { useEffect } from "react";
 import "./App.css";
 import "./styles/chat-fixes.css";
 import "./styles/focus-first.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import axios from "axios";
 import RPGGame from "./components/RPGGame";
 import Toast from "./components/Toast";
@@ -30,6 +31,25 @@ const Home = () => {
   }, []);
 
   return <RPGGame />;
+};
+
+const MainMenuPage = () => {
+  const navigate = useNavigate();
+
+  const handleNewCampaign = () => {
+    navigate("/character-v2");
+  };
+
+  const handleContinueCampaign = () => {
+    navigate("/game");
+  };
+
+  return (
+    <MainMenu
+      onNewCampaign={handleNewCampaign}
+      onContinueCampaign={handleContinueCampaign}
+    />
+  );
 };
 
 function App() {
@@ -62,6 +82,7 @@ function App() {
       <GameStateProvider>
         <BrowserRouter>
           <Routes>
+<<<<<<< HEAD
             {/* Root redirects to adventure (MainMenu → Character Creation V2 flow) */}
             <Route path="/" element={<Navigate to="/adventure" replace />} />
             
@@ -69,6 +90,17 @@ function App() {
             <Route path="/character-v2" element={<CharacterCreationV2 />} />
             
             {/* Main game flow: MainMenu → CharacterCreationV2 → Adventure */}
+=======
+            {/* Root now lands on the legacy Main Menu (RPGGame entry) */}
+            <Route path="/" element={<MainMenuPage />} />
+
+            {/* New Character Creation V2 Wizard */}
+            <Route path="/character-v2" element={<CharacterCreationV2 />} />
+
+            {/* Legacy CharacterCreation component is retained in the repo but no longer routed; V2 is canonical. */}
+
+            {/* Old game/adventure flow (keep for existing campaigns) */}
+>>>>>>> origin/codex/replace-in-memory-store-with-mongodb-persistence
             <Route path="/adventure" element={<Home />} />
             <Route path="/game" element={<Home />} />
           </Routes>

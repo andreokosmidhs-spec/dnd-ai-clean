@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import MainMenu from './MainMenu';
+<<<<<<< HEAD
 // Legacy CharacterCreation is no longer used - replaced by CharacterCreationV2
 // import CharacterCreation from './CharacterCreation';
 import CharacterCreationV2 from '../pages/CharacterCreationV2';
+=======
+>>>>>>> origin/codex/replace-in-memory-store-with-mongodb-persistence
 import FocusedRPG from './FocusedRPG';
 import WorldMap from './WorldMap';
 import Inventory from './Inventory';
@@ -19,6 +23,7 @@ import { checkLevelUp, getLevelFromXP, getXPForNextLevel } from '../data/levelin
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 const RPGGame = () => {
+  const navigate = useNavigate();
   const { updateCharacter, updateWorld, resetSession, setCampaignId, campaignId, setWorldBlueprint, setSessionId } = useGameState();
   
   // CRITICAL FIX: Restore campaignId from localStorage if missing
@@ -32,7 +37,8 @@ const RPGGame = () => {
     }
   }, [campaignId, setCampaignId]);
   
-  const [gameState, setGameState] = useState('main-menu'); // main-menu, character-creation, playing
+  // gameState tracks only the main menu vs. in-game experience; new campaigns now flow through CharacterCreationV2.
+  const [gameState, setGameState] = useState('main-menu'); // main-menu, playing
   const [character, setCharacter] = useState(null);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [worldData, setWorldData] = useState(mockData.world);
@@ -105,7 +111,7 @@ const RPGGame = () => {
 
   const handleNewCampaign = () => {
     console.log('🔥 NUCLEAR RESET - CLEARING ALL DATA INCLUDING ARIS');
-    
+
     // NUCLEAR OPTION: Clear absolutely everything
     localStorage.clear();
     sessionStorage.clear();
@@ -131,9 +137,9 @@ const RPGGame = () => {
     setGameLog([
       { type: 'system', message: 'Welcome to RPG Forge! Create your character to begin your adventure.' }
     ]);
-    
-    setGameState('character-creation');
-    
+
+    navigate('/character-v2');
+
     console.log('🗑️ COMPLETE DATA WIPE - NEW CAMPAIGN STARTED!');
   };
 
@@ -672,8 +678,8 @@ const RPGGame = () => {
       
       alert(`Character creation failed!\n\nError: ${error.message}\n\nPlease check the browser console (F12) for more details, or try creating a simpler character (Human Fighter).`);
       
-      // Rollback to character creation
-      setGameState('character-creation');
+      // Rollback to main menu
+      setGameState('main-menu');
       updateProgress(0);
     }
   };
@@ -705,7 +711,7 @@ const RPGGame = () => {
   // Render Main Menu
   if (gameState === 'main-menu') {
     return (
-      <MainMenu 
+      <MainMenu
         onNewCampaign={handleNewCampaign}
         onContinueCampaign={handleContinueCampaign}
         onLoadLastCampaign={handleLoadLastCampaign}
@@ -713,11 +719,14 @@ const RPGGame = () => {
     );
   }
 
+<<<<<<< HEAD
   // Render Character Creation (V2 Wizard)
   if (gameState === 'character-creation') {
     return <CharacterCreationV2 />;
   }
 
+=======
+>>>>>>> origin/codex/replace-in-memory-store-with-mongodb-persistence
   return (
     <div 
       className="min-h-screen transition-all duration-1000 ease-in-out overflow-hidden"

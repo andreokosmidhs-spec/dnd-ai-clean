@@ -75,3 +75,17 @@ class CharacterV2Create(CharacterV2Base):
 
 class CharacterV2Stored(CharacterV2Base):
     id: str
+
+
+class CharacterV2Update(BaseModel):
+    """Partial update model for Character V2 documents."""
+
+    identity: Optional[Identity] = None
+    race: Optional[RaceInfo] = None
+    class_: Optional[ClassInfo] = Field(default=None, alias="class")
+    abilityScores: Optional[AbilityScores] = None
+    background: Optional[BackgroundInfo] = None
+    appearance: Optional[AppearanceInfo] = None
+    meta: Optional[MetaInfo] = None
+
+    model_config = ConfigDict(populate_by_name=True)

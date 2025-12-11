@@ -1,13 +1,14 @@
 import React from "react";
 import { CLASS_SKILLS } from "../../data/classSkills";
 import { CLASS_PROFICIENCIES } from "../../data/classProficiencies";
+import { CLASS_SUBCLASSES } from "../../data/classSubclasses";
 import { HIT_DICE } from "../../data/levelingData";
 import WizardCard from "./WizardCard";
+import { validateClass } from "./utils/validation";
 
-const ClassStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
+const ClassStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep }) => {
   const currentClass =
-    characterData.class ||
-    {
+    wizardState.class || {
       key: null,
       subclassKey: null,
       level: 1,
@@ -17,24 +18,24 @@ const ClassStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
   const classKey = currentClass.key;
   const skillInfo = classKey ? CLASS_SKILLS[classKey] : null;
   const profInfo = classKey ? CLASS_PROFICIENCIES[classKey] : null;
+  const subclassInfo = classKey ? CLASS_SUBCLASSES[classKey] : null;
 
-  const conScore = characterData.abilityScores?.con ?? null;
+  const conScore = wizardState.abilityScores?.con ?? null;
   const conMod = conScore != null ? Math.floor((conScore - 10) / 2) : 0;
   const hitDie = classKey ? HIT_DICE[classKey] : null;
   const startingHp = hitDie != null ? hitDie + conMod : null;
 
   const requiredSkills = skillInfo?.count ?? 0;
   const selectedSkills = currentClass.skillProficiencies || [];
+  const selectedSubclass = currentClass.subclassKey || "";
 
   const handleClassChange = (e) => {
-    const newKey = e.target.value || null;
-    updateCharacterData({
-      class: {
-        key: newKey,
-        subclassKey: null,
-        level: 1,
-        skillProficiencies: [],
-      },
+    const newKey = e.target.value || "";
+    updateSection("class", {
+      key: newKey,
+      subclassKey: "",
+      level: 1,
+      skillProficiencies: [],
     });
   };
 
@@ -49,21 +50,29 @@ const ClassStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
       ? selectedSkills.filter((s) => s !== skill)
       : [...selectedSkills, skill];
 
-    updateCharacterData({
-      class: {
-        ...currentClass,
-        skillProficiencies: nextSkills,
-      },
+    updateSection("class", {
+      ...currentClass,
+      skillProficiencies: nextSkills,
     });
   };
 
-  const canContinue = Boolean(classKey) && selectedSkills.length === requiredSkills;
+  const handleSubclassChange = (e) => {
+    const newSubclass = e.target.value;
+    updateSection("class", {
+      ...currentClass,
+      subclassKey: newSubclass,
+    });
+  };
+
+  const canContinue = validateClass(wizardState);
 
   return (
     <WizardCard
       stepTitle="Step 3 – Choose Your Class"
       stepNumber={3}
-      totalSteps={7}
+      totalSteps={steps.length}
+      steps={steps}
+      onSelectStep={goToStep}
       onBack={onBack}
       onNext={onNext}
       nextDisabled={!canContinue}
@@ -91,15 +100,11 @@ const ClassStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
           <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
             <h3 className="text-lg font-semibold text-amber-300 mb-2">Starting Hit Points</h3>
             {hitDie ? (
-              <p className="text-sm text-slate-200">
-                Hit Die: 1d{hitDie} — Level 1 HP: {startingHp}
-              </p>
+              <p className="text-sm text-slate-200">Hit Die: 1d{hitDie} — Level 1 HP: {startingHp}</p>
             ) : (
               <p className="text-sm text-slate-400">Select a class to see hit points.</p>
             )}
-            <p className="text-xs text-slate-500 mt-1">
-              Calculated as maximum hit die + CON modifier.
-            </p>
+            <p className="text-xs text-slate-500 mt-1">Calculated as maximum hit die + CON modifier.</p>
           </div>
 
           <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
@@ -125,12 +130,49 @@ const ClassStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
           </div>
         </div>
 
+        {subclassInfo && (
+          <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold text-amber-300">Subclass</h3>
+              <p className="text-sm text-slate-400">Required at level {subclassInfo.requiredLevel}</p>
+            </div>
+            <div className="space-y-2">
+              {subclassInfo.options.map((subclass) => {
+                const isSelected = selectedSubclass === subclass.key;
+                return (
+                  <label
+                    key={subclass.key}
+                    className={`flex items-center justify-between gap-3 rounded border px-3 py-2 text-sm transition ${
+                      isSelected
+                        ? "border-amber-500 bg-amber-500/10 text-amber-100"
+                        : "border-slate-800 bg-slate-900/80 text-slate-200"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="radio"
+                        name="subclass"
+                        value={subclass.key}
+                        checked={isSelected}
+                        onChange={handleSubclassChange}
+                        className="mt-1 h-4 w-4 accent-amber-500"
+                      />
+                      <div>
+                        <p className="font-semibold">{subclass.name}</p>
+                        <p className="text-slate-400">{subclass.summary}</p>
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-lg font-semibold text-amber-300">Skill Proficiencies</h3>
-            <p className="text-sm text-slate-400">
-              Choose {requiredSkills} {requiredSkills === 1 ? "skill" : "skills"}
-            </p>
+            <p className="text-sm text-slate-400">Choose {requiredSkills} {requiredSkills === 1 ? "skill" : "skills"}</p>
           </div>
 
           {skillInfo ? (

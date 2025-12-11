@@ -2,6 +2,7 @@ from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi import FastAPI, APIRouter, HTTPException
 from uuid import uuid4
 from typing import List
+from pathlib import Path
 
 from api.character_v2_routes import router as character_v2_router
 

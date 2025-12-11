@@ -3,12 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import MainMenu from './MainMenu';
-<<<<<<< HEAD
-// Legacy CharacterCreation is no longer used - replaced by CharacterCreationV2
-// import CharacterCreation from './CharacterCreation';
-import CharacterCreationV2 from '../pages/CharacterCreationV2';
-=======
->>>>>>> origin/codex/replace-in-memory-store-with-mongodb-persistence
 import FocusedRPG from './FocusedRPG';
 import WorldMap from './WorldMap';
 import Inventory from './Inventory';
@@ -719,14 +713,6 @@ const RPGGame = () => {
     );
   }
 
-<<<<<<< HEAD
-  // Render Character Creation (V2 Wizard)
-  if (gameState === 'character-creation') {
-    return <CharacterCreationV2 />;
-  }
-
-=======
->>>>>>> origin/codex/replace-in-memory-store-with-mongodb-persistence
   return (
     <div 
       className="min-h-screen transition-all duration-1000 ease-in-out overflow-hidden"

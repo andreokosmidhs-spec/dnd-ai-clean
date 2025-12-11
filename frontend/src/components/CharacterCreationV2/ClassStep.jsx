@@ -1,6 +1,7 @@
 import React from "react";
 import { CLASS_SKILLS } from "../../data/classSkills";
 import { CLASS_PROFICIENCIES } from "../../data/classProficiencies";
+import { CLASS_SUBCLASSES } from "../../data/classSubclasses";
 import { HIT_DICE } from "../../data/levelingData";
 import WizardCard from "./WizardCard";
 import { validateClass } from "./utils/validation";
@@ -17,6 +18,7 @@ const ClassStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep
   const classKey = currentClass.key;
   const skillInfo = classKey ? CLASS_SKILLS[classKey] : null;
   const profInfo = classKey ? CLASS_PROFICIENCIES[classKey] : null;
+  const subclassInfo = classKey ? CLASS_SUBCLASSES[classKey] : null;
 
   const conScore = wizardState.abilityScores?.con ?? null;
   const conMod = conScore != null ? Math.floor((conScore - 10) / 2) : 0;
@@ -25,6 +27,7 @@ const ClassStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep
 
   const requiredSkills = skillInfo?.count ?? 0;
   const selectedSkills = currentClass.skillProficiencies || [];
+  const selectedSubclass = currentClass.subclassKey || "";
 
   const handleClassChange = (e) => {
     const newKey = e.target.value || "";
@@ -50,6 +53,14 @@ const ClassStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep
     updateSection("class", {
       ...currentClass,
       skillProficiencies: nextSkills,
+    });
+  };
+
+  const handleSubclassChange = (e) => {
+    const newSubclass = e.target.value;
+    updateSection("class", {
+      ...currentClass,
+      subclassKey: newSubclass,
     });
   };
 
@@ -118,6 +129,45 @@ const ClassStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep
             )}
           </div>
         </div>
+
+        {subclassInfo && (
+          <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold text-amber-300">Subclass</h3>
+              <p className="text-sm text-slate-400">Required at level {subclassInfo.requiredLevel}</p>
+            </div>
+            <div className="space-y-2">
+              {subclassInfo.options.map((subclass) => {
+                const isSelected = selectedSubclass === subclass.key;
+                return (
+                  <label
+                    key={subclass.key}
+                    className={`flex items-center justify-between gap-3 rounded border px-3 py-2 text-sm transition ${
+                      isSelected
+                        ? "border-amber-500 bg-amber-500/10 text-amber-100"
+                        : "border-slate-800 bg-slate-900/80 text-slate-200"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="radio"
+                        name="subclass"
+                        value={subclass.key}
+                        checked={isSelected}
+                        onChange={handleSubclassChange}
+                        className="mt-1 h-4 w-4 accent-amber-500"
+                      />
+                      <div>
+                        <p className="font-semibold">{subclass.name}</p>
+                        <p className="text-slate-400">{subclass.summary}</p>
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
           <div className="flex items-center justify-between mb-2">

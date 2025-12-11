@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -6,6 +7,7 @@ import { Sword, Play, PlusCircle, Trash2, User, Crown, Database } from 'lucide-r
 import apiClient, { isSuccess, getErrorMessage } from '../lib/apiClient';
 
 const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => {
+  const navigate = useNavigate();
   const [hasSavedCampaign, setHasSavedCampaign] = useState(false);
   const [savedCharacter, setSavedCharacter] = useState(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
@@ -31,7 +33,11 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
     if (hasSavedCampaign) {
       setShowConfirmDelete(true);
     } else {
-      onNewCampaign();
+      if (onNewCampaign) {
+        onNewCampaign();
+      } else {
+        navigate('/character-v2');
+      }
     }
   };
 
@@ -59,7 +65,11 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
       window.showToast('🗑️ Previous campaign deleted. Starting fresh!', 'success');
     }
     
-    onNewCampaign();
+    if (onNewCampaign) {
+      onNewCampaign();
+    } else {
+      navigate('/character-v2');
+    }
   };
 
   const handleLoadLastCampaign = async () => {

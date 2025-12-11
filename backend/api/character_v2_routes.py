@@ -67,13 +67,21 @@ def serialize_character(doc) -> CharacterV2Stored:
 
 @router.post("/create", response_model=CharacterV2Stored)
 async def create_character_v2(character: CharacterV2Create):
-    """Create a new Character using the V2 schema (Mongo-backed)."""
+    """Create a new Character using the V2 schema (Mongo-backed or in-memory fallback)."""
+    from uuid import uuid4
 
-    collection = get_collection()
     character_dict = character.model_dump(by_alias=True)
-    result = await collection.insert_one(character_dict)
-
-    return CharacterV2Stored(id=str(result.inserted_id), **character_dict)
+    
+    if is_db_available():
+        collection = get_collection()
+        result = await collection.insert_one(character_dict)
+        return CharacterV2Stored(id=str(result.inserted_id), **character_dict)
+    else:
+        # In-memory fallback when MongoDB is not configured
+        char_id = str(uuid4())
+        stored = CharacterV2Stored(id=char_id, **character_dict)
+        _in_memory_store[char_id] = stored
+        return stored
 
 
 @router.get("/", response_model=List[CharacterV2Stored])
@@ -82,7 +90,8 @@ async def list_characters_v2(
 ):
     """List characters with optional limit/offset pagination."""
 
-    collection = get_collection()
+    if is_db_available():
+        collection = get_collection()
     cursor = collection.find({}).skip(offset).limit(limit)
     return [serialize_character(doc) async for doc in cursor]
 

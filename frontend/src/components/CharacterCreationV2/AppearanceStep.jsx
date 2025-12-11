@@ -1,10 +1,12 @@
 import React, { useState } from "react";
+import WizardCard from "./WizardCard";
+import { validateAppearance } from "./utils/validation";
 
 const AGE_CATEGORIES = ["Young", "Adult", "Veteran", "Elder"];
 const BUILDS = ["Slim", "Average", "Athletic", "Muscular", "Heavy"];
 
-const AppearanceStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
-  const appearance = characterData.appearance || {
+const AppearanceStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep }) => {
+  const appearance = wizardState.appearance || {
     ageCategory: null,
     heightCm: null,
     build: null,
@@ -17,7 +19,7 @@ const AppearanceStep = ({ characterData, updateCharacterData, onNext, onBack }) 
   const [newFeature, setNewFeature] = useState("");
 
   const updateAppearance = (patch) => {
-    updateCharacterData({ appearance: { ...appearance, ...patch } });
+    updateSection("appearance", { ...appearance, ...patch });
   };
 
   const handleAddFeature = () => {
@@ -33,19 +35,15 @@ const AppearanceStep = ({ characterData, updateCharacterData, onNext, onBack }) 
     });
   };
 
-  const isValid = Boolean(
-    appearance.ageCategory &&
-      appearance.build &&
-      appearance.heightCm &&
-      Number(appearance.heightCm) >= 100 &&
-      Number(appearance.heightCm) <= 250
-  );
+  const isValid = validateAppearance({ ...wizardState, appearance });
 
   return (
     <WizardCard
       stepTitle="Step 6 – Define Appearance"
       stepNumber={6}
-      totalSteps={7}
+      totalSteps={steps.length}
+      steps={steps}
+      onSelectStep={goToStep}
       onBack={onBack}
       onNext={() => {
         if (isValid) onNext();
@@ -79,9 +77,7 @@ const AppearanceStep = ({ characterData, updateCharacterData, onNext, onBack }) 
               min={100}
               max={250}
               value={appearance.heightCm ?? ""}
-              onChange={(e) =>
-                updateAppearance({ heightCm: e.target.value ? Number(e.target.value) : null })
-              }
+              onChange={(e) => updateAppearance({ heightCm: e.target.value ? Number(e.target.value) : null })}
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
               placeholder="Enter height in cm"
             />
@@ -183,12 +179,24 @@ const AppearanceStep = ({ characterData, updateCharacterData, onNext, onBack }) 
 
           <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-4 space-y-2 text-sm text-slate-200">
             <h3 className="text-lg font-semibold text-amber-300">Summary</h3>
-            <p><span className="text-slate-400">Age Category:</span> {appearance.ageCategory || "—"}</p>
-            <p><span className="text-slate-400">Height:</span> {appearance.heightCm ? `${appearance.heightCm} cm` : "—"}</p>
-            <p><span className="text-slate-400">Build:</span> {appearance.build || "—"}</p>
-            <p><span className="text-slate-400">Skin Tone:</span> {appearance.skinTone || "—"}</p>
-            <p><span className="text-slate-400">Hair:</span> {appearance.hairColor || "—"}</p>
-            <p><span className="text-slate-400">Eyes:</span> {appearance.eyeColor || "—"}</p>
+            <p>
+              <span className="text-slate-400">Age Category:</span> {appearance.ageCategory || "—"}
+            </p>
+            <p>
+              <span className="text-slate-400">Height:</span> {appearance.heightCm ? `${appearance.heightCm} cm` : "—"}
+            </p>
+            <p>
+              <span className="text-slate-400">Build:</span> {appearance.build || "—"}
+            </p>
+            <p>
+              <span className="text-slate-400">Skin Tone:</span> {appearance.skinTone || "—"}
+            </p>
+            <p>
+              <span className="text-slate-400">Hair:</span> {appearance.hairColor || "—"}
+            </p>
+            <p>
+              <span className="text-slate-400">Eyes:</span> {appearance.eyeColor || "—"}
+            </p>
             <p className="text-slate-400">Features:</p>
             <ul className="list-disc list-inside">
               {(appearance.notableFeatures || []).length > 0 ? (

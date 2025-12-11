@@ -1,25 +1,24 @@
 import React from "react";
 import { BACKGROUNDS, BACKGROUNDS_BY_KEY } from "../../data/backgroundData";
 import WizardCard from "./WizardCard";
+import { validateBackground } from "./utils/validation";
 
-const BackgroundStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
-  const currentBackground = characterData.background || { key: null, variantKey: null };
-  const selectedBackground = currentBackground.key
-    ? BACKGROUNDS_BY_KEY[currentBackground.key]
-    : null;
+const BackgroundStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep }) => {
+  const currentBackground = wizardState.background || { key: null, variantKey: null };
+  const selectedBackground = currentBackground.key ? BACKGROUNDS_BY_KEY[currentBackground.key] : null;
   const variants = selectedBackground?.variants || [];
 
   const handleBackgroundChange = (e) => {
-    const newKey = e.target.value || null;
-    updateCharacterData({ background: { key: newKey, variantKey: null } });
+    const newKey = e.target.value || "";
+    updateSection("background", { key: newKey, variantKey: "" });
   };
 
   const handleVariantChange = (e) => {
-    const variantKey = e.target.value || null;
-    updateCharacterData({ background: { ...currentBackground, variantKey } });
+    const variantKey = e.target.value || "";
+    updateSection("background", { ...currentBackground, variantKey });
   };
 
-  const isValid = Boolean(currentBackground.key && selectedBackground);
+  const isValid = validateBackground(wizardState);
 
   const renderDetails = () => {
     if (!selectedBackground) {
@@ -32,27 +31,19 @@ const BackgroundStep = ({ characterData, updateCharacterData, onNext, onBack }) 
 
         <div>
           <h4 className="text-amber-300 font-semibold">Skill Proficiencies</h4>
-          <p className="text-slate-200">
-            {selectedBackground.skillProficiencies?.join(", ") || "None"}
-          </p>
+          <p className="text-slate-200">{selectedBackground.skillProficiencies?.join(", ") || "None"}</p>
         </div>
 
         <div>
           <h4 className="text-amber-300 font-semibold">Tool Proficiencies</h4>
-          <p className="text-slate-200">
-            {selectedBackground.toolProficiencies?.length
-              ? selectedBackground.toolProficiencies.join(", ")
-              : "None"}
-          </p>
+          <p className="text-slate-200">{selectedBackground.toolProficiencies?.length ? selectedBackground.toolProficiencies.join(", ") : "None"}</p>
         </div>
 
         <div>
           <h4 className="text-amber-300 font-semibold">Languages</h4>
           <p className="text-slate-200">
             {selectedBackground.languages?.count
-              ? `Choose ${selectedBackground.languages.count} language${
-                  selectedBackground.languages.count === 1 ? "" : "s"
-                }`
+              ? `Choose ${selectedBackground.languages.count} language${selectedBackground.languages.count === 1 ? "" : "s"}`
               : "No additional languages"}
           </p>
         </div>
@@ -78,7 +69,9 @@ const BackgroundStep = ({ characterData, updateCharacterData, onNext, onBack }) 
     <WizardCard
       stepTitle="Step 5 – Choose Your Background"
       stepNumber={5}
-      totalSteps={7}
+      totalSteps={steps.length}
+      steps={steps}
+      onSelectStep={goToStep}
       onBack={onBack}
       onNext={() => {
         if (isValid) onNext();

@@ -1,31 +1,32 @@
 import React from "react";
 import { raceData } from "../../data/raceData";
 import WizardCard from "./WizardCard";
+import { validateRace } from "./utils/validation";
 
-const RaceStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
-  const currentRace = characterData.race || { key: null, variantKey: null };
+const RaceStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep }) => {
+  const currentRace = wizardState.race || { key: null, variantKey: null };
   const selectedRace = currentRace.key ? raceData[currentRace.key] : null;
-  const subraceOptions = selectedRace?.subraces
-    ? Object.keys(selectedRace.subraces)
-    : [];
+  const subraceOptions = selectedRace?.subraces ? Object.keys(selectedRace.subraces) : [];
 
   const handleRaceChange = (e) => {
-    const newKey = e.target.value || null;
-    updateCharacterData({ race: { key: newKey, variantKey: null } });
+    const newKey = e.target.value || "";
+    updateSection("race", { key: newKey, variantKey: "" });
   };
 
   const handleSubraceChange = (e) => {
-    const newVariant = e.target.value || null;
-    updateCharacterData({ race: { ...currentRace, variantKey: newVariant } });
+    const newVariant = e.target.value || "";
+    updateSection("race", { ...currentRace, variantKey: newVariant });
   };
 
-  const canContinue = Boolean(currentRace.key);
+  const canContinue = validateRace(wizardState);
 
   return (
     <WizardCard
       stepTitle="Step 2 – Choose Your Race"
       stepNumber={2}
-      totalSteps={7}
+      totalSteps={steps.length}
+      steps={steps}
+      onSelectStep={goToStep}
       onBack={onBack}
       onNext={onNext}
       nextDisabled={!canContinue}
@@ -82,7 +83,7 @@ const RaceStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
               <ul className="list-disc list-inside space-y-1">
                 {(selectedRace.traits || []).slice(0, 3).map((trait) => (
                   <li key={trait.name}>
-                    <span className="font-semibold text-slate-100">{trait.name}:</span>{" "}
+                    <span className="font-semibold text-slate-100">{trait.name}:</span> {" "}
                     <span className="text-slate-300">{trait.summary}</span>
                   </li>
                 ))}
@@ -90,9 +91,7 @@ const RaceStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
                   <li className="text-slate-500">Traits not listed.</li>
                 )}
               </ul>
-              {selectedRace.flavor && (
-                <p className="text-slate-400 text-xs">{selectedRace.flavor}</p>
-              )}
+              {selectedRace.flavor && <p className="text-slate-400 text-xs">{selectedRace.flavor}</p>}
             </div>
           ) : (
             <p className="text-sm text-slate-400">Select a race to view its traits and bonuses.</p>

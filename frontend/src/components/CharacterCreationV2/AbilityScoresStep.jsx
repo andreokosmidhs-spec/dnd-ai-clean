@@ -1,5 +1,6 @@
 import React from "react";
 import WizardCard from "./WizardCard";
+import { validateAbilityScores } from "./utils/validation";
 
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
 const POINT_COST = {
@@ -23,8 +24,8 @@ const labels = {
   cha: "CHA",
 };
 
-const AbilityScoresStep = ({ characterData, updateCharacterData, onNext, onBack }) => {
-  const abilityScores = characterData.abilityScores || {
+const AbilityScoresStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep }) => {
+  const abilityScores = wizardState.abilityScores || {
     str: null,
     dex: null,
     con: null,
@@ -45,41 +46,35 @@ const AbilityScoresStep = ({ characterData, updateCharacterData, onNext, onBack 
     const nextMethod = e.target.value;
 
     if (nextMethod === "point_buy") {
-      updateCharacterData({
-        abilityScores: {
-          str: 8,
-          dex: 8,
-          con: 8,
-          int: 8,
-          wis: 8,
-          cha: 8,
-          method: "point_buy",
-        },
+      updateSection("abilityScores", {
+        str: 8,
+        dex: 8,
+        con: 8,
+        int: 8,
+        wis: 8,
+        cha: 8,
+        method: "point_buy",
       });
       return;
     }
 
-    updateCharacterData({
-      abilityScores: {
-        str: null,
-        dex: null,
-        con: null,
-        int: null,
-        wis: null,
-        cha: null,
-        method: nextMethod,
-      },
+    updateSection("abilityScores", {
+      str: null,
+      dex: null,
+      con: null,
+      int: null,
+      wis: null,
+      cha: null,
+      method: nextMethod,
     });
   };
 
   const handleStandardSelect = (key, value) => {
     const parsed = value === "" ? null : Number(value);
-    updateCharacterData({
-      abilityScores: {
-        ...abilityScores,
-        method: "standard_array",
-        [key]: parsed,
-      },
+    updateSection("abilityScores", {
+      ...abilityScores,
+      method: "standard_array",
+      [key]: parsed,
     });
   };
 
@@ -117,11 +112,9 @@ const AbilityScoresStep = ({ characterData, updateCharacterData, onNext, onBack 
 
     if (spent > 27) return;
 
-    updateCharacterData({
-      abilityScores: {
-        ...hypotheticalScores,
-        method: "point_buy",
-      },
+    updateSection("abilityScores", {
+      ...hypotheticalScores,
+      method: "point_buy",
     });
   };
 
@@ -129,34 +122,11 @@ const AbilityScoresStep = ({ characterData, updateCharacterData, onNext, onBack 
     const parsed = value === "" ? null : Number(value);
     if (parsed != null && (parsed < 1 || parsed > 20)) return;
 
-    updateCharacterData({
-      abilityScores: {
-        ...abilityScores,
-        method: "manual",
-        [key]: parsed,
-      },
+    updateSection("abilityScores", {
+      ...abilityScores,
+      method: "manual",
+      [key]: parsed,
     });
-  };
-
-  const isValid = () => {
-    const scores = abilities.map((a) => abilityScores[a]);
-    if (scores.some((s) => s == null || Number.isNaN(s))) return false;
-
-    if (method === "standard_array") {
-      const set = new Set(scores);
-      return set.size === STANDARD_ARRAY.length && scores.every((s) => STANDARD_ARRAY.includes(s));
-    }
-
-    if (method === "point_buy") {
-      const withinRange = scores.every((s) => s >= 8 && s <= 15);
-      return withinRange && pointBuyTotal() <= 27;
-    }
-
-    if (method === "manual") {
-      return scores.every((s) => s >= 1 && s <= 20);
-    }
-
-    return false;
   };
 
   const renderAbilityRow = (key) => {
@@ -222,13 +192,15 @@ const AbilityScoresStep = ({ characterData, updateCharacterData, onNext, onBack 
   };
 
   const pointsRemaining = method === "point_buy" ? 27 - pointBuyTotal() : null;
-  const canContinue = isValid();
+  const canContinue = validateAbilityScores({ ...wizardState, abilityScores });
 
   return (
     <WizardCard
       stepTitle="Step 4 – Assign Ability Scores"
       stepNumber={4}
-      totalSteps={7}
+      totalSteps={steps.length}
+      steps={steps}
+      onSelectStep={goToStep}
       onBack={onBack}
       onNext={() => {
         if (canContinue) onNext();
@@ -249,9 +221,7 @@ const AbilityScoresStep = ({ characterData, updateCharacterData, onNext, onBack 
           </select>
         </div>
 
-        {method === "point_buy" && (
-          <div className="mb-4 text-sm text-slate-200">Points remaining: {pointsRemaining}</div>
-        )}
+        {method === "point_buy" && <div className="mb-4 text-sm text-slate-200">Points remaining: {pointsRemaining}</div>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {abilities.map((key) => renderAbilityRow(key))}

@@ -62,13 +62,13 @@ function App() {
       <GameStateProvider>
         <BrowserRouter>
           <Routes>
-            {/* Root redirects to new Character Creation V2 */}
-            <Route path="/" element={<Navigate to="/character-v2" replace />} />
+            {/* Root redirects to adventure (MainMenu → Character Creation V2 flow) */}
+            <Route path="/" element={<Navigate to="/adventure" replace />} />
             
-            {/* New Character Creation V2 Wizard */}
+            {/* Standalone Character Creation V2 Wizard (direct access) */}
             <Route path="/character-v2" element={<CharacterCreationV2 />} />
             
-            {/* Old game/adventure flow (keep for existing campaigns) */}
+            {/* Main game flow: MainMenu → CharacterCreationV2 → Adventure */}
             <Route path="/adventure" element={<Home />} />
             <Route path="/game" element={<Home />} />
           </Routes>

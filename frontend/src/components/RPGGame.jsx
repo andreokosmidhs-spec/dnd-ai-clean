@@ -713,18 +713,9 @@ const RPGGame = () => {
     );
   }
 
-  // Render Character Creation
+  // Render Character Creation (V2 Wizard)
   if (gameState === 'character-creation') {
-    return (
-      <div 
-        className="min-h-screen p-4"
-        style={{ background: getBackgroundStyle() }}
-      >
-        <div className="max-w-4xl mx-auto">
-          <CharacterCreation onCharacterCreated={onCharacterCreated} />
-        </div>
-      </div>
-    );
+    return <CharacterCreationV2 />;
   }
 
   return (

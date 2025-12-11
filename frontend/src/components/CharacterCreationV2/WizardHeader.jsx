@@ -21,17 +21,32 @@ const WizardHeader = ({ steps, currentStepIndex = 0 }) => {
         <div className="flex flex-wrap justify-center gap-2">
           {steps.map((step, idx) => {
             const isActive = idx === safeCurrentIndex;
+            const isComplete = idx < safeCurrentIndex;
+            const state = isComplete ? "complete" : isActive ? "active" : "upcoming";
             return (
               <Badge
                 key={step.id}
                 variant={isActive ? "default" : "outline"}
-                className={
-                  isActive
+                className={`${
+                  state === "active"
                     ? "bg-amber-600 text-black shadow-md"
-                    : "border-amber-600/50 text-amber-300"
-                }
+                    : state === "complete"
+                      ? "border-amber-500/70 bg-amber-500/10 text-amber-200"
+                      : "border-slate-700 text-slate-300"
+                } flex items-center gap-2 rounded-full px-3 py-1`}
               >
-                {step.label}
+                <span
+                  className={`flex h-6 w-6 items-center justify-center rounded-full border ${
+                    state === "active"
+                      ? "border-amber-200 bg-amber-100/80 text-amber-800"
+                      : state === "complete"
+                        ? "border-amber-500 bg-amber-500/20 text-amber-200"
+                        : "border-slate-600 bg-slate-800 text-slate-300"
+                  }`}
+                >
+                  {isComplete ? "✓" : idx + 1}
+                </span>
+                <span className="font-semibold">{step.label}</span>
               </Badge>
             );
           })}

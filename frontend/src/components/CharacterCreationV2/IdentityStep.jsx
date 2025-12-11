@@ -5,13 +5,13 @@ const IdentityStep = ({ identity, onChange, onNext }) => {
   const sexValue =
     identity?.sex === "male" || identity?.sex === "female"
       ? identity.sex
-      : "male";
+      : "";
   const nameValue = identity?.name ?? "";
   const genderExpressionValue =
     typeof identity?.genderExpression === "number"
       ? identity.genderExpression
       : 50;
-  const ageValue = identity?.age === "" ? "" : identity?.age ?? 25;
+  const ageValue = identity?.age === "" ? "" : identity?.age ?? "";
 
   const handleNameChange = (e) => {
     onChange({ name: e.target.value });

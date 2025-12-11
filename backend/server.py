@@ -4,15 +4,11 @@ from uuid import uuid4
 from typing import List
 from pathlib import Path
 
-<<<<<<< HEAD
-from api.character_v2_routes import router as character_v2_router
-=======
 from backend.api.character_v2_routes import (
     router as character_v2_router,
     router_alias as character_v2_router_alias,
     set_database as set_character_v2_database,
 )
->>>>>>> origin/codex/replace-in-memory-store-with-mongodb-persistence
 
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv

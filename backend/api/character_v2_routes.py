@@ -1,13 +1,8 @@
 from typing import List
 
-<<<<<<< HEAD
-from fastapi import APIRouter, HTTPException
-from models.character_v2 import CharacterV2Create, CharacterV2Stored
-=======
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
->>>>>>> origin/codex/replace-in-memory-store-with-mongodb-persistence
 
 from backend.models.character_v2 import (
     CharacterV2Create,

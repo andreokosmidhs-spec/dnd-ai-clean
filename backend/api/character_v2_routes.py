@@ -2,7 +2,7 @@ from typing import List
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
-from backend.models.character_v2 import CharacterV2Create, CharacterV2Stored
+from models.character_v2 import CharacterV2Create, CharacterV2Stored
 
 router = APIRouter(
     prefix="/api/characters/v2",

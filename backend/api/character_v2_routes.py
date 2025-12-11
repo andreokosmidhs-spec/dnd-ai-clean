@@ -19,12 +19,20 @@ router_alias = APIRouter(prefix="/api/v2/characters", tags=["characters_v2"])
 # Database will be injected from the main app
 _db: AsyncIOMotorDatabase | None = None
 
+# In-memory fallback store when MongoDB is not available
+_in_memory_store: dict = {}
+
 
 def set_database(db: AsyncIOMotorDatabase):
     """Set the MongoDB database instance for Character V2 routes."""
 
     global _db
     _db = db
+
+
+def is_db_available() -> bool:
+    """Check if MongoDB database is configured."""
+    return _db is not None
 
 
 def get_db() -> AsyncIOMotorDatabase:

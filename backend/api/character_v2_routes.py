@@ -92,8 +92,12 @@ async def list_characters_v2(
 
     if is_db_available():
         collection = get_collection()
-    cursor = collection.find({}).skip(offset).limit(limit)
-    return [serialize_character(doc) async for doc in cursor]
+        cursor = collection.find({}).skip(offset).limit(limit)
+        return [serialize_character(doc) async for doc in cursor]
+    else:
+        # In-memory fallback
+        all_chars = list(_in_memory_store.values())
+        return all_chars[offset:offset + limit]
 
 
 @router.get("/list", response_model=List[CharacterV2Stored])
@@ -105,12 +109,18 @@ async def list_characters_v2_alias(limit: int = Query(50, ge=1, le=200), offset:
 
 @router.get("/{character_id}", response_model=CharacterV2Stored)
 async def get_character_v2(character_id: str):
-    """Fetch a single V2 character by id from MongoDB."""
+    """Fetch a single V2 character by id."""
 
-    collection = get_collection()
-    object_id = validate_object_id(character_id)
-    doc = await collection.find_one({"_id": object_id})
-    return serialize_character(doc)
+    if is_db_available():
+        collection = get_collection()
+        object_id = validate_object_id(character_id)
+        doc = await collection.find_one({"_id": object_id})
+        return serialize_character(doc)
+    else:
+        # In-memory fallback
+        if character_id not in _in_memory_store:
+            raise HTTPException(status_code=404, detail="Character not found")
+        return _in_memory_store[character_id]
 
 
 @router.put("/{character_id}", response_model=CharacterV2Stored)

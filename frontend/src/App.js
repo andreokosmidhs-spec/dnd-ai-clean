@@ -1,9 +1,10 @@
 import CharacterCreationV2 from './pages/CharacterCreationV2';
+import MainMenu from "./components/MainMenu";
 import { useEffect } from "react";
 import "./App.css";
 import "./styles/chat-fixes.css";
 import "./styles/focus-first.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import axios from "axios";
 import RPGGame from "./components/RPGGame";
 import Toast from "./components/Toast";
@@ -30,6 +31,25 @@ const Home = () => {
   }, []);
 
   return <RPGGame />;
+};
+
+const MainMenuPage = () => {
+  const navigate = useNavigate();
+
+  const handleNewCampaign = () => {
+    navigate("/character-v2");
+  };
+
+  const handleContinueCampaign = () => {
+    navigate("/game");
+  };
+
+  return (
+    <MainMenu
+      onNewCampaign={handleNewCampaign}
+      onContinueCampaign={handleContinueCampaign}
+    />
+  );
 };
 
 function App() {
@@ -63,7 +83,7 @@ function App() {
         <BrowserRouter>
           <Routes>
             {/* Root now lands on the legacy Main Menu (RPGGame entry) */}
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<MainMenuPage />} />
 
             {/* New Character Creation V2 Wizard */}
             <Route path="/character-v2" element={<CharacterCreationV2 />} />

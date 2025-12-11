@@ -3,6 +3,8 @@ import { raceData } from "../../data/raceData";
 import { CLASS_PROFICIENCIES } from "../../data/classProficiencies";
 import { BACKGROUNDS_BY_KEY } from "../../data/backgroundData";
 import WizardCard from "./WizardCard";
+import { validateReview } from "./utils/validation";
+import { buildCharacterPayload } from "./utils/payload";
 
 const ABILITIES = [
   { key: "str", label: "STR" },
@@ -18,46 +20,32 @@ const abilityModifier = (score) => {
   return Math.floor((score - 10) / 2);
 };
 
-const ReviewStep = ({ characterData, onBack }) => {
+const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(null);
 
   const raceInfo = useMemo(() => {
-    if (!characterData.race?.key) return null;
-    const base = raceData[characterData.race.key];
-    const subrace = characterData.race.variantKey
-      ? base?.subraces?.[characterData.race.variantKey]
-      : null;
+    if (!wizardState.race?.key) return null;
+    const base = raceData[wizardState.race.key];
+    const subrace = wizardState.race.variantKey ? base?.subraces?.[wizardState.race.variantKey] : null;
     return { base, subrace };
-  }, [characterData.race]);
+  }, [wizardState.race]);
 
-  const classInfo = characterData.class?.key
-    ? CLASS_PROFICIENCIES[characterData.class.key]
-    : null;
+  const classInfo = wizardState.class?.key ? CLASS_PROFICIENCIES[wizardState.class.key] : null;
 
-  const backgroundInfo = characterData.background?.key
-    ? BACKGROUNDS_BY_KEY[characterData.background.key]
-    : null;
+  const backgroundInfo = wizardState.background?.key ? BACKGROUNDS_BY_KEY[wizardState.background.key] : null;
 
-  const abilities = characterData.abilityScores || {};
-  const appearance = characterData.appearance || {};
+  const abilities = wizardState.abilityScores || {};
+  const appearance = wizardState.appearance || {};
+  const identity = wizardState.identity || {};
   const languagesText = backgroundInfo
     ? backgroundInfo.languages?.count
       ? `Choose ${backgroundInfo.languages.count} language${backgroundInfo.languages.count > 1 ? "s" : ""}`
       : "—"
     : "—";
 
-  const canSubmit = Boolean(
-    characterData.identity?.name?.trim() &&
-      characterData.race?.key &&
-      characterData.class?.key &&
-      ABILITIES.every((a) => typeof abilities[a.key] === "number") &&
-      characterData.background?.key &&
-      appearance.ageCategory &&
-      appearance.heightCm &&
-      appearance.build
-  );
+  const canSubmit = validateReview(wizardState);
 
   const handleSubmit = async () => {
     if (!canSubmit || isSubmitting) return;
@@ -66,10 +54,11 @@ const ReviewStep = ({ characterData, onBack }) => {
     setSubmitSuccess(null);
 
     try {
+      const payload = buildCharacterPayload(wizardState);
       const res = await fetch("/api/characters/v2/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(characterData),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -91,7 +80,9 @@ const ReviewStep = ({ characterData, onBack }) => {
     <WizardCard
       stepTitle="Step 7 – Review & Submit"
       stepNumber={7}
-      totalSteps={7}
+      totalSteps={steps.length}
+      steps={steps}
+      onSelectStep={goToStep}
       onBack={onBack}
       onNext={handleSubmit}
       backDisabled={isSubmitting}
@@ -104,18 +95,16 @@ const ReviewStep = ({ characterData, onBack }) => {
         <div className="space-y-4">
           <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
             <h3 className="text-lg font-semibold text-amber-300 mb-2">Identity</h3>
-            <p className="text-sm text-slate-200">Name: {characterData.identity?.name || "—"}</p>
-            <p className="text-sm text-slate-200">Age: {characterData.identity?.age ?? "—"}</p>
-            <p className="text-sm text-slate-200">Alignment: {characterData.identity?.alignment || "—"}</p>
-            <p className="text-sm text-slate-200">Sex: {characterData.identity?.sex || "—"}</p>
+            <p className="text-sm text-slate-200">Name: {identity.name || "—"}</p>
+            <p className="text-sm text-slate-200">Age: {identity.age ?? "—"}</p>
+            <p className="text-sm text-slate-200">Appearance Expression: {identity.appearanceExpression ?? "—"}</p>
+            <p className="text-sm text-slate-200">Sex: {identity.sex || "—"}</p>
           </section>
 
           <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
             <h3 className="text-lg font-semibold text-amber-300 mb-2">Race</h3>
             <p className="text-sm text-slate-200">Race: {raceInfo?.base?.name || "—"}</p>
-            {raceInfo?.subrace && (
-              <p className="text-sm text-slate-200">Subrace: {raceInfo.subrace.name}</p>
-            )}
+            {raceInfo?.subrace && <p className="text-sm text-slate-200">Subrace: {raceInfo.subrace.name}</p>}
             <p className="text-sm text-slate-200">
               ASI: {raceInfo?.base?.asi?.map((asi) => `${asi.ability}+${asi.value}`).join(", ") || "—"}
             </p>
@@ -123,7 +112,9 @@ const ReviewStep = ({ characterData, onBack }) => {
               <p className="text-slate-300">Traits:</p>
               <ul className="list-disc list-inside text-slate-300">
                 {(raceInfo?.base?.traits || []).slice(0, 3).map((trait) => (
-                  <li key={trait.name}>{trait.name}: {trait.summary}</li>
+                  <li key={trait.name}>
+                    {trait.name}: {trait.summary}
+                  </li>
                 ))}
                 {!raceInfo?.base?.traits?.length && <li className="text-slate-500">—</li>}
               </ul>
@@ -132,15 +123,11 @@ const ReviewStep = ({ characterData, onBack }) => {
 
           <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
             <h3 className="text-lg font-semibold text-amber-300 mb-2">Class</h3>
-            <p className="text-sm text-slate-200">Class: {characterData.class?.key || "—"}</p>
+            <p className="text-sm text-slate-200">Class: {wizardState.class?.key || "—"}</p>
             <p className="text-sm text-slate-200">Saving Throws: {classInfo?.savingThrows?.join(", ") || "—"}</p>
             <p className="text-sm text-slate-200">
               Proficiencies: {classInfo
-                ? [
-                    ...(classInfo.armor || []),
-                    ...(classInfo.weapons || []),
-                    ...(classInfo.tools || []),
-                  ]
+                ? [...(classInfo.armor || []), ...(classInfo.weapons || []), ...(classInfo.tools || [])]
                     .filter(Boolean)
                     .join(", ") || "—"
                 : "—"}
@@ -187,7 +174,7 @@ const ReviewStep = ({ characterData, onBack }) => {
               <h3 className="text-lg font-semibold text-amber-300">Appearance</h3>
             </div>
             <p className="text-sm text-slate-200">Age Category: {appearance.ageCategory || "—"}</p>
-            <p className="text-sm text-slate-200">Height: {appearance.heightCm ? `${appearance.heightCm} cm` : "—"}</p>
+            <p className="text-sm text-slate-200">Height: {appearance.heightCm ? `${appearance.heightCm} cm` : ""}</p>
             <p className="text-sm text-slate-200">Build: {appearance.build || "—"}</p>
             <p className="text-sm text-slate-200">Skin Tone: {appearance.skinTone || "—"}</p>
             <p className="text-sm text-slate-200">Hair Color: {appearance.hairColor || "—"}</p>
@@ -205,14 +192,10 @@ const ReviewStep = ({ characterData, onBack }) => {
           </section>
 
           {submitError && (
-            <div className="rounded border border-red-500 bg-red-900/40 text-red-200 px-4 py-2 text-sm">
-              {submitError}
-            </div>
+            <div className="rounded border border-red-500 bg-red-900/40 text-red-200 px-4 py-2 text-sm">{submitError}</div>
           )}
           {submitSuccess && (
-            <div className="rounded border border-green-500 bg-green-900/40 text-green-200 px-4 py-2 text-sm">
-              {submitSuccess}
-            </div>
+            <div className="rounded border border-green-500 bg-green-900/40 text-green-200 px-4 py-2 text-sm">{submitSuccess}</div>
           )}
         </div>
       </div>

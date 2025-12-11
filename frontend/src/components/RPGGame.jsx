@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import MainMenu from './MainMenu';
-import CharacterCreation from './CharacterCreation';
+// Legacy CharacterCreation is no longer used - replaced by CharacterCreationV2
+// import CharacterCreation from './CharacterCreation';
+import CharacterCreationV2 from '../pages/CharacterCreationV2';
 import FocusedRPG from './FocusedRPG';
 import WorldMap from './WorldMap';
 import Inventory from './Inventory';

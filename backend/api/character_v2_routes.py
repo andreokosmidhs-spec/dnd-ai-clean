@@ -4,7 +4,7 @@ from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from backend.models.character_v2 import (
+from models.character_v2 import (
     CharacterV2Create,
     CharacterV2Stored,
     CharacterV2Update,

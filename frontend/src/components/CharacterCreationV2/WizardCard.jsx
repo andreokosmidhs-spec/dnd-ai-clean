@@ -1,4 +1,15 @@
 import React from "react";
+import WizardHeader from "./WizardHeader";
+
+const steps = [
+  { id: "identity", label: "Identity" },
+  { id: "race", label: "Race" },
+  { id: "class", label: "Class" },
+  { id: "abilityScores", label: "Ability Scores" },
+  { id: "background", label: "Background" },
+  { id: "appearance", label: "Appearance" },
+  { id: "review", label: "Review" },
+];
 
 const WizardCard = ({
   stepTitle,
@@ -11,13 +22,22 @@ const WizardCard = ({
   nextDisabled = false,
   nextLabel = "Next",
 }) => {
+  const totalStepsCount = totalSteps ?? steps.length;
+  const safeStepNumber = Math.min(
+    Math.max(stepNumber ?? 1, 1),
+    steps.length
+  );
+  const currentStepIndex = safeStepNumber - 1;
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 shadow-2xl backdrop-blur">
+        <WizardHeader steps={steps} currentStepIndex={currentStepIndex} />
+
         <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-400">
-              Step {stepNumber} / {totalSteps}
+              Step {safeStepNumber} / {totalStepsCount}
             </p>
             <h2 className="text-2xl font-bold text-amber-400">{stepTitle}</h2>
           </div>

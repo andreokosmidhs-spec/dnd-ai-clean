@@ -1,5 +1,5 @@
-import { CLASS_SKILLS } from "../../data/classSkills";
-import { CLASS_SUBCLASSES } from "../../data/classSubclasses";
+import { CLASS_SKILLS } from "../../../data/classSkills";
+import { CLASS_SUBCLASSES } from "../../../data/classSubclasses";
 
 const isNonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
 

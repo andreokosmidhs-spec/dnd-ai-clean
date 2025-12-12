@@ -1,5 +1,6 @@
 import { CLASS_SKILLS } from "../../../data/classSkills";
 import { CLASS_SUBCLASSES } from "../../../data/classSubclasses";
+import { BACKGROUNDS_BY_KEY } from "../../../data/backgroundData";
 import { CLASS_EQUIPMENT } from "../../../data/classEquipment";
 
 const isNonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
@@ -100,6 +101,15 @@ export const validateBackground = (state) => {
   const background = state.background || {};
   if (!isNonEmpty(background.key)) return false;
 
+  const backgroundInfo = BACKGROUNDS_BY_KEY[background.key];
+  const toolChoiceRequirement = backgroundInfo?.toolProficiencies?.choices;
+
+  if (toolChoiceRequirement?.count) {
+    const selected = Array.isArray(background.toolChoices) ? background.toolChoices.length : 0;
+    return selected === toolChoiceRequirement.count;
+  }
+
+  return true;
   const personality = background.personality || {};
   const hasIdeal = isNonEmpty(personality.ideal);
   const hasBond = isNonEmpty(personality.bond);

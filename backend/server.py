@@ -93,14 +93,15 @@ elif OPENAI_API_KEY:
 
 # MongoDB connection (optional for local/dev environments)
 mongo_url = os.getenv('MONGO_URL')
-mongo_client = AsyncIOMotorClient(mongo_url) if mongo_url else None
 db_name = os.getenv("DB_NAME")
+mongo_client = AsyncIOMotorClient(mongo_url) if mongo_url and db_name else None
 if mongo_client and db_name:
     db = mongo_client[db_name]
+    logging.getLogger(__name__).info(f"MongoDB enabled: {mongo_url}/{db_name}")
 else:
     db = None
-    logging.getLogger(__name__).warning(
-        "MongoDB is not configured (missing MONGO_URL or DB_NAME); running without a database."
+    logging.getLogger(__name__).info(
+        "MongoDB disabled: using in-memory fallback (set MONGO_URL and DB_NAME)"
     )
 
 
@@ -116,6 +117,7 @@ from routers import quests as quests_router
 from routers import debug as debug_router
 from routers import knowledge as knowledge_router
 from routers import campaign_log as campaign_log_router
+from routers import campaigns as campaigns_router
 
 # Create the main app without a prefix
 app = FastAPI(title="Sentient RPG Engine", description="AI-Powered Text RPG Framework")
@@ -4150,6 +4152,7 @@ app.include_router(quests_router.router)  # Quest System endpoints
 app.include_router(debug_router.router)  # Debug endpoints
 app.include_router(knowledge_router.router)  # Knowledge & Player Notes endpoints
 app.include_router(campaign_log_router.router)  # Campaign Log System endpoints
+app.include_router(campaigns_router.router)  # Campaign creation and world generation
 app.include_router(character_v2_router)
 app.include_router(character_v2_router_alias)
 
@@ -4163,6 +4166,7 @@ quests_router.set_database(db)
 debug_router.set_database(db)
 knowledge_router.set_database(db)
 campaign_log_router.set_database(db)
+campaigns_router.set_database(db)
 scene_refresh_router.set_database(db)
 set_character_v2_database(db)
 

@@ -1,3 +1,48 @@
+const GAMING_SET_OPTIONS = [
+  "Dice set",
+  "Dragonchess set",
+  "Playing card set",
+  "Three-Dragon Ante set",
+];
+
+const ARTISAN_TOOL_OPTIONS = [
+  "Alchemist's supplies",
+  "Brewer's supplies",
+  "Calligrapher's supplies",
+  "Carpenter's tools",
+  "Cartographer's tools",
+  "Cobbler's tools",
+  "Cook's utensils",
+  "Glassblower's tools",
+  "Jeweler's tools",
+  "Leatherworker's tools",
+  "Mason's tools",
+  "Painter's supplies",
+  "Potter's tools",
+  "Smith's tools",
+  "Tinker's tools",
+  "Weaver's tools",
+  "Woodcarver's tools",
+];
+
+const createToolProficiencies = (fixed = [], choices) => {
+  const data = { fixed, ...(choices ? { choices } : {}) };
+
+  data.join = (separator = ", ") => {
+    const parts = [...(data.fixed || [])];
+    if (data.choices) {
+      parts.push(
+        `Choose ${data.choices.count}: ${data.choices.options.join(separator)}`
+      );
+    }
+    return parts.join(separator);
+  };
+
+  data.length = (data.fixed?.length || 0) + (data.choices ? 1 : 0);
+
+  return data;
+};
+
 export const BACKGROUNDS = [
   {
     key: "acolyte",
@@ -5,7 +50,7 @@ export const BACKGROUNDS = [
     description:
       "You have spent your life in the service of a temple, acting as an intermediary between the realm of the holy and the mortal world.",
     skillProficiencies: ["Insight", "Religion"],
-    toolProficiencies: [],
+    toolProficiencies: createToolProficiencies([]),
     languages: {
       count: 2,
       choices: [],
@@ -31,7 +76,10 @@ export const BACKGROUNDS = [
     description:
       "You are an experienced criminal with a history of breaking the law and surviving on the wrong side of society.",
     skillProficiencies: ["Deception", "Stealth"],
-    toolProficiencies: ["One type of gaming set", "Thieves' tools"],
+    toolProficiencies: createToolProficiencies(["Thieves' tools"], {
+      count: 1,
+      options: GAMING_SET_OPTIONS,
+    }),
     languages: {
       count: 0,
       choices: [],
@@ -54,7 +102,10 @@ export const BACKGROUNDS = [
     description:
       "You come from a humble social rank, but you are destined for so much more after standing up for the helpless.",
     skillProficiencies: ["Animal Handling", "Survival"],
-    toolProficiencies: ["One type of artisan's tools", "Vehicles (land)"],
+    toolProficiencies: createToolProficiencies(["Vehicles (land)"], {
+      count: 1,
+      options: ARTISAN_TOOL_OPTIONS,
+    }),
     languages: {
       count: 0,
       choices: [],
@@ -79,7 +130,10 @@ export const BACKGROUNDS = [
     description:
       "You understand wealth, power, and privilege, having been raised in a family with influence and responsibility.",
     skillProficiencies: ["History", "Persuasion"],
-    toolProficiencies: ["One type of gaming set"],
+    toolProficiencies: createToolProficiencies([], {
+      count: 1,
+      options: GAMING_SET_OPTIONS,
+    }),
     languages: {
       count: 1,
       choices: [],
@@ -103,7 +157,7 @@ export const BACKGROUNDS = [
     description:
       "You spent years learning the lore of the multiverse, seeking knowledge in libraries and through experimentation.",
     skillProficiencies: ["Arcana", "History"],
-    toolProficiencies: [],
+    toolProficiencies: createToolProficiencies([]),
     languages: {
       count: 2,
       choices: [],
@@ -129,7 +183,10 @@ export const BACKGROUNDS = [
     description:
       "You trained in war and served in a military force, gaining discipline and battlefield experience.",
     skillProficiencies: ["Athletics", "Intimidation"],
-    toolProficiencies: ["One type of gaming set", "Vehicles (land)"],
+    toolProficiencies: createToolProficiencies(["Vehicles (land)"], {
+      count: 1,
+      options: GAMING_SET_OPTIONS,
+    }),
     languages: {
       count: 0,
       choices: [],

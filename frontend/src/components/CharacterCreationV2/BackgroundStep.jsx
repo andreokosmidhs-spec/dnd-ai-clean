@@ -4,18 +4,36 @@ import WizardCard from "./WizardCard";
 import { validateBackground } from "./utils/validation";
 
 const BackgroundStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep }) => {
-  const currentBackground = wizardState.background || { key: null, variantKey: null };
+  const currentBackground = wizardState.background || { key: null, variantKey: null, toolChoices: [] };
   const selectedBackground = currentBackground.key ? BACKGROUNDS_BY_KEY[currentBackground.key] : null;
   const variants = selectedBackground?.variants || [];
+  const toolProficiencies = selectedBackground?.toolProficiencies;
+  const fixedTools = toolProficiencies?.fixed || [];
+  const toolChoices = currentBackground.toolChoices || [];
+  const toolChoiceData = toolProficiencies?.choices;
 
   const handleBackgroundChange = (e) => {
     const newKey = e.target.value || "";
-    updateSection("background", { key: newKey, variantKey: "" });
+    updateSection("background", { key: newKey, variantKey: "", toolChoices: [] });
   };
 
   const handleVariantChange = (e) => {
     const variantKey = e.target.value || "";
     updateSection("background", { ...currentBackground, variantKey });
+  };
+
+  const handleToolChoiceToggle = (option) => {
+    if (!toolChoiceData) return;
+    const isSelected = toolChoices.includes(option);
+    const maxChoices = toolChoiceData.count || 0;
+
+    if (!isSelected && toolChoices.length >= maxChoices) return;
+
+    const nextChoices = isSelected
+      ? toolChoices.filter((choice) => choice !== option)
+      : [...toolChoices, option];
+
+    updateSection("background", { ...currentBackground, toolChoices: nextChoices });
   };
 
   const isValid = validateBackground(wizardState);
@@ -36,7 +54,15 @@ const BackgroundStep = ({ wizardState, updateSection, onNext, onBack, steps, goT
 
         <div>
           <h4 className="text-amber-300 font-semibold">Tool Proficiencies</h4>
-          <p className="text-slate-200">{selectedBackground.toolProficiencies?.length ? selectedBackground.toolProficiencies.join(", ") : "None"}</p>
+          <p className="text-slate-200">
+            {fixedTools.length ? fixedTools.join(", ") : "None"}
+            {toolChoiceData && (
+              <>
+                {fixedTools.length ? "; " : ""}
+                Choose {toolChoiceData.count}: {toolChoiceData.options.join(", ")}
+              </>
+            )}
+          </p>
         </div>
 
         <div>
@@ -124,6 +150,71 @@ const BackgroundStep = ({ wizardState, updateSection, onNext, onBack, steps, goT
           {renderDetails()}
         </div>
       </div>
+
+      {selectedBackground && (
+        <div className="mt-6 rounded-lg border border-slate-800 bg-slate-900/80 p-4 space-y-4">
+          <div>
+            <h4 className="text-amber-300 font-semibold mb-2">Tool Proficiencies</h4>
+            <div className="flex flex-wrap gap-2">
+              {fixedTools.length > 0 ? (
+                fixedTools.map((tool) => (
+                  <span
+                    key={tool}
+                    className="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-200"
+                  >
+                    {tool}
+                  </span>
+                ))
+              ) : (
+                <span className="text-sm text-slate-400">No fixed tool proficiencies.</span>
+              )}
+            </div>
+          </div>
+
+          {toolChoiceData && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-amber-300 font-semibold">Select Tool Proficiencies</h4>
+                  <p className="text-xs text-slate-400">
+                    Choose {toolChoiceData.count} option{toolChoiceData.count === 1 ? "" : "s"}.
+                  </p>
+                </div>
+                <span className="text-xs text-slate-400">
+                  {toolChoices.length}/{toolChoiceData.count} selected
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {toolChoiceData.options.map((option) => {
+                  const isSelected = toolChoices.includes(option);
+                  const selectionFull = !isSelected && toolChoices.length >= toolChoiceData.count;
+
+                  return (
+                    <label
+                      key={option}
+                      className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer transition ${
+                        isSelected
+                          ? "border-amber-500 bg-amber-500/10 text-amber-100"
+                          : "border-slate-700 bg-slate-800/70 text-slate-200"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-amber-500"
+                        checked={isSelected}
+                        disabled={selectionFull}
+                        onChange={() => handleToolChoiceToggle(option)}
+                      />
+                      <span className="flex-1">{option}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </WizardCard>
   );
 };

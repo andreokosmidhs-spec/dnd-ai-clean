@@ -1,5 +1,6 @@
 import { CLASS_SKILLS } from "../../../data/classSkills";
 import { CLASS_SUBCLASSES } from "../../../data/classSubclasses";
+import { BACKGROUNDS_BY_KEY } from "../../../data/backgroundData";
 
 const isNonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
 
@@ -90,7 +91,17 @@ export const validateAbilityScores = (state) => {
 
 export const validateBackground = (state) => {
   const background = state.background || {};
-  return isNonEmpty(background.key);
+  if (!isNonEmpty(background.key)) return false;
+
+  const backgroundInfo = BACKGROUNDS_BY_KEY[background.key];
+  const toolChoiceRequirement = backgroundInfo?.toolProficiencies?.choices;
+
+  if (toolChoiceRequirement?.count) {
+    const selected = Array.isArray(background.toolChoices) ? background.toolChoices.length : 0;
+    return selected === toolChoiceRequirement.count;
+  }
+
+  return true;
 };
 
 export const validateAppearance = (state) => {

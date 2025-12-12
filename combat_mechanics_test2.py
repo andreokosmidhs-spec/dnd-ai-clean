@@ -6,7 +6,7 @@ Focused Combat Mechanics Test - With Specific Target
 import requests
 import json
 
-BACKEND_URL = "https://dnd-ai-clean-test.preview.emergentagent.com/api"
+BACKEND_URL = "https://dnd-wizard.preview.emergentagent.com/api"
 
 def test_combat_with_target():
     """Test combat mechanics with specific target"""

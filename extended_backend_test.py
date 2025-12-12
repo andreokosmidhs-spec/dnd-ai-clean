@@ -8,7 +8,7 @@ import requests
 import json
 import sys
 
-BACKEND_URL = "https://dnd-ai-clean-test.preview.emergentagent.com/api"
+BACKEND_URL = "https://dnd-wizard.preview.emergentagent.com/api"
 
 def test_additional_dice_scenarios():
     """Test additional dice rolling scenarios"""

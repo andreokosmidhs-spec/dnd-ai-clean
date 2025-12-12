@@ -7,7 +7,7 @@ Test the specific issue with combat mechanics not being returned
 import requests
 import json
 
-BACKEND_URL = "https://dnd-ai-clean-test.preview.emergentagent.com/api"
+BACKEND_URL = "https://dnd-wizard.preview.emergentagent.com/api"
 
 def test_combat_mechanics():
     """Test combat mechanics specifically"""

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-BACKEND_URL="https://dnd-ai-clean-test.preview.emergentagent.com/api"
+BACKEND_URL="https://dnd-wizard.preview.emergentagent.com/api"
 
 echo "=========================================="
 echo "DUNGEON FORGE Vertical Slice Test"

@@ -89,8 +89,8 @@ PREVIEW CONFIRMATION
 ═══════════════════════════════════════════════════════════════════════════════
 
 Expected Behavior:
-1. Open preview URL: https://[project-id].preview.emergentagent.com/
-2. Browser redirects to: https://[project-id].preview.emergentagent.com/character-v2
+1. Open preview URL: https://dnd-wizard.preview.emergentagent.com/
+2. Browser redirects to: https://dnd-wizard.preview.emergentagent.com/character-v2
 3. CharacterCreationV2 wizard loads with:
    - Title: "Character Creation V2" (amber, large font)
    - Stepper: 7 circular step indicators (Step 1 active)

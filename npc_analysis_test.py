@@ -7,7 +7,7 @@ Detailed analysis of specific NPC responses to understand implementation issues
 import requests
 import json
 
-BACKEND_URL = "https://dnd-ai-clean-test.preview.emergentagent.com/api"
+BACKEND_URL = "https://dnd-wizard.preview.emergentagent.com/api"
 
 def test_single_scenario():
     """Test a single scenario and analyze the response in detail"""

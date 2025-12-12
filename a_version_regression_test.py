@@ -3,7 +3,7 @@
 A-VERSION REGRESSION PLAYTESTS - Complete Validation Suite
 
 Execute all 4 playtest scenarios to validate A-Version DM prompt implementation.
-Backend URL: https://dnd-ai-clean-test.preview.emergentagent.com/api
+Backend URL: https://dnd-wizard.preview.emergentagent.com/api
 """
 
 import requests
@@ -13,7 +13,7 @@ import time
 from typing import Dict, Any, List, Optional
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://dnd-ai-clean-test.preview.emergentagent.com/api"
+BACKEND_URL = "https://dnd-wizard.preview.emergentagent.com/api"
 
 class PlaytestResults:
     def __init__(self):

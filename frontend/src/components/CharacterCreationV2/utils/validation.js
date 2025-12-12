@@ -3,6 +3,20 @@ import { CLASS_SUBCLASSES } from "../../../data/classSubclasses";
 
 const isNonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
 
+const SPELL_REQUIREMENTS = {
+  Wizard: { cantrips: 3, level1: 6 },
+  Sorcerer: { cantrips: 4, level1: 2 },
+  Warlock: { cantrips: 2, level1: 2 },
+  Bard: { cantrips: 2, level1: 4 },
+  Cleric: { cantrips: 3, level1: 0 },
+  Druid: { cantrips: 2, level1: 0 },
+};
+
+export const getSpellRequirements = (classKey) => {
+  if (!classKey) return { cantrips: 0, level1: 0 };
+  return SPELL_REQUIREMENTS[classKey] || { cantrips: 0, level1: 0 };
+};
+
 export const validateIdentity = (state) => {
   const identity = state.identity || {};
   const { name, sex, age, genderExpression } = identity;
@@ -34,7 +48,16 @@ export const validateClass = (state) => {
   const selected = Array.isArray(classState.skillProficiencies)
     ? classState.skillProficiencies.length
     : 0;
-  return required === selected;
+  if (required !== selected) return false;
+
+  const { cantrips, level1 } = getSpellRequirements(classState.key);
+  if (cantrips === 0 && level1 === 0) return true;
+
+  const selectedSpells = state.spells?.selected || { cantrips: [], level1: [] };
+  const cantripsOk = (selectedSpells.cantrips || []).length === cantrips;
+  const level1Ok = (selectedSpells.level1 || []).length === level1;
+
+  return cantripsOk && level1Ok;
 };
 
 const abilityKeys = ["str", "dex", "con", "int", "wis", "cha"];

@@ -11,6 +11,8 @@ import Toast from "./components/Toast";
 import { GameStateProvider } from "./contexts/GameStateContext";
 import { useDungeonStore } from "./store/useDungeonStore";
 import { useSessionCore } from "./store/useSessionCore";
+import CampaignSetup from "./pages/CampaignSetup";
+import CampaignGenerate from "./pages/CampaignGenerate";
 import { hydrateFromLegacyStorage, cleanupLegacyStorage } from "./utils/stateHydration";
 import "./devStoreDebug"; // Dev-only: expose store in console
 
@@ -110,6 +112,10 @@ function App() {
 
             {/* New Character Creation V2 Wizard */}
             <Route path="/character-v2" element={<CharacterCreationV2 />} />
+
+            {/* Campaign setup and draft generation placeholder */}
+            <Route path="/campaign-setup" element={<CampaignSetup />} />
+            <Route path="/campaign-generate" element={<CampaignGenerate />} />
 
             {/* Legacy CharacterCreation component is retained in the repo but no longer routed; V2 is canonical. */}
 

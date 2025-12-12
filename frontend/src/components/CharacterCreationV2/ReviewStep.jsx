@@ -6,6 +6,7 @@ import WizardCard from "./WizardCard";
 import { validateReview } from "./utils/validation";
 import { buildCharacterPayload } from "./utils/payload";
 import { useNavigate } from "react-router-dom";
+import { useSessionCore } from "../../store/useSessionCore";
 
 const ABILITIES = [
   { key: "str", label: "STR" },
@@ -67,6 +68,7 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(null);
   const navigate = useNavigate();
+  const { setSession } = useSessionCore();
 
   const raceInfo = useMemo(() => {
     if (!wizardState.race?.key) return null;
@@ -117,8 +119,19 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
 
       const data = await res.json();
       console.log("Character V2 created", data);
+
+      if (!data?.id) {
+        throw new Error("Character created but id was not returned");
+      }
+
+      setSession({
+        activeCharacterId: data.id,
+        activeCampaignId: null,
+        campaignStatus: "none",
+      });
+
       setSubmitSuccess("Character created successfully!");
-      navigate("/adventure");
+      navigate("/campaign-setup");
     } catch (err) {
       setSubmitError(err.message || "Failed to create character");
     } finally {

@@ -3,6 +3,7 @@ import { CLASS_SKILLS } from "../../data/classSkills";
 import { CLASS_PROFICIENCIES } from "../../data/classProficiencies";
 import { CLASS_SUBCLASSES } from "../../data/classSubclasses";
 import { HIT_DICE } from "../../data/levelingData";
+import { CLASS_EQUIPMENT } from "../../data/classEquipment";
 import WizardCard from "./WizardCard";
 import { getSpellRequirements, validateClass } from "./utils/validation";
 
@@ -48,12 +49,15 @@ const ClassStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep
       subclassKey: null,
       level: 1,
       skillProficiencies: [],
+      equipment: null,
     };
 
   const classKey = currentClass.key;
   const skillInfo = classKey ? CLASS_SKILLS[classKey] : null;
   const profInfo = classKey ? CLASS_PROFICIENCIES[classKey] : null;
   const subclassInfo = classKey ? CLASS_SUBCLASSES[classKey] : null;
+  const equipmentOptions = classKey ? CLASS_EQUIPMENT[classKey] : null;
+  const selectedEquipmentPack = currentClass.equipment?.pack || "";
 
   const spellRequirements = getSpellRequirements(classKey);
   const availableCantrips = SPELL_OPTIONS.filter(
@@ -95,6 +99,7 @@ const ClassStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep
       subclassKey: "",
       level: 1,
       skillProficiencies: [],
+      equipment: null,
     });
 
     updateSection("spells", {
@@ -127,6 +132,13 @@ const ClassStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep
     updateSection("class", {
       ...currentClass,
       subclassKey: newSubclass,
+    });
+  };
+
+  const handleEquipmentChange = (pack) => {
+    updateSection("class", {
+      ...currentClass,
+      equipment: { pack },
     });
   };
 
@@ -212,6 +224,48 @@ const ClassStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep
             )}
           </div>
         </div>
+
+        {equipmentOptions && (
+          <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+            <h3 className="text-lg font-semibold text-amber-300 mb-3">Starting Equipment</h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {["A", "B"].map((pack) => {
+                const items = pack === "A" ? equipmentOptions.packA : equipmentOptions.packB;
+                const isSelected = selectedEquipmentPack === pack;
+                return (
+                  <label
+                    key={pack}
+                    className={`flex flex-col gap-2 rounded border px-3 py-3 text-sm transition ${
+                      isSelected
+                        ? "border-amber-500 bg-amber-500/10 text-amber-100"
+                        : "border-slate-800 bg-slate-900/80 text-slate-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="starting-equipment"
+                        value={pack}
+                        checked={isSelected}
+                        onChange={() => handleEquipmentChange(pack)}
+                        className="h-4 w-4 accent-amber-500"
+                      />
+                      <span className="font-semibold">Pack {pack}</span>
+                    </div>
+                    <ul className="list-disc list-inside text-slate-300 space-y-1">
+                      {items.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </label>
+                );
+              })}
+            </div>
+            {!selectedEquipmentPack && (
+              <p className="mt-2 text-sm text-rose-400">Select Pack A or Pack B to continue.</p>
+            )}
+          </div>
+        )}
 
         {subclassInfo && (
           <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">

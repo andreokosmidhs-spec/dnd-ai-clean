@@ -1,6 +1,7 @@
 import { CLASS_SKILLS } from "../../../data/classSkills";
 import { CLASS_SUBCLASSES } from "../../../data/classSubclasses";
 import { BACKGROUNDS_BY_KEY } from "../../../data/backgroundData";
+import { CLASS_EQUIPMENT } from "../../../data/classEquipment";
 
 const isNonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
 
@@ -44,12 +45,19 @@ export const validateClass = (state) => {
     return false;
   }
   const skillInfo = CLASS_SKILLS[classState.key];
-  if (!skillInfo) return true;
-  const required = skillInfo.count || 0;
-  const selected = Array.isArray(classState.skillProficiencies)
-    ? classState.skillProficiencies.length
-    : 0;
-  if (required !== selected) return false;
+  if (skillInfo) {
+    const required = skillInfo.count || 0;
+    const selected = Array.isArray(classState.skillProficiencies)
+      ? classState.skillProficiencies.length
+      : 0;
+    if (required !== selected) return false;
+  }
+
+  const equipmentOptions = CLASS_EQUIPMENT[classState.key];
+  if (equipmentOptions) {
+    const pack = classState.equipment?.pack;
+    if (pack !== "A" && pack !== "B") return false;
+  }
 
   const { cantrips, level1 } = getSpellRequirements(classState.key);
   if (cantrips === 0 && level1 === 0) return true;
@@ -102,6 +110,12 @@ export const validateBackground = (state) => {
   }
 
   return true;
+  const personality = background.personality || {};
+  const hasIdeal = isNonEmpty(personality.ideal);
+  const hasBond = isNonEmpty(personality.bond);
+  const hasFlaw = isNonEmpty(personality.flaw);
+
+  return hasIdeal && hasBond && hasFlaw;
 };
 
 export const validateAppearance = (state) => {

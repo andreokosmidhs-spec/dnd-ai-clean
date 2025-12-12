@@ -10,6 +10,7 @@ import RPGGame from "./components/RPGGame";
 import Toast from "./components/Toast";
 import { GameStateProvider } from "./contexts/GameStateContext";
 import { useDungeonStore } from "./store/useDungeonStore";
+import { useSessionCore } from "./store/useSessionCore";
 import { hydrateFromLegacyStorage, cleanupLegacyStorage } from "./utils/stateHydration";
 import "./devStoreDebug"; // Dev-only: expose store in console
 
@@ -31,6 +32,28 @@ const Home = () => {
   }, []);
 
   return <RPGGame />;
+};
+
+const AdventureRoute = () => {
+  const navigate = useNavigate();
+  const { activeCharacterId, activeCampaignId, campaignStatus } = useSessionCore();
+
+  useEffect(() => {
+    if (!activeCharacterId || !activeCampaignId) {
+      navigate("/", { replace: true });
+      return;
+    }
+
+    if (campaignStatus !== "ready") {
+      navigate("/", { replace: true });
+    }
+  }, [activeCampaignId, activeCharacterId, campaignStatus, navigate]);
+
+  if (!activeCharacterId || !activeCampaignId || campaignStatus !== "ready") {
+    return null;
+  }
+
+  return <Home />;
 };
 
 const MainMenuPage = () => {
@@ -91,8 +114,8 @@ function App() {
             {/* Legacy CharacterCreation component is retained in the repo but no longer routed; V2 is canonical. */}
 
             {/* Old game/adventure flow (keep for existing campaigns) */}
-            <Route path="/adventure" element={<Home />} />
-            <Route path="/game" element={<Home />} />
+            <Route path="/adventure" element={<AdventureRoute />} />
+            <Route path="/game" element={<AdventureRoute />} />
           </Routes>
         </BrowserRouter>
         <Toast />

@@ -78,6 +78,7 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
   const classInfo = wizardState.class?.key ? CLASS_PROFICIENCIES[wizardState.class.key] : null;
 
   const backgroundInfo = wizardState.background?.key ? BACKGROUNDS_BY_KEY[wizardState.background.key] : null;
+  const spellSelections = wizardState.spells?.selected || { cantrips: [], level1: [] };
 
   const abilities = wizardState.abilityScores || {};
   const racialBonuses = useMemo(() => getRacialAbilityBonuses(wizardState.race), [wizardState.race]);
@@ -182,6 +183,32 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
                 : "—"}
             </p>
           </section>
+
+          {(spellSelections.cantrips.length > 0 || spellSelections.level1.length > 0) && (
+            <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+              <h3 className="text-lg font-semibold text-amber-300 mb-2">Spells</h3>
+              {spellSelections.cantrips.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-sm font-semibold text-amber-200">Cantrips</p>
+                  <ul className="list-disc list-inside text-sm text-slate-300">
+                    {spellSelections.cantrips.map((spell) => (
+                      <li key={`cantrip-${spell}`}>{spell}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {spellSelections.level1.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-amber-200">Level 1 Spells</p>
+                  <ul className="list-disc list-inside text-sm text-slate-300">
+                    {spellSelections.level1.map((spell) => (
+                      <li key={`level1-${spell}`}>{spell}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
+          )}
 
           <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
             <h3 className="text-lg font-semibold text-amber-300 mb-2">Ability Scores</h3>

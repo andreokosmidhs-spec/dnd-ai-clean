@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Sword, Play, PlusCircle, Trash2, User, Crown, Database } from 'lucide-react';
-import apiClient, { isSuccess, getErrorMessage } from '../lib/apiClient';
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
+import { Sword, Play, PlusCircle, Trash2, User, Crown, Database } from "lucide-react";
+import apiClient, { isSuccess, getErrorMessage } from "../lib/apiClient";
+import { useSessionCore } from "../store/useSessionCore";
 
 const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => {
   const navigate = useNavigate();
@@ -12,6 +13,9 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
   const [savedCharacter, setSavedCharacter] = useState(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [isLoadingCampaign, setIsLoadingCampaign] = useState(false);
+  const { activeCharacterId, activeCampaignId, resetSession } = useSessionCore();
+  const hasActiveSession = !!activeCharacterId && !!activeCampaignId;
+  const showLegacySavedCampaign = hasSavedCampaign && !hasActiveSession;
 
   useEffect(() => {
     // Check for existing campaign
@@ -160,7 +164,7 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
 
         <CardContent className="space-y-6 pb-12">
           {/* Saved Campaign Info */}
-          {hasSavedCampaign && savedCharacter && (
+          {showLegacySavedCampaign && savedCharacter && (
             <div className="p-4 bg-gradient-to-r from-violet-600/20 to-purple-600/20 border-2 border-violet-400/50 rounded-lg">
               <div className="flex items-center gap-3 mb-2">
                 <User className="h-5 w-5 text-violet-400" />
@@ -182,7 +186,18 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
 
           {/* Main Buttons */}
           <div className="space-y-4">
-            {hasSavedCampaign ? (
+            {hasActiveSession && (
+              <Button
+                onClick={() => navigate("/adventure")}
+                className="w-full bg-gradient-to-r from-green-700 to-emerald-700 hover:from-green-600 hover:to-emerald-600 text-white font-bold text-xl py-8 shadow-lg shadow-green-600/50 border-2 border-green-400/50"
+                size="lg"
+              >
+                <Play className="h-6 w-6 mr-3" />
+                Continue Adventure
+              </Button>
+            )}
+
+            {showLegacySavedCampaign ? (
               <Button
                 onClick={onContinueCampaign}
                 className="w-full bg-gradient-to-r from-green-700 to-emerald-700 hover:from-green-600 hover:to-emerald-600 text-white font-bold text-xl py-8 shadow-lg shadow-green-600/50 border-2 border-green-400/50"
@@ -279,6 +294,19 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
             <p>✨ Create your character and embark on an epic adventure</p>
             <p>🎭 AI-powered Dungeon Master guides your story</p>
             <p>🎲 D&D-style mechanics and ability checks</p>
+            <div className="pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white"
+                onClick={() => {
+                  resetSession();
+                  navigate("/");
+                }}
+              >
+                Reset Session
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

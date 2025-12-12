@@ -5,6 +5,13 @@ const initialState = {
   activeCharacterId: null,
   activeCampaignId: null,
   campaignStatus: "none",
+  campaignIntent: {
+    tone: "Balanced",
+    focus: "Story",
+    scope: "City",
+    danger: "Medium",
+    updatedAt: null,
+  },
   lastUpdatedAt: null,
 };
 
@@ -32,6 +39,7 @@ export const useSessionCore = create(
         activeCharacterId: state.activeCharacterId,
         activeCampaignId: state.activeCampaignId,
         campaignStatus: state.campaignStatus,
+        campaignIntent: state.campaignIntent,
         lastUpdatedAt: state.lastUpdatedAt,
       }),
     }

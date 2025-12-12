@@ -4,18 +4,30 @@ import WizardCard from "./WizardCard";
 import { validateBackground } from "./utils/validation";
 
 const BackgroundStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep }) => {
-  const currentBackground = wizardState.background || { key: null, variantKey: null };
+  const defaultPersonality = { ideal: "", bond: "", flaw: "" };
+  const currentBackground = wizardState.background || { key: null, variantKey: null, personality: defaultPersonality };
   const selectedBackground = currentBackground.key ? BACKGROUNDS_BY_KEY[currentBackground.key] : null;
   const variants = selectedBackground?.variants || [];
 
   const handleBackgroundChange = (e) => {
     const newKey = e.target.value || "";
-    updateSection("background", { key: newKey, variantKey: "" });
+    updateSection("background", { key: newKey, variantKey: "", personality: defaultPersonality });
   };
 
   const handleVariantChange = (e) => {
     const variantKey = e.target.value || "";
     updateSection("background", { ...currentBackground, variantKey });
+  };
+
+  const handlePersonalityChange = (field) => (e) => {
+    const value = e.target.value || "";
+    updateSection("background", {
+      ...currentBackground,
+      personality: {
+        ...(currentBackground.personality || defaultPersonality),
+        [field]: value,
+      },
+    });
   };
 
   const isValid = validateBackground(wizardState);
@@ -113,6 +125,64 @@ const BackgroundStep = ({ wizardState, updateSection, onNext, onBack, steps, goT
                   </option>
                 ))}
               </select>
+            </div>
+          )}
+
+          {selectedBackground && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <label className="block text-sm text-slate-300">Ideal</label>
+                <select
+                  value={currentBackground.personality?.ideal || ""}
+                  onChange={handlePersonalityChange("ideal")}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="" disabled>
+                    Select an ideal
+                  </option>
+                  {(selectedBackground.personality?.ideals || []).map((ideal) => (
+                    <option key={ideal} value={ideal}>
+                      {ideal}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm text-slate-300">Bond</label>
+                <select
+                  value={currentBackground.personality?.bond || ""}
+                  onChange={handlePersonalityChange("bond")}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="" disabled>
+                    Select a bond
+                  </option>
+                  {(selectedBackground.personality?.bonds || []).map((bond) => (
+                    <option key={bond} value={bond}>
+                      {bond}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm text-slate-300">Flaw</label>
+                <select
+                  value={currentBackground.personality?.flaw || ""}
+                  onChange={handlePersonalityChange("flaw")}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="" disabled>
+                    Select a flaw
+                  </option>
+                  {(selectedBackground.personality?.flaws || []).map((flaw) => (
+                    <option key={flaw} value={flaw}>
+                      {flaw}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
         </div>

@@ -23,6 +23,18 @@ export const BACKGROUNDS = [
       description:
         "You and your adventuring companions can expect free healing and care at a temple, shrine, or other established presence of your faith.",
     },
+    personality: {
+      ideals: ["Tradition", "Charity", "Change", "Power", "Faith", "Aspiration"],
+      bonds: [
+        "Temple service",
+        "Relic guardian",
+        "Beloved mentor",
+        "Holy mission",
+        "Sheltering community",
+        "Sacred text",
+      ],
+      flaws: ["Dogmatic", "Secretive past", "Overzealous", "Intolerant", "Questioning faith", "Rigid schedule"],
+    },
     variants: [],
   },
   {
@@ -45,6 +57,18 @@ export const BACKGROUNDS = [
       name: "Criminal Contact",
       description:
         "You have a reliable contact who acts as your liaison to a network of other criminals.",
+    },
+    personality: {
+      ideals: ["Honor among thieves", "Freedom", "Greed", "Redemption", "Loyalty", "Revenge"],
+      bonds: [
+        "Crew members",
+        "Debtor in hiding",
+        "Old partner",
+        "Crime family",
+        "Secret stash",
+        "Favored haunt",
+      ],
+      flaws: ["Hot-tempered", "Sticky fingers", "Untrustworthy", "Gambling habit", "Paranoid", "Easily bribed"],
     },
     variants: [],
   },
@@ -71,6 +95,18 @@ export const BACKGROUNDS = [
       description:
         "Since you come from the ranks of the common folk, you fit in among them with ease and can find a place to hide or rest.",
     },
+    personality: {
+      ideals: ["Respect", "Fairness", "Destiny", "Freedom", "Community", "Self-sacrifice"],
+      bonds: [
+        "Hometown",
+        "Rescued family",
+        "Old mentor",
+        "Local landmark",
+        "Grateful villagers",
+        "Beloved animal",
+      ],
+      flaws: ["Naive", "Brash", "Stubborn", "Overconfident", "Trusting", "Reckless"],
+    },
     variants: [],
   },
   {
@@ -94,6 +130,18 @@ export const BACKGROUNDS = [
       name: "Position of Privilege",
       description:
         "People are inclined to think the best of you, and you are welcome in high society.",
+    },
+    personality: {
+      ideals: ["Responsibility", "Independence", "Power", "Noblesse oblige", "Knowledge", "Legacy"],
+      bonds: [
+        "Family estate",
+        "Loyal retainer",
+        "Political ally",
+        "Family honor",
+        "Secret heirloom",
+        "House rivalry",
+      ],
+      flaws: ["Arrogant", "Entitled", "Vengeful", "Easily insulted", "Secret spendthrift", "Scheming"],
     },
     variants: [],
   },
@@ -121,6 +169,18 @@ export const BACKGROUNDS = [
       description:
         "When you attempt to learn or recall a piece of lore, if you do not know that information, you often know where and from whom you can obtain it.",
     },
+    personality: {
+      ideals: ["Knowledge", "Logic", "No limits", "Self-improvement", "Discovery", "Responsibility"],
+      bonds: [
+        "Library mentor",
+        "Lost tome",
+        "Academic rival",
+        "Arcane mystery",
+        "Student protégé",
+        "Obscure order",
+      ],
+      flaws: ["Absent-minded", "Curiosity first", "Socially awkward", "Know-it-all", "Stubborn theories", "Hunts secrets"],
+    },
     variants: [],
   },
   {
@@ -145,6 +205,18 @@ export const BACKGROUNDS = [
       name: "Military Rank",
       description:
         "You have a military rank from your career and soldiers loyal to your former military organization still recognize your authority.",
+    },
+    personality: {
+      ideals: ["Discipline", "Might", "Duty", "Nation", "Protection", "Victory"],
+      bonds: [
+        "Old unit",
+        "Fallen comrade",
+        "Regimental banner",
+        "Commander",
+        "War story",
+        "Oathbound ally",
+      ],
+      flaws: ["Rigid", "Quick to fight", "Haunted", "Takes orders too far", "Drinks to cope", "Holds grudges"],
     },
     variants: [],
   },

@@ -98,7 +98,14 @@ export const validateAbilityScores = (state) => {
 
 export const validateBackground = (state) => {
   const background = state.background || {};
-  return isNonEmpty(background.key);
+  if (!isNonEmpty(background.key)) return false;
+
+  const personality = background.personality || {};
+  const hasIdeal = isNonEmpty(personality.ideal);
+  const hasBond = isNonEmpty(personality.bond);
+  const hasFlaw = isNonEmpty(personality.flaw);
+
+  return hasIdeal && hasBond && hasFlaw;
 };
 
 export const validateAppearance = (state) => {

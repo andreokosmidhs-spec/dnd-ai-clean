@@ -123,6 +123,10 @@ function App() {
             {/* Old game/adventure flow (keep for existing campaigns) */}
             <Route path="/adventure" element={<AdventureRoute />} />
             <Route path="/game" element={<AdventureRoute />} />
+
+            {/* DEV ONLY: Preview CampaignLogPanel without adventure flow */}
+            {/* TODO: Remove before production release */}
+            <Route path="/dev/campaign-log" element={<DevCampaignLogPreview />} />
           </Routes>
         </BrowserRouter>
         <Toast />

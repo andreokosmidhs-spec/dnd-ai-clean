@@ -81,6 +81,98 @@ const RPGGame = () => {
     }
   }, []);
 
+  // SESSION-CORE BRIDGE: Detect when new flow has a ready campaign
+  // This bridges the new CharacterCreationV2 → CampaignGenerate flow into RPGGame
+  const { activeCharacterId, activeCampaignId, campaignStatus } = useSessionCore();
+  const sessionCoreBridgeRan = useRef(false);
+  
+  useEffect(() => {
+    // Only run once per mount when session-core indicates a ready campaign
+    if (sessionCoreBridgeRan.current) return;
+    
+    // Check if session-core has a ready campaign from new flow
+    if (campaignStatus === 'ready' && activeCharacterId && activeCampaignId) {
+      console.log('🌉 Session-Core Bridge: Detected ready campaign from new flow');
+      console.log('   - characterId:', activeCharacterId);
+      console.log('   - campaignId:', activeCampaignId);
+      console.log('   - status:', campaignStatus);
+      
+      // Mark bridge as ran to prevent infinite loops
+      sessionCoreBridgeRan.current = true;
+      
+      // Fetch campaign data and transition to playing state
+      const loadFromSessionCore = async () => {
+        try {
+          const response = await fetch(`${BACKEND_URL}/api/campaigns/latest`);
+          const result = await response.json();
+          
+          if (result.success && result.data) {
+            const { character: charData, campaign_id, intro, world_blueprint } = result.data;
+            
+            // Set character data for RPGGame
+            if (charData) {
+              const characterForRPG = {
+                id: activeCharacterId,
+                name: charData.name || 'Adventurer',
+                class: charData.class || charData.class_ || 'Unknown',
+                race: charData.race || 'Unknown',
+                level: charData.level || 1,
+                hp: charData.hp || 10,
+                maxHp: charData.max_hp || 10,
+                stats: charData.stats || {},
+                ...charData
+              };
+              
+              setCharacter(characterForRPG);
+              
+              // Bridge to legacy storage for compatibility with other components
+              localStorage.setItem('rpg-campaign-character', JSON.stringify(characterForRPG));
+              console.log('🌉 Bridge: Character data set and saved to legacy storage');
+            }
+            
+            // Set campaign ID in GameStateContext
+            if (campaign_id) {
+              setCampaignId(campaign_id);
+              localStorage.setItem('game-state-campaign-id', campaign_id);
+            }
+            
+            // Set world blueprint if available
+            if (world_blueprint) {
+              setWorldBlueprint(world_blueprint);
+            }
+            
+            // Set intro as initial game log entry
+            if (intro) {
+              setGameLog([{
+                type: 'narration',
+                message: intro,
+                timestamp: Date.now()
+              }]);
+            }
+            
+            // Create session for AdventureLogWithDM
+            const newSessionId = sessionManager.createNewSessionId(campaign_id || activeCampaignId);
+            setSessionId(newSessionId);
+            
+            // Transition to playing state
+            setGameState('playing');
+            console.log('🌉 Bridge: Transitioned to playing state');
+            
+            if (window.showToast) {
+              window.showToast(`Welcome, ${charData?.name || 'Adventurer'}! Your adventure begins...`, 'success');
+            }
+          } else {
+            console.warn('🌉 Bridge: Failed to load campaign data, falling back to menu');
+          }
+        } catch (err) {
+          console.error('🌉 Bridge: Error loading campaign:', err);
+        }
+      };
+      
+      loadFromSessionCore();
+    }
+  }, [campaignStatus, activeCharacterId, activeCampaignId, setCampaignId, setWorldBlueprint, setSessionId]);
+
   const saveGame = () => {
     // Save character
     localStorage.setItem('rpg-campaign-character', JSON.stringify(character));

@@ -414,34 +414,7 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
   // Move useOpenLeads hook to top level
   const { data: leads, isLoading: leadsLoading } = useOpenLeads(campaignId, characterId);
   
-  useEffect(() => {
-    if (campaignId) {
-      loadAllData();
-    }
-  }, [campaignId]);
-  
-  // Guard against undefined campaignId
-  if (!campaignId) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
-        <Card className="w-full max-w-md mx-4 bg-gray-900 border-red-500/50">
-          <CardContent className="p-8 text-center space-y-4">
-            <div className="w-16 h-16 mx-auto rounded-full bg-red-500/20 flex items-center justify-center">
-              <BookOpen className="w-8 h-8 text-red-400" />
-            </div>
-            <p className="text-gray-300">
-              Cannot load Campaign Log without a valid campaign.
-            </p>
-            <Button onClick={onClose} variant="outline" className="border-gray-600">
-              Close
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-  
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     setLoading(true);
     setError(null);
     

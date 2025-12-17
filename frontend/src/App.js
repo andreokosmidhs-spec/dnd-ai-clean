@@ -13,6 +13,7 @@ import { useDungeonStore } from "./store/useDungeonStore";
 import { useSessionCore } from "./store/useSessionCore";
 import CampaignSetup from "./pages/CampaignSetup";
 import CampaignGenerate from "./pages/CampaignGenerate";
+import DevCampaignLogPreview from "./pages/DevCampaignLogPreview";
 import { hydrateFromLegacyStorage, cleanupLegacyStorage } from "./utils/stateHydration";
 import "./devStoreDebug"; // Dev-only: expose store in console
 

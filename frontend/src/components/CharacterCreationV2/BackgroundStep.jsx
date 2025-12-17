@@ -4,9 +4,8 @@ import WizardCard from "./WizardCard";
 import { validateBackground } from "./utils/validation";
 
 const BackgroundStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep }) => {
-  const currentBackground = wizardState.background || { key: null, variantKey: null, toolChoices: [] };
   const defaultPersonality = { ideal: "", bond: "", flaw: "" };
-  const currentBackground = wizardState.background || { key: null, variantKey: null, personality: defaultPersonality };
+  const currentBackground = wizardState.background || { key: null, variantKey: null, toolChoices: [], personality: defaultPersonality };
   const selectedBackground = currentBackground.key ? BACKGROUNDS_BY_KEY[currentBackground.key] : null;
   const variants = selectedBackground?.variants || [];
   const toolProficiencies = selectedBackground?.toolProficiencies;
@@ -16,8 +15,7 @@ const BackgroundStep = ({ wizardState, updateSection, onNext, onBack, steps, goT
 
   const handleBackgroundChange = (e) => {
     const newKey = e.target.value || "";
-    updateSection("background", { key: newKey, variantKey: "", toolChoices: [] });
-    updateSection("background", { key: newKey, variantKey: "", personality: defaultPersonality });
+    updateSection("background", { key: newKey, variantKey: "", toolChoices: [], personality: defaultPersonality });
   };
 
   const handleVariantChange = (e) => {
@@ -37,6 +35,8 @@ const BackgroundStep = ({ wizardState, updateSection, onNext, onBack, steps, goT
       : [...toolChoices, option];
 
     updateSection("background", { ...currentBackground, toolChoices: nextChoices });
+  };
+
   const handlePersonalityChange = (field) => (e) => {
     const value = e.target.value || "";
     updateSection("background", {

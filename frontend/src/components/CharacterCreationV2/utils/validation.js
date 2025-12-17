@@ -104,12 +104,13 @@ export const validateBackground = (state) => {
   const backgroundInfo = BACKGROUNDS_BY_KEY[background.key];
   const toolChoiceRequirement = backgroundInfo?.toolProficiencies?.choices;
 
+  // Check tool proficiency choices if required
   if (toolChoiceRequirement?.count) {
     const selected = Array.isArray(background.toolChoices) ? background.toolChoices.length : 0;
-    return selected === toolChoiceRequirement.count;
+    if (selected !== toolChoiceRequirement.count) return false;
   }
 
-  return true;
+  // Check personality selections (ideal, bond, flaw)
   const personality = background.personality || {};
   const hasIdeal = isNonEmpty(personality.ideal);
   const hasBond = isNonEmpty(personality.bond);

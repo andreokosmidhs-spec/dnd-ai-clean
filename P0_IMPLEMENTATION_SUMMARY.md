@@ -187,7 +187,7 @@ sudo supervisorctl status frontend  # Should show "RUNNING"
 # Clear localStorage to start clean:
 localStorage.clear()
 
-# Navigate to: https://dnd-ai-clean-test.preview.emergentagent.com
+# Navigate to: https://wizards-deck.preview.emergentagent.com
 ```
 
 #### 2. **Create Character**

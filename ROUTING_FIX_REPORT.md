@@ -151,7 +151,7 @@ frontend  RUNNING   pid 4038, uptime 0:00:50
 
 ## Preview URL Behavior
 
-**Preview URL:** `https://[project-id].preview.emergentagent.com`
+**Preview URL:** `https://wizards-deck.preview.emergentagent.com`
 
 **Expected Flow:**
 1. User opens preview URL (loads `/`)
@@ -321,9 +321,9 @@ tail -50 /var/log/supervisor/frontend.out.log
 **Check 4: Verify URL**
 ```
 Preview URL should redirect from:
-  https://[id].preview.emergentagent.com/
+  https://wizards-deck.preview.emergentagent.com/
 To:
-  https://[id].preview.emergentagent.com/character-v2
+  https://wizards-deck.preview.emergentagent.com/character-v2
 ```
 
 ### If Character Creation V2 Doesn't Render

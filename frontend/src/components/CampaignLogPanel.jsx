@@ -415,6 +415,8 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
   const { data: leads, isLoading: leadsLoading } = useOpenLeads(campaignId, characterId);
   
   const loadAllData = useCallback(async () => {
+    if (!campaignId) return;
+    
     setLoading(true);
     setError(null);
     
@@ -450,7 +452,11 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [campaignId, characterId]);
+  
+  useEffect(() => {
+    loadAllData();
+  }, [loadAllData]);
   
   // Combine cards with leads
   const allCardsWithLeads = useMemo(() => {

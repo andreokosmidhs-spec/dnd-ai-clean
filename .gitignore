@@ -221,3 +221,7 @@ __marimo__/
 *.env
 *.env.*
 !backend/.env.example
+-e 
+# Environment files
+*.env
+*.env.*

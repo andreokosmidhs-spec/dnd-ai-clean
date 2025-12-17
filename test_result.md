@@ -561,20 +561,22 @@ frontend:
 
 metadata:
   created_by: "main_agent"
-  version: "2.0"
-  test_sequence: 5
+  version: "2.1"
+  test_sequence: 6
   run_ui: true
 
 test_plan:
   current_focus:
+    - "MTG-style Campaign Log / Knowledge Deck UI - Complete Redesign"
     - "SessionManager Integration - RPGGame & AdventureLogWithDM"
     - "Phase 1 Combat System - Target Resolution, Plot Armor, D&D 5e Mechanics"
     - "Matt Mercer Style Cinematic Intro Generation"
   stuck_tasks:
+    - "MTG-style Campaign Log / Knowledge Deck UI - Complete Redesign"
     - "Phase 1 Combat System - Target Resolution, Plot Armor, D&D 5e Mechanics"
     - "Matt Mercer Style Cinematic Intro Generation"
   test_all: false
-  test_priority: "critical_first"
+  test_priority: "high_first"
 
 agent_communication:
   - agent: "testing"

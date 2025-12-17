@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Node artifacts
+package-lock.json
+
 # C extensions
 *.so
 
@@ -217,3 +220,4 @@ __marimo__/
 # Environment files
 *.env
 *.env.*
+!backend/.env.example

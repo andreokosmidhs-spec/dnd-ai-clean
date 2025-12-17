@@ -1411,3 +1411,53 @@ The narration contradiction fixes are **successfully implemented and working**:
 - `/app/backend/routers/dungeon_forge.py` (4 locations)
 
 ---
+
+## Current Test Task - MTG-style Campaign Log UI
+
+### Task: Batch 4.1 – MTG-style Campaign Log / Knowledge Deck UI
+**Status**: Implementation Complete - Needs Testing
+**File Modified**: `/app/frontend/src/components/CampaignLogPanel.jsx`
+
+### Implementation Summary:
+1. ✅ Replaced tabbed interface with unified card deck UI
+2. ✅ Created color-coded card headers by type:
+   - Place (Emerald Green)
+   - NPC (Blue) 
+   - Quest (Amber/Gold)
+   - Lead (Cyan)
+   - Faction (Purple)
+   - Rumor (Pink)
+   - Item (Orange)
+   - Decision (Indigo)
+3. ✅ Added search input at top
+4. ✅ Added filter pills for card types (All, Places, NPCs, etc.)
+5. ✅ Responsive Tailwind CSS grid (1-4 columns based on screen size)
+6. ✅ Loading skeleton cards with animations
+7. ✅ Friendly empty state messages per category
+8. ✅ KnowledgeCard component with:
+   - Color-coded type header with icon
+   - Title (clamped to 2 lines)
+   - Description (clamped to 3 lines)
+   - Tags/badges showing status and attributes
+   - Hover effects (translate-y, shadow glow)
+9. ✅ LeadCard special component with action buttons (Investigate, Resolved, Drop)
+10. ✅ Fixed all React hook ordering issues
+11. ✅ Lint-clean code
+
+### What needs testing:
+1. Open Campaign Log panel and verify new UI renders correctly
+2. Verify search functionality filters cards
+3. Verify filter pills work (All, Places, NPCs, Quests, etc.)
+4. Verify cards display correctly with proper colors
+5. Verify loading skeletons show during data fetch
+6. Verify empty state shows when no cards exist
+7. Test on different screen sizes for responsive grid
+
+### Test Prerequisites:
+- Need to load an existing campaign or create a new one
+- The "Load Last Campaign from DB" requires a campaign with character data
+
+agent_communication:
+  - agent: "main"
+    message: "Completed MTG-style Campaign Log UI implementation. Transformed the tabbed interface into a card deck with color-coded headers, search, filters, loading skeletons, and empty states. All React hook issues fixed and lint passes. Ready for comprehensive frontend testing."
+

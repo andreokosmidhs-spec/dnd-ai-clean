@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -13,6 +13,7 @@ import { useGameState } from '../contexts/GameStateContext';
 import { generateWorldBlueprint, createCharacter, getLastCampaign } from '../api/rpgClient';
 import sessionManager from '../state/SessionManager';
 import { checkLevelUp, getLevelFromXP, getXPForNextLevel } from '../data/levelingData';
+import { useSessionCore } from '../store/useSessionCore';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 

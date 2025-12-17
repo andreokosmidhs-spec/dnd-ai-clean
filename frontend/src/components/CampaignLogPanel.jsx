@@ -425,21 +425,23 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
       if (characterId) params.character_id = characterId;
       
       // Load summary for counts
+      // Note: apiClient returns response.data directly, not wrapped
       const summaryRes = await apiClient.get('/api/campaign/log/summary', { params });
-      setCounts(summaryRes.data?.counts || {});
+      setCounts(summaryRes?.counts || {});
       
       // Load all categories in parallel
       const categories = ['locations', 'npcs', 'quests', 'factions', 'rumors', 'items', 'decisions'];
       const responses = await Promise.all(
         categories.map(cat => 
-          apiClient.get(`/api/campaign/log/${cat}`, { params }).catch(() => ({ data: { [cat]: [] } }))
+          apiClient.get(`/api/campaign/log/${cat}`, { params }).catch(() => ({ [cat]: [] }))
         )
       );
       
       // Combine all cards with their types
+      // Note: apiClient returns response.data directly
       const combined = [];
       categories.forEach((cat, idx) => {
-        const items = responses[idx]?.data?.[cat] || [];
+        const items = responses[idx]?.[cat] || [];
         items.forEach(item => {
           combined.push({ ...item, _type: cat });
         });

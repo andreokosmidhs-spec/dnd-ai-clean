@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { ScrollArea } from './ui/scroll-area';
+import { Input } from './ui/input';
+import { Skeleton } from './ui/skeleton';
 import { 
   X, 
   MapPin,
@@ -14,66 +14,425 @@ import {
   Package,
   GitBranch,
   Loader2,
-  Calendar,
+  Search,
   Compass,
-  CheckCircle,
-  XCircle,
-  Play,
-  Eye
+  Sparkles,
+  BookOpen
 } from 'lucide-react';
 import apiClient from '../lib/apiClient';
 import { useOpenLeads, useUpdateLeadStatus } from '../hooks/useLeads';
 import { QuestDetailModal } from './QuestDetailModal';
 
 /**
- * CampaignLogPanel - Full-page tabbed view of all campaign knowledge
- * Replaces the simple entity profile system with structured categories
+ * Card type configurations with MTG-inspired color schemes
+ */
+const CARD_TYPE_CONFIG = {
+  locations: {
+    label: 'Place',
+    icon: MapPin,
+    gradient: 'from-emerald-600 to-emerald-800',
+    border: 'border-emerald-500/40',
+    glow: 'hover:shadow-emerald-500/20',
+    badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50',
+  },
+  npcs: {
+    label: 'NPC',
+    icon: Users,
+    gradient: 'from-blue-600 to-blue-800',
+    border: 'border-blue-500/40',
+    glow: 'hover:shadow-blue-500/20',
+    badge: 'bg-blue-500/20 text-blue-300 border-blue-400/50',
+  },
+  quests: {
+    label: 'Quest',
+    icon: Scroll,
+    gradient: 'from-amber-500 to-amber-700',
+    border: 'border-amber-500/40',
+    glow: 'hover:shadow-amber-500/20',
+    badge: 'bg-amber-500/20 text-amber-300 border-amber-400/50',
+  },
+  leads: {
+    label: 'Lead',
+    icon: Compass,
+    gradient: 'from-cyan-600 to-cyan-800',
+    border: 'border-cyan-500/40',
+    glow: 'hover:shadow-cyan-500/20',
+    badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-400/50',
+  },
+  factions: {
+    label: 'Faction',
+    icon: Shield,
+    gradient: 'from-purple-600 to-purple-800',
+    border: 'border-purple-500/40',
+    glow: 'hover:shadow-purple-500/20',
+    badge: 'bg-purple-500/20 text-purple-300 border-purple-400/50',
+  },
+  rumors: {
+    label: 'Rumor',
+    icon: MessageCircle,
+    gradient: 'from-pink-600 to-pink-800',
+    border: 'border-pink-500/40',
+    glow: 'hover:shadow-pink-500/20',
+    badge: 'bg-pink-500/20 text-pink-300 border-pink-400/50',
+  },
+  items: {
+    label: 'Item',
+    icon: Package,
+    gradient: 'from-orange-500 to-orange-700',
+    border: 'border-orange-500/40',
+    glow: 'hover:shadow-orange-500/20',
+    badge: 'bg-orange-500/20 text-orange-300 border-orange-400/50',
+  },
+  decisions: {
+    label: 'Decision',
+    icon: GitBranch,
+    gradient: 'from-indigo-600 to-indigo-800',
+    border: 'border-indigo-500/40',
+    glow: 'hover:shadow-indigo-500/20',
+    badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-400/50',
+  },
+};
+
+/**
+ * Loading Skeleton Card Component
+ */
+const SkeletonCard = () => (
+  <Card className="bg-gray-800/60 border-gray-700/50 overflow-hidden">
+    <div className="h-12 bg-gray-700/50">
+      <Skeleton className="h-full w-full bg-gray-600/30" />
+    </div>
+    <CardContent className="p-4 space-y-3">
+      <Skeleton className="h-5 w-3/4 bg-gray-600/30" />
+      <Skeleton className="h-4 w-full bg-gray-600/30" />
+      <Skeleton className="h-4 w-5/6 bg-gray-600/30" />
+      <div className="flex gap-2 pt-2">
+        <Skeleton className="h-5 w-16 rounded-full bg-gray-600/30" />
+        <Skeleton className="h-5 w-20 rounded-full bg-gray-600/30" />
+      </div>
+    </CardContent>
+  </Card>
+);
+
+/**
+ * Empty State Component
+ */
+const EmptyState = ({ type }) => {
+  const config = CARD_TYPE_CONFIG[type] || CARD_TYPE_CONFIG.locations;
+  const Icon = config.icon;
+  
+  const messages = {
+    locations: "No places discovered yet. Explore the world to uncover new locations!",
+    npcs: "No characters met yet. Venture forth and make new acquaintances!",
+    quests: "No quests yet. Seek adventure and purpose!",
+    leads: "No leads yet. Investigate rumors and follow clues!",
+    factions: "No factions discovered. Uncover the powers that shape this world!",
+    rumors: "No rumors heard. Listen closely in taverns and markets!",
+    items: "No significant items found. Search for treasures and artifacts!",
+    decisions: "No major decisions recorded yet. Your choices shape destiny!",
+    all: "Your adventure journal awaits. Begin your journey to fill these pages!",
+  };
+
+  return (
+    <div className="col-span-full flex flex-col items-center justify-center py-16 px-4">
+      <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${config.gradient} flex items-center justify-center mb-6 opacity-50`}>
+        <Icon className="w-10 h-10 text-white/80" />
+      </div>
+      <p className="text-gray-400 text-center text-base max-w-md">
+        {messages[type] || messages.all}
+      </p>
+    </div>
+  );
+};
+
+/**
+ * Knowledge Card Component - MTG-style card design
+ */
+const KnowledgeCard = ({ data, type, onViewDetails }) => {
+  const config = CARD_TYPE_CONFIG[type] || CARD_TYPE_CONFIG.locations;
+  const Icon = config.icon;
+  
+  // Get title based on card type
+  const getTitle = () => {
+    if (type === 'rumors') return data.content?.slice(0, 50) + '...' || 'Unknown Rumor';
+    if (type === 'decisions') return data.description?.slice(0, 50) + '...' || 'Unknown Decision';
+    return data.name || data.title || 'Unknown';
+  };
+  
+  // Get description based on card type
+  const getDescription = () => {
+    switch (type) {
+      case 'locations':
+        return data.culture_notes || data.climate || data.geography || '';
+      case 'npcs':
+        return data.personality || data.appearance || '';
+      case 'quests':
+        return data.description || '';
+      case 'leads':
+        return data.short_text || '';
+      case 'factions':
+        return data.stated_purpose || '';
+      case 'rumors':
+        return data.content || '';
+      case 'items':
+        return data.known_properties || data.appearance || '';
+      case 'decisions':
+        return data.immediate_outcome || data.description || '';
+      default:
+        return '';
+    }
+  };
+  
+  // Get tags/badges based on card type
+  const getTags = () => {
+    const tags = [];
+    
+    switch (type) {
+      case 'locations':
+        if (data.geography) tags.push(data.geography);
+        break;
+      case 'npcs':
+        if (data.role) tags.push(data.role);
+        if (data.relationship_to_party) tags.push(data.relationship_to_party);
+        break;
+      case 'quests':
+        if (data.status) tags.push(data.status);
+        break;
+      case 'leads':
+        if (data.status) tags.push(data.status);
+        if (data.source_type) tags.push(data.source_type);
+        break;
+      case 'factions':
+        if (data.relationship_to_party) tags.push(data.relationship_to_party);
+        break;
+      case 'rumors':
+        if (data.confirmed) tags.push('Confirmed');
+        if (data.contradicted) tags.push('Contradicted');
+        break;
+      case 'items':
+        if (data.currently_held) tags.push('In Inventory');
+        break;
+      case 'decisions':
+        break;
+      default:
+        break;
+    }
+    
+    return tags;
+  };
+
+  const title = getTitle();
+  const description = getDescription();
+  const tags = getTags();
+
+  return (
+    <Card 
+      className={`bg-gray-900/80 ${config.border} overflow-hidden transition-all duration-300 hover:shadow-lg ${config.glow} hover:-translate-y-1 cursor-pointer group`}
+      onClick={() => onViewDetails && onViewDetails(data, type)}
+    >
+      {/* Color-coded header */}
+      <div className={`h-12 bg-gradient-to-r ${config.gradient} flex items-center justify-between px-4`}>
+        <div className="flex items-center gap-2">
+          <Icon className="w-4 h-4 text-white/90" />
+          <span className="text-xs font-semibold text-white/90 uppercase tracking-wider">
+            {config.label}
+          </span>
+        </div>
+        <Sparkles className="w-4 h-4 text-white/40 group-hover:text-white/70 transition-colors" />
+      </div>
+      
+      {/* Card content */}
+      <CardContent className="p-4 space-y-3">
+        {/* Title */}
+        <h3 className="font-semibold text-white text-base leading-tight line-clamp-2">
+          {title}
+        </h3>
+        
+        {/* Description */}
+        {description && (
+          <p className="text-gray-400 text-sm line-clamp-3 leading-relaxed">
+            {description}
+          </p>
+        )}
+        
+        {/* Tags */}
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {tags.map((tag, idx) => (
+              <Badge 
+                key={idx} 
+                variant="outline" 
+                className={`text-xs px-2 py-0.5 ${config.badge}`}
+              >
+                {tag}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+/**
+ * Lead Card Component with status actions
+ */
+const LeadCard = ({ lead, campaignId, characterId, config }) => {
+  const updateStatus = useUpdateLeadStatus();
+  
+  const handleStatusUpdate = (e, newStatus) => {
+    e.stopPropagation();
+    updateStatus.mutate({
+      campaignId,
+      leadId: lead.id,
+      newStatus,
+      characterId
+    });
+  };
+
+  return (
+    <Card 
+      className={`bg-gray-900/80 ${config.border} overflow-hidden transition-all duration-300 hover:shadow-lg ${config.glow} hover:-translate-y-1`}
+    >
+      {/* Color-coded header */}
+      <div className={`h-12 bg-gradient-to-r ${config.gradient} flex items-center justify-between px-4`}>
+        <div className="flex items-center gap-2">
+          <Compass className="w-4 h-4 text-white/90" />
+          <span className="text-xs font-semibold text-white/90 uppercase tracking-wider">
+            Lead
+          </span>
+        </div>
+        <Badge 
+          variant="outline" 
+          className={`text-xs ${
+            lead.status === 'active' ? 'bg-blue-500/30 text-blue-200 border-blue-400/50' :
+            lead.status === 'resolved' ? 'bg-green-500/30 text-green-200 border-green-400/50' :
+            lead.status === 'abandoned' ? 'bg-red-500/30 text-red-200 border-red-400/50' :
+            'bg-gray-500/30 text-gray-200 border-gray-400/50'
+          }`}
+        >
+          {lead.status}
+        </Badge>
+      </div>
+      
+      {/* Card content */}
+      <CardContent className="p-4 space-y-3">
+        <p className="text-white text-sm leading-relaxed">
+          {lead.short_text}
+        </p>
+        
+        {lead.source_type && (
+          <Badge variant="outline" className={`text-xs ${config.badge}`}>
+            {lead.source_type}
+          </Badge>
+        )}
+        
+        {lead.player_notes && (
+          <p className="text-xs text-gray-500 italic bg-gray-800/50 p-2 rounded">
+            {lead.player_notes}
+          </p>
+        )}
+        
+        {/* Action buttons */}
+        {lead.status !== 'resolved' && lead.status !== 'abandoned' && (
+          <div className="flex gap-2 pt-2 border-t border-gray-700/50">
+            {lead.status === 'unexplored' && (
+              <Button
+                onClick={(e) => handleStatusUpdate(e, 'active')}
+                disabled={updateStatus.isPending}
+                size="sm"
+                variant="outline"
+                className="text-xs h-7 flex-1 border-blue-400/50 text-blue-300 hover:bg-blue-400/10"
+              >
+                Investigate
+              </Button>
+            )}
+            <Button
+              onClick={(e) => handleStatusUpdate(e, 'resolved')}
+              disabled={updateStatus.isPending}
+              size="sm"
+              variant="outline"
+              className="text-xs h-7 flex-1 border-green-400/50 text-green-300 hover:bg-green-400/10"
+            >
+              Resolved
+            </Button>
+            <Button
+              onClick={(e) => handleStatusUpdate(e, 'abandoned')}
+              disabled={updateStatus.isPending}
+              size="sm"
+              variant="outline"
+              className="text-xs h-7 border-red-400/50 text-red-300 hover:bg-red-400/10"
+            >
+              Drop
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+/**
+ * Filter Pill Component
+ */
+const FilterPill = ({ label, icon: Icon, isActive, onClick, count }) => (
+  <button
+    onClick={onClick}
+    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
+      isActive 
+        ? 'bg-orange-500/30 text-orange-300 border border-orange-400/50 shadow-lg shadow-orange-500/10' 
+        : 'bg-gray-800/60 text-gray-400 border border-gray-700/50 hover:bg-gray-700/60 hover:text-gray-300'
+    }`}
+  >
+    {Icon && <Icon className="w-3.5 h-3.5" />}
+    <span>{label}</span>
+    {count > 0 && (
+      <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${
+        isActive ? 'bg-orange-500/40' : 'bg-gray-700'
+      }`}>
+        {count}
+      </span>
+    )}
+  </button>
+);
+
+/**
+ * CampaignLogPanel - MTG-style Card Deck UI
  */
 export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
-  const [summary, setSummary] = useState(null);
-  const [activeTab, setActiveTab] = useState('locations');
-  const [categoryData, setCategoryData] = useState({});
+  const [allCards, setAllCards] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [categoryLoading, setCategoryLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [counts, setCounts] = useState({});
   
   // Quest Detail Modal State
-  const [selectedQuest, setSelectedQuest] = useState(null);
-  const [selectedQuestLead, setSelectedQuestLead] = useState(null);
-  const [showQuestModal, setShowQuestModal] = useState(false);
-  const [fullLog, setFullLog] = useState(null); // For entity resolution in modal
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [selectedItemType, setSelectedItemType] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   
-  // Move useOpenLeads hook to top level to avoid conditional hook usage
-  const { data: leads, isLoading: leadsLoading, error: leadsError } = useOpenLeads(campaignId, characterId);
+  // Move useOpenLeads hook to top level
+  const { data: leads, isLoading: leadsLoading } = useOpenLeads(campaignId, characterId);
   
   useEffect(() => {
     if (campaignId) {
-      loadSummary();
+      loadAllData();
     }
   }, [campaignId]);
   
-  useEffect(() => {
-    if (activeTab && campaignId) {
-      loadCategoryData(activeTab);
-    }
-  }, [activeTab, campaignId]);
-  
-  // CRITICAL FIX: Guard against undefined campaignId
+  // Guard against undefined campaignId
   if (!campaignId) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-        <Card className="w-full max-w-4xl mx-4 bg-gradient-to-br from-gray-900 to-gray-800 border-2 border-red-500/50">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
+        <Card className="w-full max-w-md mx-4 bg-gray-900 border-red-500/50">
           <CardContent className="p-8 text-center space-y-4">
-            <div className="text-red-400 text-lg font-semibold">
-              ⚠️ Campaign ID Missing
+            <div className="w-16 h-16 mx-auto rounded-full bg-red-500/20 flex items-center justify-center">
+              <BookOpen className="w-8 h-8 text-red-400" />
             </div>
             <p className="text-gray-300">
-              Cannot load Campaign Log without a valid campaign ID.
+              Cannot load Campaign Log without a valid campaign.
             </p>
-            <p className="text-sm text-gray-400">
-              Please start or load a campaign first.
-            </p>
-            <Button onClick={onClose} variant="outline" className="mt-4">
+            <Button onClick={onClose} variant="outline" className="border-gray-600">
               Close
             </Button>
           </CardContent>
@@ -82,7 +441,7 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
     );
   }
   
-  const loadSummary = async () => {
+  const loadAllData = async () => {
     setLoading(true);
     setError(null);
     
@@ -90,778 +449,215 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
       const params = { campaign_id: campaignId };
       if (characterId) params.character_id = characterId;
       
-      const response = await apiClient.get('/api/campaign/log/summary', { params });
-      setSummary(response.data);
+      // Load summary for counts
+      const summaryRes = await apiClient.get('/api/campaign/log/summary', { params });
+      setCounts(summaryRes.data?.counts || {});
+      
+      // Load all categories in parallel
+      const categories = ['locations', 'npcs', 'quests', 'factions', 'rumors', 'items', 'decisions'];
+      const responses = await Promise.all(
+        categories.map(cat => 
+          apiClient.get(`/api/campaign/log/${cat}`, { params }).catch(() => ({ data: { [cat]: [] } }))
+        )
+      );
+      
+      // Combine all cards with their types
+      const combined = [];
+      categories.forEach((cat, idx) => {
+        const items = responses[idx]?.data?.[cat] || [];
+        items.forEach(item => {
+          combined.push({ ...item, _type: cat });
+        });
+      });
+      
+      setAllCards(combined);
     } catch (err) {
-      console.error('❌ Failed to load campaign log summary:', err);
+      console.error('Failed to load campaign log:', err);
       setError('Failed to load campaign log');
     } finally {
       setLoading(false);
     }
   };
   
-  const loadCategoryData = async (category) => {
-    if (categoryData[category]) {
-      return; // Already loaded
+  // Combine cards with leads
+  const allCardsWithLeads = useMemo(() => {
+    const leadCards = (leads || []).map(lead => ({ ...lead, _type: 'leads' }));
+    return [...allCards, ...leadCards];
+  }, [allCards, leads]);
+  
+  // Filter and search cards
+  const filteredCards = useMemo(() => {
+    let result = allCardsWithLeads;
+    
+    // Apply type filter
+    if (activeFilter !== 'all') {
+      result = result.filter(card => card._type === activeFilter);
     }
     
-    setCategoryLoading(true);
-    
-    try {
-      const params = { campaign_id: campaignId };
-      if (characterId) params.character_id = characterId;
-      
-      const response = await apiClient.get(`/api/campaign/log/${category}`, { params });
-      setCategoryData(prev => ({
-        ...prev,
-        [category]: response.data[category] || []
-      }));
-    } catch (err) {
-      console.error(`❌ Failed to load ${category}:`, err);
-    } finally {
-      setCategoryLoading(false);
-    }
-  };
-  
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-  
-  // Handle opening quest detail modal
-  const handleViewQuestDetails = async (quest) => {
-    setSelectedQuest(quest);
-    
-    // Fetch full log for entity resolution if not already loaded
-    if (!fullLog) {
-      try {
-        const params = { campaign_id: campaignId };
-        if (characterId) params.character_id = characterId;
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(card => {
+        const searchableText = [
+          card.name,
+          card.title,
+          card.content,
+          card.description,
+          card.short_text,
+          card.personality,
+          card.role,
+          card.stated_purpose,
+        ].filter(Boolean).join(' ').toLowerCase();
         
-        const response = await apiClient.get('/api/campaign/log/full', { params });
-        setFullLog(response.data);
-      } catch (err) {
-        console.error('❌ Failed to load full campaign log:', err);
-      }
-    }
-    
-    // Fetch lead details if quest has source_lead_id
-    if (quest.source_lead_id) {
-      try {
-        const params = { campaign_id: campaignId };
-        if (characterId) params.character_id = characterId;
-        
-        const response = await apiClient.get(`/api/campaign/log/leads/${quest.source_lead_id}`, { params });
-        setSelectedQuestLead(response.data);
-      } catch (err) {
-        console.error('❌ Failed to load quest lead:', err);
-        setSelectedQuestLead(null);
-      }
-    } else {
-      setSelectedQuestLead(null);
-    }
-    
-    setShowQuestModal(true);
-  };
-  
-  // Handle closing quest detail modal
-  const handleCloseQuestModal = () => {
-    setShowQuestModal(false);
-    setSelectedQuest(null);
-    setSelectedQuestLead(null);
-  };
-  
-  const renderLocations = () => {
-    const locations = categoryData?.locations || [];
-    
-    if (categoryLoading) {
-      return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-orange-400" /></div>;
-    }
-    
-    if (locations.length === 0) {
-      return <p className="text-gray-400 text-center p-8">No locations discovered yet. Explore the world!</p>;
-    }
-    
-    return (
-      <div className="grid gap-4">
-        {locations.map((loc) => (
-          <Card key={loc.id} className="bg-gray-800/50 border-orange-600/30">
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="text-orange-400 text-lg">{loc.name}</CardTitle>
-                  {loc.geography && (
-                    <p className="text-sm text-gray-400 mt-1">{loc.geography}</p>
-                  )}
-                </div>
-                <MapPin className="h-5 w-5 text-orange-400" />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {loc.climate && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Climate:</span>
-                  <p className="text-sm text-gray-300">{loc.climate}</p>
-                </div>
-              )}
-              
-              {loc.notable_places && loc.notable_places.length > 0 && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Notable Places:</span>
-                  <ul className="list-disc list-inside mt-1 space-y-1">
-                    {loc.notable_places.map((place, idx) => (
-                      <li key={idx} className="text-sm text-gray-300">{place}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              
-              {loc.architecture && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Architecture:</span>
-                  <p className="text-sm text-gray-300">{loc.architecture}</p>
-                </div>
-              )}
-              
-              {loc.culture_notes && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Culture:</span>
-                  <p className="text-sm text-gray-300">{loc.culture_notes}</p>
-                </div>
-              )}
-              
-              <div className="flex items-center gap-2 text-xs text-gray-500 pt-2 border-t border-gray-700">
-                <Calendar className="h-3 w-3" />
-                First visited: {formatDate(loc.first_visited)}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  };
-  
-  const renderNpcs = () => {
-    const npcs = categoryData?.npcs || [];
-    
-    if (categoryLoading) {
-      return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-orange-400" /></div>;
-    }
-    
-    if (npcs.length === 0) {
-      return <p className="text-gray-400 text-center p-8">No NPCs met yet. Start your adventure!</p>;
-    }
-    
-    return (
-      <div className="grid gap-4">
-        {npcs.map((npc) => (
-          <Card key={npc.id} className="bg-gray-800/50 border-orange-600/30">
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="text-orange-400 text-lg">{npc.name}</CardTitle>
-                  {npc.role && (
-                    <Badge variant="outline" className="mt-2 text-xs border-orange-400/50 text-orange-300">
-                      {npc.role}
-                    </Badge>
-                  )}
-                </div>
-                <Users className="h-5 w-5 text-orange-400" />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {npc.appearance && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Appearance:</span>
-                  <p className="text-sm text-gray-300">{npc.appearance}</p>
-                </div>
-              )}
-              
-              {npc.personality && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Personality:</span>
-                  <p className="text-sm text-gray-300">{npc.personality}</p>
-                </div>
-              )}
-              
-              {npc.wants && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Wants:</span>
-                  <p className="text-sm text-gray-300">{npc.wants}</p>
-                </div>
-              )}
-              
-              {npc.offered && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Offered:</span>
-                  <p className="text-sm text-gray-300">{npc.offered}</p>
-                </div>
-              )}
-              
-              {npc.relationship_to_party && (
-                <div>
-                  <Badge 
-                    variant="outline"
-                    className={
-                      npc.relationship_to_party === 'friendly' || npc.relationship_to_party === 'ally' ? 'border-green-400 text-green-300' :
-                      npc.relationship_to_party === 'hostile' ? 'border-red-400 text-red-300' :
-                      'border-gray-400 text-gray-300'
-                    }
-                  >
-                    {npc.relationship_to_party}
-                  </Badge>
-                </div>
-              )}
-              
-              <div className="flex items-center gap-2 text-xs text-gray-500 pt-2 border-t border-gray-700">
-                <Calendar className="h-3 w-3" />
-                First met: {formatDate(npc.first_met)}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  };
-  
-  const renderQuests = () => {
-    const quests = categoryData?.quests || [];
-    
-    if (categoryLoading) {
-      return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-orange-400" /></div>;
-    }
-    
-    if (quests.length === 0) {
-      return <p className="text-gray-400 text-center p-8">No quests yet. Seek adventure!</p>;
-    }
-    
-    return (
-      <div className="grid gap-4">
-        {quests.map((quest) => (
-          <Card key={quest.id} className="bg-gray-800/50 border-orange-600/30">
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="text-orange-400 text-lg">{quest.title}</CardTitle>
-                  <Badge 
-                    variant="outline" 
-                    className={
-                      quest.status === 'completed' ? 'mt-2 border-green-400 text-green-300' :
-                      quest.status === 'failed' ? 'mt-2 border-red-400 text-red-300' :
-                      'mt-2 border-orange-400/50 text-orange-300'
-                    }
-                  >
-                    {quest.status}
-                  </Badge>
-                </div>
-                <Scroll className="h-5 w-5 text-orange-400" />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {quest.description && (
-                <p className="text-sm text-gray-300 line-clamp-2">{quest.description}</p>
-              )}
-              
-              {quest.objectives && quest.objectives.length > 0 && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Objectives:</span>
-                  <ul className="list-disc list-inside mt-1 space-y-1">
-                    {quest.objectives.slice(0, 3).map((obj, idx) => (
-                      <li key={idx} className="text-sm text-gray-300">{obj}</li>
-                    ))}
-                    {quest.objectives.length > 3 && (
-                      <li className="text-sm text-gray-400 italic">+{quest.objectives.length - 3} more...</li>
-                    )}
-                  </ul>
-                </div>
-              )}
-              
-              {quest.promised_rewards && quest.promised_rewards.length > 0 && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Rewards:</span>
-                  <ul className="list-disc list-inside mt-1 space-y-1">
-                    {quest.promised_rewards.slice(0, 2).map((reward, idx) => (
-                      <li key={idx} className="text-sm text-green-300">{reward}</li>
-                    ))}
-                    {quest.promised_rewards.length > 2 && (
-                      <li className="text-sm text-gray-400 italic">+{quest.promised_rewards.length - 2} more...</li>
-                    )}
-                  </ul>
-                </div>
-              )}
-              
-              {/* View Details Button */}
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => handleViewQuestDetails(quest)}
-                className="w-full mt-2 border-orange-600/50 text-orange-400 hover:bg-orange-950/30 hover:border-orange-500"
-              >
-                <Eye className="h-4 w-4 mr-2" />
-                View Details
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  };
-  
-  const renderFactions = () => {
-    const factions = categoryData?.factions || [];
-    
-    if (categoryLoading) {
-      return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-orange-400" /></div>;
-    }
-    
-    if (factions.length === 0) {
-      return <p className="text-gray-400 text-center p-8">No factions discovered yet.</p>;
-    }
-    
-    return (
-      <div className="grid gap-4">
-        {factions.map((faction) => (
-          <Card key={faction.id} className="bg-gray-800/50 border-orange-600/30">
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="text-orange-400 text-lg">{faction.name}</CardTitle>
-                  {faction.symbols && (
-                    <p className="text-xs text-gray-400 mt-1">Symbol: {faction.symbols}</p>
-                  )}
-                </div>
-                <Shield className="h-5 w-5 text-orange-400" />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {faction.stated_purpose && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Stated Purpose:</span>
-                  <p className="text-sm text-gray-300">{faction.stated_purpose}</p>
-                </div>
-              )}
-              
-              {faction.suspected_purpose && (
-                <div>
-                  <span className="text-xs font-semibold text-yellow-400">Suspected Purpose:</span>
-                  <p className="text-sm text-yellow-200">{faction.suspected_purpose}</p>
-                </div>
-              )}
-              
-              {faction.relationship_to_party && (
-                <div>
-                  <Badge 
-                    variant="outline"
-                    className={
-                      faction.relationship_to_party === 'ally' ? 'border-green-400 text-green-300' :
-                      faction.relationship_to_party === 'hostile' ? 'border-red-400 text-red-300' :
-                      'border-gray-400 text-gray-300'
-                    }
-                  >
-                    {faction.relationship_to_party}
-                  </Badge>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  };
-  
-  const renderRumors = () => {
-    const rumors = categoryData?.rumors || [];
-    
-    if (categoryLoading) {
-      return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-orange-400" /></div>;
-    }
-    
-    if (rumors.length === 0) {
-      return <p className="text-gray-400 text-center p-8">No rumors heard yet.</p>;
-    }
-    
-    return (
-      <div className="grid gap-3">
-        {rumors.map((rumor) => (
-          <Card key={rumor.id} className="bg-gray-800/50 border-purple-600/30">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <MessageCircle className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-sm text-gray-300">{rumor.content}</p>
-                  {rumor.confirmed && (
-                    <Badge variant="outline" className="mt-2 border-green-400 text-green-300 text-xs">
-                      Confirmed
-                    </Badge>
-                  )}
-                  {rumor.contradicted && (
-                    <Badge variant="outline" className="mt-2 border-red-400 text-red-300 text-xs">
-                      Contradicted
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  };
-  
-  const renderItems = () => {
-    const items = categoryData?.items || [];
-    
-    if (categoryLoading) {
-      return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-orange-400" /></div>;
-    }
-    
-    if (items.length === 0) {
-      return <p className="text-gray-400 text-center p-8">No significant items discovered yet.</p>;
-    }
-    
-    return (
-      <div className="grid gap-4">
-        {items.map((item) => (
-          <Card key={item.id} className="bg-gray-800/50 border-orange-600/30">
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="text-orange-400 text-lg">{item.name}</CardTitle>
-                  {item.currently_held && (
-                    <Badge variant="outline" className="mt-2 text-xs border-green-400/50 text-green-300">
-                      In Inventory
-                    </Badge>
-                  )}
-                </div>
-                <Package className="h-5 w-5 text-orange-400" />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {item.appearance && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Appearance:</span>
-                  <p className="text-sm text-gray-300">{item.appearance}</p>
-                </div>
-              )}
-              
-              {item.known_properties && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400">Properties:</span>
-                  <p className="text-sm text-gray-300">{item.known_properties}</p>
-                </div>
-              )}
-              
-              {item.suspected_properties && (
-                <div>
-                  <span className="text-xs font-semibold text-yellow-400">Suspected:</span>
-                  <p className="text-sm text-yellow-200">{item.suspected_properties}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  };
-  
-  const renderDecisions = () => {
-    const decisions = categoryData?.decisions || [];
-    
-    if (categoryLoading) {
-      return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-orange-400" /></div>;
-    }
-    
-    if (decisions.length === 0) {
-      return <p className="text-gray-400 text-center p-8">No major decisions recorded yet.</p>;
-    }
-    
-    return (
-      <div className="grid gap-4">
-        {decisions.map((decision) => (
-          <Card key={decision.id} className="bg-gray-800/50 border-blue-600/30">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <GitBranch className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 space-y-2">
-                  <p className="text-sm text-gray-300 font-medium">{decision.description}</p>
-                  
-                  {decision.immediate_outcome && (
-                    <div>
-                      <span className="text-xs font-semibold text-gray-400">Result:</span>
-                      <p className="text-sm text-gray-300">{decision.immediate_outcome}</p>
-                    </div>
-                  )}
-                  
-                  {decision.potential_consequences && decision.potential_consequences.length > 0 && (
-                    <div>
-                      <span className="text-xs font-semibold text-yellow-400">Potential Consequences:</span>
-                      <ul className="list-disc list-inside mt-1 space-y-1">
-                        {decision.potential_consequences.map((consequence, idx) => (
-                          <li key={idx} className="text-sm text-yellow-200">{consequence}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  
-                  <div className="text-xs text-gray-500 pt-2 border-t border-gray-700">
-                    {formatDate(decision.decided_when)}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  };
-  
-  const LeadCard = ({ lead }) => {
-    const updateStatus = useUpdateLeadStatus();
-    
-    const handleStatusUpdate = (newStatus) => {
-      updateStatus.mutate({
-        campaignId,
-        leadId: lead.id,
-        newStatus,
-        characterId
+        return searchableText.includes(query);
       });
-    };
+    }
     
-    const getStatusBadgeClass = (status) => {
-      switch (status) {
-        case 'unexplored':
-          return 'border-gray-400 text-gray-300';
-        case 'active':
-          return 'border-blue-400 text-blue-300';
-        case 'resolved':
-          return 'border-green-400 text-green-300';
-        case 'abandoned':
-          return 'border-red-400/50 text-red-300';
-        default:
-          return 'border-gray-400 text-gray-300';
-      }
-    };
-    
-    const getSourceTypeIcon = (sourceType) => {
-      switch (sourceType) {
-        case 'environmental':
-          return '🌿';
-        case 'conversation':
-          return '💬';
-        case 'observation':
-          return '👁️';
-        case 'rumor':
-          return '🗣️';
-        default:
-          return '📍';
-      }
-    };
-    
-    return (
-      <Card className="bg-gray-800/50 border-cyan-600/30">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <Compass className="h-5 w-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1 space-y-3">
-              {/* Lead text */}
-              <div>
-                <p className="text-sm text-gray-300 font-medium">{lead.short_text}</p>
-              </div>
-              
-              {/* Metadata */}
-              <div className="flex flex-wrap gap-2 items-center">
-                <Badge variant="outline" className={`text-xs ${getStatusBadgeClass(lead.status)}`}>
-                  {lead.status}
-                </Badge>
-                
-                {lead.source_type && (
-                  <span className="text-xs text-gray-500">
-                    {getSourceTypeIcon(lead.source_type)} {lead.source_type}
-                  </span>
-                )}
-                
-                {lead.location_id && (
-                  <span className="text-xs text-gray-500">
-                    <MapPin className="h-3 w-3 inline mr-1" />
-                    {lead.location_id.replace('location_', '')}
-                  </span>
-                )}
-              </div>
-              
-              {/* Player notes */}
-              {lead.player_notes && (
-                <div className="text-xs text-gray-400 italic bg-gray-900/30 p-2 rounded">
-                  📝 {lead.player_notes}
-                </div>
-              )}
-              
-              {/* Action buttons */}
-              {lead.status !== 'resolved' && lead.status !== 'abandoned' && (
-                <div className="flex gap-2 pt-2 border-t border-gray-700">
-                  {lead.status === 'unexplored' && (
-                    <Button
-                      onClick={() => handleStatusUpdate('active')}
-                      disabled={updateStatus.isPending}
-                      size="sm"
-                      variant="outline"
-                      className="text-xs h-7 border-blue-400/50 text-blue-300 hover:bg-blue-400/10"
-                    >
-                      <Play className="h-3 w-3 mr-1" />
-                      Mark Active
-                    </Button>
-                  )}
-                  
-                  <Button
-                    onClick={() => handleStatusUpdate('resolved')}
-                    disabled={updateStatus.isPending}
-                    size="sm"
-                    variant="outline"
-                    className="text-xs h-7 border-green-400/50 text-green-300 hover:bg-green-400/10"
-                  >
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    Mark Resolved
-                  </Button>
-                  
-                  <Button
-                    onClick={() => handleStatusUpdate('abandoned')}
-                    disabled={updateStatus.isPending}
-                    size="sm"
-                    variant="outline"
-                    className="text-xs h-7 border-red-400/50 text-red-300 hover:bg-red-400/10"
-                  >
-                    <XCircle className="h-3 w-3 mr-1" />
-                    Abandon
-                  </Button>
-                </div>
-              )}
-              
-              {/* Timestamp */}
-              <div className="text-xs text-gray-500">
-                <Calendar className="h-3 w-3 inline mr-1" />
-                Discovered: {formatDate(lead.created_at)}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return result;
+  }, [allCardsWithLeads, activeFilter, searchQuery]);
+  
+  const handleViewDetails = (item, type) => {
+    setSelectedItem(item);
+    setSelectedItemType(type);
+    if (type === 'quests') {
+      setShowDetailModal(true);
+    }
   };
   
-  const renderLeads = () => {
-    if (leadsLoading) {
-      return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-orange-400" /></div>;
-    }
-    
-    if (leadsError) {
-      return <p className="text-red-400 text-center p-8">Failed to load leads: {leadsError.message}</p>;
-    }
-    
-    if (!leads || leads.length === 0) {
-      return (
-        <div className="text-center p-8 space-y-2">
-          <Compass className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-400">No leads yet.</p>
-          <p className="text-sm text-gray-500">Explore the world to discover rumors and hooks!</p>
-        </div>
-      );
-    }
-    
-    return (
-      <div className="grid gap-3">
-        {leads.map((lead) => (
-          <LeadCard key={lead.id} lead={lead} />
-        ))}
-      </div>
-    );
+  const handleCloseDetailModal = () => {
+    setShowDetailModal(false);
+    setSelectedItem(null);
+    setSelectedItemType(null);
   };
   
-  if (loading) {
-    return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-400" />
-      </div>
-    );
-  }
+  // Calculate total counts
+  const totalCount = Object.values(counts).reduce((a, b) => a + b, 0) + (leads?.length || 0);
+  
+  // Filter options
+  const filterOptions = [
+    { key: 'all', label: 'All', icon: Sparkles, count: totalCount },
+    { key: 'locations', label: 'Places', icon: MapPin, count: counts.locations || 0 },
+    { key: 'npcs', label: 'NPCs', icon: Users, count: counts.npcs || 0 },
+    { key: 'quests', label: 'Quests', icon: Scroll, count: counts.quests || 0 },
+    { key: 'leads', label: 'Leads', icon: Compass, count: leads?.length || 0 },
+    { key: 'factions', label: 'Factions', icon: Shield, count: counts.factions || 0 },
+    { key: 'rumors', label: 'Rumors', icon: MessageCircle, count: counts.rumors || 0 },
+    { key: 'items', label: 'Items', icon: Package, count: counts.items || 0 },
+    { key: 'decisions', label: 'Decisions', icon: GitBranch, count: counts.decisions || 0 },
+  ];
   
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-4xl h-[90vh] bg-gray-900/95 border-orange-600/30 flex flex-col">
-        <CardHeader className="border-b border-orange-600/20 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-orange-400 text-2xl">Campaign Log</CardTitle>
+    <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md overflow-hidden">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-gray-900/95 border-b border-gray-800 px-6 py-4">
+        <div className="max-w-7xl mx-auto">
+          {/* Title row */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-white">Knowledge Deck</h1>
+                <p className="text-sm text-gray-500">{totalCount} cards collected</p>
+              </div>
+            </div>
             <Button
               onClick={onClose}
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0 text-orange-400 hover:text-orange-200 hover:bg-orange-600/20"
+              className="h-10 w-10 p-0 text-gray-400 hover:text-white hover:bg-gray-800"
             >
               <X className="h-5 w-5" />
             </Button>
           </div>
-          {summary && (
-            <div className="flex gap-4 mt-4 text-sm text-gray-400">
-              <span>Locations: {summary.counts.locations}</span>
-              <span>NPCs: {summary.counts.npcs}</span>
-              <span>Quests: {summary.counts.quests}</span>
-              <span>Leads: {summary.counts.leads || 0}</span>
-              <span>Factions: {summary.counts.factions}</span>
+          
+          {/* Search and filters */}
+          <div className="space-y-3">
+            {/* Search input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <Input
+                type="text"
+                placeholder="Search your knowledge..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 bg-gray-800/60 border-gray-700 text-white placeholder:text-gray-500 focus:border-orange-500/50 focus:ring-orange-500/20"
+              />
+            </div>
+            
+            {/* Filter pills */}
+            <div className="flex flex-wrap gap-2">
+              {filterOptions.map(option => (
+                <FilterPill
+                  key={option.key}
+                  label={option.label}
+                  icon={option.icon}
+                  isActive={activeFilter === option.key}
+                  onClick={() => setActiveFilter(option.key)}
+                  count={option.count}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Content */}
+      <div className="overflow-y-auto h-[calc(100vh-180px)] px-6 py-6">
+        <div className="max-w-7xl mx-auto">
+          {loading || leadsLoading ? (
+            // Loading skeletons
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {[...Array(8)].map((_, i) => (
+                <SkeletonCard key={i} />
+              ))}
+            </div>
+          ) : error ? (
+            // Error state
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mb-4">
+                <X className="w-8 h-8 text-red-400" />
+              </div>
+              <p className="text-gray-400 text-center">{error}</p>
+              <Button onClick={loadAllData} variant="outline" className="mt-4 border-gray-600">
+                Try Again
+              </Button>
+            </div>
+          ) : filteredCards.length === 0 ? (
+            // Empty state
+            <EmptyState type={activeFilter} />
+          ) : (
+            // Card grid
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredCards.map((card, idx) => (
+                card._type === 'leads' ? (
+                  <LeadCard 
+                    key={card.id || idx}
+                    lead={card}
+                    campaignId={campaignId}
+                    characterId={characterId}
+                    config={CARD_TYPE_CONFIG.leads}
+                  />
+                ) : (
+                  <KnowledgeCard
+                    key={card.id || idx}
+                    data={card}
+                    type={card._type}
+                    onViewDetails={handleViewDetails}
+                  />
+                )
+              ))}
             </div>
           )}
-        </CardHeader>
-        
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="grid w-full grid-cols-8 bg-gray-800/50 flex-shrink-0">
-            <TabsTrigger value="locations" className="text-xs">
-              <MapPin className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="npcs" className="text-xs">
-              <Users className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="quests" className="text-xs">
-              <Scroll className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="leads" className="text-xs">
-              <Compass className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="factions" className="text-xs">
-              <Shield className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="rumors" className="text-xs">
-              <MessageCircle className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="items" className="text-xs">
-              <Package className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="decisions" className="text-xs">
-              <GitBranch className="h-4 w-4" />
-            </TabsTrigger>
-          </TabsList>
-          
-          <div className="flex-1 overflow-hidden">
-            <ScrollArea className="h-full">
-              <div className="p-6">
-                <TabsContent value="locations" className="mt-0">{renderLocations()}</TabsContent>
-                <TabsContent value="npcs" className="mt-0">{renderNpcs()}</TabsContent>
-                <TabsContent value="quests" className="mt-0">{renderQuests()}</TabsContent>
-                <TabsContent value="leads" className="mt-0">{renderLeads()}</TabsContent>
-                <TabsContent value="factions" className="mt-0">{renderFactions()}</TabsContent>
-                <TabsContent value="rumors" className="mt-0">{renderRumors()}</TabsContent>
-                <TabsContent value="items" className="mt-0">{renderItems()}</TabsContent>
-                <TabsContent value="decisions" className="mt-0">{renderDecisions()}</TabsContent>
-              </div>
-            </ScrollArea>
-          </div>
-        </Tabs>
-      </Card>
+        </div>
+      </div>
       
       {/* Quest Detail Modal */}
-      {showQuestModal && selectedQuest && (
+      {showDetailModal && selectedItem && selectedItemType === 'quests' && (
         <QuestDetailModal 
-          quest={selectedQuest}
-          lead={selectedQuestLead}
-          onClose={handleCloseQuestModal}
-          campaignLog={fullLog}
+          quest={selectedItem}
+          onClose={handleCloseDetailModal}
         />
       )}
     </div>

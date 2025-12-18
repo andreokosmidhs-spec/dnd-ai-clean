@@ -188,15 +188,6 @@ const RPGGame = () => {
           window.showToast(`Welcome, ${characterForRPG.name}! Your adventure begins...`, 'success');
         }
       };
-          localStorage.setItem('game-state-campaign-id', activeCampaignId);
-          localStorage.setItem('rpg-campaign-character', JSON.stringify(fallbackCharacter));
-          
-          const newSessionId = sessionManager.createNewSessionId(activeCampaignId);
-          setSessionId(newSessionId);
-          setGameState('playing');
-          console.log('🌉 Bridge: Proceeded with fallback data');
-        }
-      };
       
       loadFromSessionCore();
     }

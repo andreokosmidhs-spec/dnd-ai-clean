@@ -103,69 +103,88 @@ const RPGGame = () => {
       // Fetch campaign data and transition to playing state
       const loadFromSessionCore = async () => {
         try {
-          const response = await fetch(`${BACKEND_URL}/api/campaigns/latest`);
-          const result = await response.json();
+          // Fetch campaign by ID (new flow stores campaign and character separately)
+          const campaignRes = await fetch(`${BACKEND_URL}/api/campaigns/${activeCampaignId}`);
+          const campaignData = await campaignRes.json();
           
-          if (result.success && result.data) {
-            const { character: charData, campaign_id, intro, world_blueprint } = result.data;
-            
-            // Set character data for RPGGame
-            if (charData) {
-              const characterForRPG = {
-                id: activeCharacterId,
-                name: charData.name || 'Adventurer',
-                class: charData.class || charData.class_ || 'Unknown',
-                race: charData.race || 'Unknown',
-                level: charData.level || 1,
-                hp: charData.hp || 10,
-                maxHp: charData.max_hp || 10,
-                stats: charData.stats || {},
-                ...charData
-              };
-              
-              setCharacter(characterForRPG);
-              
-              // Bridge to legacy storage for compatibility with other components
-              localStorage.setItem('rpg-campaign-character', JSON.stringify(characterForRPG));
-              console.log('🌉 Bridge: Character data set and saved to legacy storage');
-            }
-            
-            // Set campaign ID in GameStateContext
-            if (campaign_id) {
-              setCampaignId(campaign_id);
-              localStorage.setItem('game-state-campaign-id', campaign_id);
-            }
-            
-            // Set world blueprint if available
-            if (world_blueprint) {
-              setWorldBlueprint(world_blueprint);
-            }
-            
-            // Set intro as initial game log entry
-            if (intro) {
-              setGameLog([{
-                type: 'narration',
-                message: intro,
-                timestamp: Date.now()
-              }]);
-            }
-            
-            // Create session for AdventureLogWithDM
-            const newSessionId = sessionManager.createNewSessionId(campaign_id || activeCampaignId);
-            setSessionId(newSessionId);
-            
-            // Transition to playing state
-            setGameState('playing');
-            console.log('🌉 Bridge: Transitioned to playing state');
-            
-            if (window.showToast) {
-              window.showToast(`Welcome, ${charData?.name || 'Adventurer'}! Your adventure begins...`, 'success');
-            }
-          } else {
-            console.warn('🌉 Bridge: Failed to load campaign data, falling back to menu');
+          // Fetch character by ID
+          const characterRes = await fetch(`${BACKEND_URL}/api/v2/characters/${activeCharacterId}`);
+          const characterData = await characterRes.json();
+          
+          console.log('🌉 Bridge: Fetched campaign:', campaignData?.campaign_id || activeCampaignId);
+          console.log('🌉 Bridge: Fetched character:', characterData?.name || 'Unknown');
+          
+          // Build character object for RPGGame
+          const charData = characterData || {};
+          const characterForRPG = {
+            id: activeCharacterId,
+            name: charData.name || 'Adventurer',
+            class: charData.class || charData.class_ || charData.className || 'Unknown',
+            race: charData.race || 'Unknown',
+            level: charData.level || 1,
+            hp: charData.hp || charData.hitPoints?.current || 10,
+            maxHp: charData.max_hp || charData.hitPoints?.max || 10,
+            stats: charData.stats || charData.abilities || {},
+            background: charData.background || {},
+            ...charData
+          };
+          
+          setCharacter(characterForRPG);
+          
+          // Bridge to legacy storage for compatibility with other components
+          localStorage.setItem('rpg-campaign-character', JSON.stringify(characterForRPG));
+          console.log('🌉 Bridge: Character data set and saved to legacy storage');
+          
+          // Set campaign ID in GameStateContext
+          setCampaignId(activeCampaignId);
+          localStorage.setItem('game-state-campaign-id', activeCampaignId);
+          
+          // Set world blueprint if available
+          if (campaignData?.world_blueprint) {
+            setWorldBlueprint(campaignData.world_blueprint);
+          }
+          
+          // Set intro as initial game log entry
+          const intro = campaignData?.intro || `Welcome, ${characterForRPG.name}! Your adventure in this realm begins now...`;
+          setGameLog([{
+            type: 'narration',
+            message: intro,
+            timestamp: Date.now()
+          }]);
+          
+          // Create session for AdventureLogWithDM
+          const newSessionId = sessionManager.createNewSessionId(activeCampaignId);
+          setSessionId(newSessionId);
+          
+          // Transition to playing state
+          setGameState('playing');
+          console.log('🌉 Bridge: Transitioned to playing state');
+          
+          if (window.showToast) {
+            window.showToast(`Welcome, ${characterForRPG.name}! Your adventure begins...`, 'success');
           }
         } catch (err) {
           console.error('🌉 Bridge: Error loading campaign:', err);
+          // Even if API fails, try to proceed with minimal data
+          const fallbackCharacter = {
+            id: activeCharacterId,
+            name: 'Adventurer',
+            class: 'Unknown',
+            race: 'Unknown',
+            level: 1,
+            hp: 10,
+            maxHp: 10,
+            stats: {}
+          };
+          setCharacter(fallbackCharacter);
+          setCampaignId(activeCampaignId);
+          localStorage.setItem('game-state-campaign-id', activeCampaignId);
+          localStorage.setItem('rpg-campaign-character', JSON.stringify(fallbackCharacter));
+          
+          const newSessionId = sessionManager.createNewSessionId(activeCampaignId);
+          setSessionId(newSessionId);
+          setGameState('playing');
+          console.log('🌉 Bridge: Proceeded with fallback data');
         }
       };
       

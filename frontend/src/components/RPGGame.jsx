@@ -118,7 +118,10 @@ const RPGGame = () => {
           const abilities = characterData?.abilities || {};
           const bgData = characterData?.background || {};
           
+          // Spread characterData first, then override with properly extracted values
+          // This ensures object fields like background are converted to strings
           characterForRPG = {
+            ...characterData,
             id: activeCharacterId,
             name: identity.name || characterData?.name || 'Adventurer',
             class: classData.key || characterData?.class_ || 'Unknown',
@@ -135,11 +138,11 @@ const RPGGame = () => {
               WIS: abilities.WIS || 10,
               CHA: abilities.CHA || 10,
             },
+            // Ensure background is a string, not an object
             background: bgData.key || bgData.name || '',
             skills: characterData?.skills || [],
             equipment: characterData?.equipment || [],
             spells: characterData?.spells || [],
-            ...characterData
           };
           
           console.log('🌉 Bridge: Built character:', characterForRPG.name, characterForRPG.race, characterForRPG.class);

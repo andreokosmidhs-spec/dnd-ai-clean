@@ -10,7 +10,7 @@ import sys
 from typing import Dict, Any
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://wizards-deck.preview.emergentagent.com/api"
+BACKEND_URL = "https://tabletop-companion-12.preview.emergentagent.com/api"
 
 class TestResults:
     def __init__(self):

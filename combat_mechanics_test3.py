@@ -6,7 +6,7 @@ Combat Mechanics Test - Attack Active NPC
 import requests
 import json
 
-BACKEND_URL = "https://wizards-deck.preview.emergentagent.com/api"
+BACKEND_URL = "https://tabletop-companion-12.preview.emergentagent.com/api"
 
 def test_combat_with_active_npc():
     """Test combat mechanics with an active NPC"""

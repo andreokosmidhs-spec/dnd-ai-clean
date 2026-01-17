@@ -6,7 +6,7 @@ Test stealth scenario that should trigger ability check
 import requests
 import json
 
-BACKEND_URL = "https://wizards-deck.preview.emergentagent.com/api"
+BACKEND_URL = "https://tabletop-companion-12.preview.emergentagent.com/api"
 
 def test_stealth_scenario():
     """Test stealth scenario that should definitely trigger a check"""

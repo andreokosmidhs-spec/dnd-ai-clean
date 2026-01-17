@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-BACKEND_URL="https://wizards-deck.preview.emergentagent.com/api"
+BACKEND_URL="https://tabletop-companion-12.preview.emergentagent.com/api"
 
 echo "=========================================="
 echo "DUNGEON FORGE Vertical Slice Test"

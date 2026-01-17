@@ -187,7 +187,7 @@ sudo supervisorctl status frontend  # Should show "RUNNING"
 # Clear localStorage to start clean:
 localStorage.clear()
 
-# Navigate to: https://wizards-deck.preview.emergentagent.com
+# Navigate to: https://tabletop-companion-12.preview.emergentagent.com
 ```
 
 #### 2. **Create Character**

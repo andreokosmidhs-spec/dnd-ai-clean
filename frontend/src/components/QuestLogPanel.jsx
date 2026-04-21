@@ -4,7 +4,7 @@ import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 
-const QuestLogPanel = ({ quests = [] }) => {
+const QuestLogPanel = ({ quests = [], onUpdateStatus }) => {
   const [expandedQuests, setExpandedQuests] = useState({});
   const [showCompleted, setShowCompleted] = useState(false);
 
@@ -46,10 +46,7 @@ const QuestLogPanel = ({ quests = [] }) => {
 
   const QuestCard = ({ quest }) => {
     const isExpanded = expandedQuests[quest.quest_id];
-    const allComplete = quest.objectives.every(
-      obj => obj.progress >= (obj.count || 1)
-    );
-
+    const objectives = Array.isArray(quest.objectives) ? quest.objectives : [];
     return (
       <div className="bg-gray-800/50 border border-amber-600/30 rounded-lg p-3 mb-2">
         {/* Quest Header */}
@@ -95,7 +92,12 @@ const QuestLogPanel = ({ quests = [] }) => {
             {/* Objectives */}
             <div>
               <p className="text-amber-400 text-xs font-semibold mb-2">Objectives:</p>
-              {quest.objectives.map((obj, idx) => (
+              {objectives.length === 0 && (
+                <p className="text-xs text-gray-400 italic">
+                  Follow this lead in the story; the DM will advance it as you act on it.
+                </p>
+              )}
+              {objectives.map((obj, idx) => (
                 <div key={idx} className="flex items-center gap-2 mb-1">
                   {getObjectiveIcon(obj)}
                   <span className={`text-xs ${
@@ -119,6 +121,36 @@ const QuestLogPanel = ({ quests = [] }) => {
                 <p>Location: {quest.location_id}</p>
               )}
             </div>
+
+            {/* Status actions — shown only when editable */}
+            {onUpdateStatus && quest.status === 'active' && (
+              <div className="flex gap-2 pt-2">
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdateStatus(quest.quest_id, 'completed');
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs border-green-500/40 text-green-300 hover:bg-green-600/10"
+                  data-testid={`quest-complete-btn-${quest.quest_id}`}
+                >
+                  <Check className="h-3 w-3 mr-1" /> Mark complete
+                </Button>
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdateStatus(quest.quest_id, 'failed');
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs border-red-500/40 text-red-300 hover:bg-red-600/10"
+                  data-testid={`quest-fail-btn-${quest.quest_id}`}
+                >
+                  <X className="h-3 w-3 mr-1" /> Mark failed
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

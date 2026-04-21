@@ -279,3 +279,127 @@ async def remember_beat(
     )
     await _upsert_cards(campaignId, [card], [])
     return {"ok": True, "card": card.model_dump()}
+
+
+def _quest_card_to_ui(card: Dict) -> Dict:
+    """Adapt a quest-type KnowledgeCard to the shape QuestLogPanel expects."""
+    tags = [str(t).lower() for t in (card.get("tags") or [])]
+    status = card.get("status")
+    if not status:
+        # Back-compat: derive from tags, default 'active'
+        if "completed" in tags:
+            status = "completed"
+        elif "failed" in tags:
+            status = "failed"
+        else:
+            status = "active"
+    return {
+        "quest_id": card.get("id"),
+        "name": card.get("title") or "Untitled quest",
+        "summary": card.get("description") or "",
+        "status": status,
+        "tags": tags,
+        "source": card.get("source") or "generator",
+        # Minimal synthetic objective so the UI renders a progress line without
+        # requiring the legacy dungeon_forge schema.
+        "objectives": [
+            {
+                "type": "discover",
+                "target": "Advance this thread",
+                "progress": 1 if status == "completed" else 0,
+                "count": 1,
+            }
+        ],
+        "rewards_xp": 0,
+        "giver_npc_id": None,
+        "location_id": None,
+        "updated_at": card.get("updatedAt"),
+    }
+
+
+@router.get("/{campaignId}/quests")
+async def list_quests(campaignId: str):
+    """Return all quest-type knowledge cards shaped for the Quest Log UI.
+    Opening leads come first, then other active, then completed/failed.
+    """
+    cards = await _get_cards(campaignId)
+    quest_cards = [c for c in (cards or []) if (c.get("type") or "").lower() == "quest"]
+
+    def sort_key(c):
+        tags = [str(t).lower() for t in (c.get("tags") or [])]
+        status = (c.get("status") or "").lower()
+        if not status:
+            status = "completed" if "completed" in tags else ("failed" if "failed" in tags else "active")
+        priority = 0 if "opening" in tags else 1
+        status_rank = {"active": 0, "completed": 1, "failed": 2}.get(status, 3)
+        return (priority, status_rank, c.get("updatedAt") or "")
+
+    quest_cards.sort(key=sort_key)
+    return {"quests": [_quest_card_to_ui(c) for c in quest_cards]}
+
+
+@router.post("/{campaignId}/quests/{questId}/status")
+async def update_quest_status(
+    campaignId: str,
+    questId: str,
+    payload: Dict = Body(...),
+):
+    """Update the status of a quest card: 'active' | 'completed' | 'failed'."""
+    status = (payload.get("status") or "").strip().lower()
+    if status not in {"active", "completed", "failed"}:
+        raise HTTPException(
+            status_code=400, detail="status must be one of 'active', 'completed', 'failed'"
+        )
+    # Find the card
+    cards = await _get_cards(campaignId)
+    target = next((c for c in cards if c.get("id") == questId and (c.get("type") or "").lower() == "quest"), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Quest not found")
+
+    updated = KnowledgeCard(**{k: v for k, v in target.items() if k != "campaign_id"})
+    updated.status = status
+    updated.updatedAt = datetime.utcnow()
+    await _upsert_cards(campaignId, [], [updated])
+    return {"ok": True, "quest": _quest_card_to_ui(updated.model_dump())}
+
+
+@router.post("/{campaignId}/log/cards/remember-as-quest")
+async def remember_as_quest(
+    campaignId: str,
+    payload: Dict = Body(...),
+):
+    """Promote a DM narration beat into an ACTIVE quest card so it appears in
+    the Quest Log AND gets prioritized by the DM's next turns.
+    """
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    text = (payload.get("text") or payload.get("content") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    title = (payload.get("title") or "").strip() or _derive_card_title(text)
+    tags = payload.get("tags") or []
+    if not isinstance(tags, list):
+        tags = []
+    tags = [str(t).lower() for t in tags]
+    for required in ("quest", "remembered", "active"):
+        if required not in tags:
+            tags.append(required)
+
+    description = text if len(text) <= 600 else text[:600].rstrip() + "…"
+
+    now = datetime.utcnow()
+    card = KnowledgeCard(
+        type="quest",
+        title=title,
+        description=description,
+        source="player-remember",
+        confidence="high",
+        tags=tags,
+        status="active",
+        updatedAt=now,
+    )
+    await _upsert_cards(campaignId, [card], [])
+    return {"ok": True, "quest": _quest_card_to_ui(card.model_dump())}

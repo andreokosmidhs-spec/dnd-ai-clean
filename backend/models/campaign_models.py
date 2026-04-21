@@ -53,6 +53,8 @@ class KnowledgeCard(BaseModel):
     source: str = "generator"
     confidence: str = "high"
     tags: List[str] = Field(default_factory=list)
+    # Optional status — primarily used by quest-type cards: 'active'|'completed'|'failed'
+    status: Optional[str] = None
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
 

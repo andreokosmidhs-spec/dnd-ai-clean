@@ -56,6 +56,21 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-23 (quest connection — Tier D)
+- **Feature: Quest Log fully wired to V2 — "Pin as quest" + live status management.**
+  - Backend:
+    - `KnowledgeCard.status` field added (`active` | `completed` | `failed`).
+    - `GET /api/campaigns/:id/quests` — returns quest-type cards adapted to the UI shape (opening leads first, then active, then closed).
+    - `POST /api/campaigns/:id/quests/:questId/status` — mark a quest active/completed/failed.
+    - `POST /api/campaigns/:id/log/cards/remember-as-quest` — pins a DM beat as an active quest (title auto-derived, tagged `quest`/`remembered`/`active`).
+    - Opening-lead cards (generator + template fallback) now ship with `status=active`.
+  - Lean DM prompt now splits cards into ACTIVE OPENING LEAD(S), CLOSED LEADS ("do NOT push again; reference only if naturally relevant"), and OTHER KNOWLEDGE CARDS.
+  - Frontend:
+    - `QuestLogPanel` now renders the synthetic shape from the new endpoint, and accepts an `onUpdateStatus(questId, status)` handler to show inline "Mark complete" / "Mark failed" buttons on active quests.
+    - `AdventureLogWithDM` fetches quests on mount + after pinning; added a Scroll 📜 "Pin as quest" button alongside the existing "Remember" bookmark on every DM message.
+    - Quest Log panel now always renders inside an active campaign (shows empty-state copy until quests exist).
+  - **Verified end-to-end**: Mystery campaign → opening lead "Shadows Over Emberfall" appears; pin a DM beat ("woman in a red shawl…") → now 2 active quests; mark one completed → sorted to bottom; next DM turn exclusively advances the remaining active lead without mentioning the closed one.
+
 ### 2026-04-23 (quest connection)
 - **Feature: Quests now drive the narration end-to-end (Tiers A+B+C).**
   - **Tier C**: New `generate_opening_quest_card_with_ai(intent, world, character)` replaces the templated "Opening Lead" with a rich LLM-authored hook tailored to the campaign focus/tone/class. Returns JSON → `KnowledgeCard(type=quest, tags=[…, 'opening', 'quest'])`. Falls back to the old template on any failure.

@@ -114,23 +114,32 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
 
     card_summaries: List[str] = []
     active_leads: List[str] = []
+    closed_leads: List[str] = []
     for c in cards[:16]:
         title = c.get("title") or ""
         content = (c.get("content") or c.get("description") or "")[:200]
         ctype = (c.get("type") or "lore").lower()
         tags = [str(t).lower() for t in (c.get("tags") or [])]
+        status = (c.get("status") or "").lower()
         if not title:
             continue
-        is_active_quest = ctype == "quest" and "opening" in tags or "active" in tags
+        is_quest = ctype == "quest"
+        is_active_lead = is_quest and (
+            status == "active" or ("opening" in tags and status != "completed" and status != "failed")
+        )
+        is_closed = is_quest and status in {"completed", "failed"}
         line = f"- [{ctype}] {title}: {content}"
-        if is_active_quest:
+        if is_active_lead:
             active_leads.append(line)
+        elif is_closed:
+            closed_leads.append(f"- [{status}] {title}")
         else:
             card_summaries.append(line)
     # Cap lore cards at 12 to keep prompt tight, but always include leads.
     card_summaries = card_summaries[:12]
     card_block = "\n".join(card_summaries) if card_summaries else "(no active cards — rely on campaign context)"
     active_lead_block = "\n".join(active_leads) if active_leads else "(no active opening lead — advance scene naturally)"
+    closed_lead_block = "\n".join(closed_leads) if closed_leads else "(none)"
 
     tone = intent.get("tone", "heroic")
 
@@ -157,6 +166,8 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
         f"{personality_block}\n\n"
         "=== ACTIVE OPENING LEAD(S) (prioritize these — advance or raise stakes in the next 1-3 turns unless the player pivots hard) ===\n"
         f"{active_lead_block}\n\n"
+        "=== CLOSED LEADS (do NOT push these again; reference only if naturally relevant) ===\n"
+        f"{closed_lead_block}\n\n"
         "=== OTHER KNOWLEDGE CARDS (weave relevant ones in when natural) ===\n"
         f"{card_block}\n\n"
         "=== STYLE REQUIREMENTS ===\n"

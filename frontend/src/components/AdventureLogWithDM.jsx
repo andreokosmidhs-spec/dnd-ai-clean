@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { Card, CardContent } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Dice6, MessageSquare, Loader2, User, Sparkles, Volume2, X, BookOpen, Bookmark, BookmarkCheck } from 'lucide-react';
+import { Dice6, MessageSquare, Loader2, User, Sparkles, Volume2, X, BookOpen, Bookmark, BookmarkCheck, Scroll } from 'lucide-react';
 import { useGameState } from '../contexts/GameStateContext';
 // CheckRequestCard and RollResultCard removed - CheckRollPanel handles all rolls now
 import NarrationAudioPlayer from './NarrationAudioPlayer';
@@ -274,6 +274,81 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
       console.error('Failed to remember beat:', err);
       setMessages(prev => prev.map((m, i) => (i === messageIndex ? { ...m, remembering: false } : m)));
       window.showToast && window.showToast('Could not save that beat. Try again.', 'error');
+    }
+  };
+
+  // "Pin as quest" — promote a DM narration beat into an ACTIVE quest card that
+  // shows up in the Quest Log AND gets prioritized by the DM.
+  const handlePinAsQuest = async (messageIndex) => {
+    const message = messages[messageIndex];
+    if (!message || message.type !== 'dm' || message.pinnedAsQuest) return;
+    if (!campaignId) {
+      window.showToast && window.showToast('No active campaign to pin a quest in.', 'error');
+      return;
+    }
+    setMessages(prev => prev.map((m, i) => (i === messageIndex ? { ...m, pinningQuest: true } : m)));
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/log/cards/remember-as-quest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: message.text }),
+      });
+      if (!res.ok) throw new Error(`Pin quest failed: ${res.status}`);
+      const data = await res.json();
+      setMessages(prev =>
+        prev.map((m, i) =>
+          i === messageIndex
+            ? { ...m, pinnedAsQuest: true, pinningQuest: false, pinnedQuestId: data?.quest?.quest_id }
+            : m
+        )
+      );
+      window.showToast && window.showToast(`Pinned as quest: "${data?.quest?.name || 'lead'}"`, 'success');
+      // Refresh quest log
+      fetchQuests();
+    } catch (err) {
+      console.error('Failed to pin as quest:', err);
+      setMessages(prev => prev.map((m, i) => (i === messageIndex ? { ...m, pinningQuest: false } : m)));
+      window.showToast && window.showToast('Could not pin as quest. Try again.', 'error');
+    }
+  };
+
+  // Fetch quests from the backend and hydrate the local `quests` state.
+  const fetchQuests = useCallback(async () => {
+    if (!campaignId) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/quests`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setQuests(data?.quests || []);
+    } catch (err) {
+      console.warn('Failed to load quests:', err);
+    }
+  }, [campaignId]);
+
+  // Load quests on mount / when campaign changes
+  useEffect(() => {
+    fetchQuests();
+  }, [fetchQuests]);
+
+  const handleUpdateQuestStatus = async (questId, status) => {
+    if (!campaignId || !questId) return;
+    // Optimistic update
+    setQuests(prev => prev.map(q => (q.quest_id === questId ? { ...q, status } : q)));
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/api/campaigns/${campaignId}/quests/${questId}/status`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      window.showToast && window.showToast(`Quest marked ${status}.`, 'success');
+    } catch (err) {
+      console.error('Quest status update failed:', err);
+      window.showToast && window.showToast('Could not update quest. Retrying…', 'error');
+      fetchQuests(); // revert via source of truth
     }
   };
 
@@ -912,10 +987,11 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           </div>
         )}
 
-        {/* Quest Log Panel - P3 */}
-        {quests.length > 0 && (
+        {/* Quest Log Panel — always render when in a campaign so players see
+            the opening lead from turn 0 and the empty-state message otherwise. */}
+        {campaignId && (
           <div className="px-3 pt-3">
-            <QuestLogPanel quests={quests} />
+            <QuestLogPanel quests={quests} onUpdateStatus={handleUpdateQuestStatus} />
           </div>
         )}
 
@@ -983,6 +1059,26 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                                 <BookmarkCheck className="h-4 w-4" />
                               ) : (
                                 <Bookmark className="h-4 w-4" />
+                              )}
+                            </Button>
+                            {/* Pin as quest → adds an active lead to the Quest Log */}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handlePinAsQuest(idx)}
+                              disabled={entry.pinnedAsQuest || entry.pinningQuest || !campaignId}
+                              title={entry.pinnedAsQuest ? 'Pinned to Quest Log' : 'Pin as quest — adds to Quest Log & prioritized by DM'}
+                              data-testid={`pin-quest-${idx}`}
+                              className={`h-7 w-7 p-0 ${
+                                entry.pinnedAsQuest
+                                  ? 'text-amber-300 hover:text-amber-300'
+                                  : 'text-violet-300 hover:text-amber-300 hover:bg-violet-600/20'
+                              }`}
+                            >
+                              {entry.pinningQuest ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Scroll className="h-4 w-4" />
                               )}
                             </Button>
                             {/* Regenerate Intro Button (only for first cinematic message) */}

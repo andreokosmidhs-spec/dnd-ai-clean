@@ -343,6 +343,7 @@ def _template_opening_quest(intent: CampaignIntent, world: Dict, character: Dict
             f"as tension rises ({intent.danger.lower()} danger)."
         ),
         tags=["quest", intent.danger.lower(), "opening"],
+        status="active",
     )
 
 
@@ -454,6 +455,7 @@ async def generate_opening_quest_card_with_ai(
             title=title[:80],
             description=description,
             tags=tags[:6],
+            status="active",
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"AI opening quest generation failed, using template: {exc}")

@@ -36,6 +36,25 @@ def get_db():
 _MAX_HISTORY = 10
 _MESSAGES_COLLECTION = "campaign_messages"
 
+# Class flavor — mirrors campaign_service._CLASS_FLAVOR. Kept local to avoid
+# a cross-module import and to let the DM prompt evolve independently.
+_CLASS_FLAVOR = {
+    "barbarian": "visceral, physical, raw — heartbeat, breath, primal instinct",
+    "bard": "performative, attuned to rumor, social undercurrents, rhythm",
+    "cleric": "reverent, disciplined; the divine is quiet pressure, not constant miracle",
+    "druid": "rooted in weather, animal signs, the smell of earth",
+    "fighter": "practical — reads terrain, weapons, exits, threats",
+    "monk": "spare, precise, attentive to breath, balance, stillness",
+    "paladin": "oath-bound; moral weight colors every scene",
+    "ranger": "tracker's eye — prints, broken twigs, wind, animal silence",
+    "rogue": "shadows, sightlines, locks, pockets; always reads the room",
+    "sorcerer": "magic in the blood; subtle currents, flickers of the uncanny",
+    "warlock": "a patron's presence lurks at the edge; whispered debts",
+    "wizard": "cerebral, analytical; arcane patterns and cataloged observation",
+    "artificer": "tinker's eye — materials, mechanisms, improvisation",
+    "_default": "grounded, observant, driven by the hero's own reasons",
+}
+
 
 class LeanDMRequest(BaseModel):
     character_id: str
@@ -58,41 +77,83 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
     class_ = character.get("class") or {}
     bg = character.get("background") or {}
     abilities = character.get("abilityScores") or {}
+    appearance = character.get("appearance") or {}
+
+    hero_name = identity.get("name", "The Adventurer")
+    class_key = (class_.get("key") or "adventurer").lower()
+    class_name = _format_title(class_key)
+    race_name = _format_title(race.get("key"))
+    bg_name = _format_title(bg.get("key"))
+    class_flavor = _CLASS_FLAVOR.get(class_key, _CLASS_FLAVOR["_default"])
+
+    appearance_bits: List[str] = []
+    if appearance.get("build"):
+        appearance_bits.append(f"{appearance['build']} build")
+    if appearance.get("hairColor"):
+        appearance_bits.append(f"{appearance['hairColor']} hair")
+    if appearance.get("eyeColor"):
+        appearance_bits.append(f"{appearance['eyeColor']} eyes")
+    notable = appearance.get("notableFeatures") or []
+    if notable:
+        appearance_bits.append("notable: " + ", ".join(notable[:3]))
+    appearance_line = "; ".join(appearance_bits) if appearance_bits else "unremarkable at first glance"
 
     card_summaries: List[str] = []
     for c in cards[:12]:
         title = c.get("title") or ""
-        content = (c.get("content") or "")[:140]
+        content = (c.get("content") or c.get("description") or "")[:140]
         ctype = c.get("type") or "lore"
         if title:
             card_summaries.append(f"- [{ctype}] {title}: {content}")
+    card_block = "\n".join(card_summaries) if card_summaries else "(no active cards — rely on campaign context)"
 
-    card_block = "\n".join(card_summaries) if card_summaries else "(no active cards)"
+    tone = intent.get("tone", "heroic")
 
     return (
         "You are the Dungeon Master for a Dungeons & Dragons 5e campaign. You narrate outcomes "
-        "of the player's actions in vivid second-person prose.\n\n"
+        "of the player's actions in grounded, cinematic second-person prose. You PERSONALIZE every "
+        "reply to this specific hero and the established campaign context. You never produce "
+        "generic fantasy filler.\n\n"
         "=== CAMPAIGN ===\n"
-        f"Tone: {intent.get('tone', 'heroic')} | Focus: {intent.get('focus', 'mixed')} | "
+        f"Tone: {tone} | Focus: {intent.get('focus', 'mixed')} | "
         f"Scope: {intent.get('scope', 'local')} | Danger: {intent.get('danger', 'medium')}\n"
         f"World theme: {world.get('theme', 'mixed')} | World tone: {world.get('tone', 'mixed')}\n"
         f"Starting location: {starting.get('name', 'Unknown')} — {starting.get('description', '')}\n\n"
         "=== HERO ===\n"
-        f"Name: {identity.get('name', 'The Adventurer')}\n"
-        f"Race: {_format_title(race.get('key'))} | Class: {_format_title(class_.get('key'))} "
-        f"(Level {class_.get('level', 1)}) | Background: {_format_title(bg.get('key'))}\n"
+        f"Name: {hero_name} (address them by name naturally when fitting)\n"
+        f"Race: {race_name} | Class: {class_name} (Level {class_.get('level', 1)}) | Background: {bg_name}\n"
+        f"Appearance cues: {appearance_line}\n"
+        f"Class flavor to honor: {class_flavor}\n"
         f"Abilities: STR {abilities.get('str', 10)}, DEX {abilities.get('dex', 10)}, "
         f"CON {abilities.get('con', 10)}, INT {abilities.get('int', 10)}, "
         f"WIS {abilities.get('wis', 10)}, CHA {abilities.get('cha', 10)}\n\n"
-        "=== ACTIVE KNOWLEDGE CARDS ===\n"
+        "=== ACTIVE KNOWLEDGE CARDS (weave relevant ones in when natural) ===\n"
         f"{card_block}\n\n"
-        "=== DM GUIDELINES ===\n"
-        "- Respond in 80-160 words, one to two paragraphs, second-person narration.\n"
-        "- Be concrete and sensory; advance the scene with each reply.\n"
-        "- Respect the campaign tone; don't slip into cartoonish humor in a dark campaign.\n"
-        "- If the action requires a check, describe the outcome naturally; don't ask for rolls.\n"
-        "- End with a subtle hook or an open invitation for the player's next action.\n"
-        "- Never produce headings, bullet lists, OOC commentary, or stats."
+        "=== STYLE REQUIREMENTS ===\n"
+        "- 80-160 words, one to two tight paragraphs, SECOND PERSON present tense.\n"
+        "- Advance the scene each reply. No stalling, no pure mood pieces.\n"
+        "- Ground the reply with at least ONE concrete sensory detail (sight, sound, smell, "
+        "touch, or taste). Be specific — textures, faint noises, a smell on the wind.\n"
+        f"- Match the campaign tone ({tone}). No cartoonish humor in dark campaigns; no grimdark in light ones.\n"
+        f"- Let class flavor color perception: {class_flavor}.\n"
+        "- If the action would require a check, describe the outcome naturally — DO NOT ask the "
+        "player to roll dice or quote DCs.\n\n"
+        "=== HARD BANS ===\n"
+        "- Phrases: \"a chill runs down your spine\", \"destiny awaits\", \"little did you know\", "
+        "\"legends speak\", \"in a land far away\", \"a mysterious stranger\", \"ye olde\", "
+        "\"the adventure begins\".\n"
+        "- Do NOT invent named NPCs unless the player's action clearly created/encountered one. "
+        "Prefer descriptive tags (\"the hooded woman at the well\") until a name is natural.\n"
+        "- No headings, no bullet lists, no OOC/meta commentary, no stat blocks, no dice language.\n"
+        "- Do not describe the hero's feelings as abstractions; show reactions via body/environment.\n\n"
+        "=== MANDATORY ENDING ===\n"
+        "The final 1-2 sentences MUST give the player a CONCRETE next move. Choose exactly one:\n"
+        "  (A) Offer 2-3 tangible, actionable choices phrased as a natural sentence (e.g., "
+        "\"You can press the cracked door open, slip back toward the stair, or call out to whoever is breathing in the dark.\").\n"
+        "  (B) Pose ONE sharp, specific question that forces an immediate decision "
+        "(e.g., \"Do you draw steel, or keep your hands where he can see them?\").\n"
+        "Never end on vague mood, foreshadowing, or an open cliffhanger without a choice. "
+        "The player must know what they can do next."
     )
 
 

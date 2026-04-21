@@ -28,6 +28,9 @@ class WorldBlueprint(BaseModel):
     startingLocation: dict
     theme: Optional[str] = None
     tone: Optional[str] = None
+    # Legacy-compatible aliases consumed by the frontend WorldInfoPanel.
+    world_core: Optional[dict] = None
+    starting_town: Optional[dict] = None
 
 
 class StartingScene(BaseModel):

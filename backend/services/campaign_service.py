@@ -12,6 +12,26 @@ def _format_title(text: str) -> str:
     return text.replace("_", " ").title()
 
 
+# Short flavor guidance per D&D class — keeps the AI narrator's language
+# tonally consistent with the hero's archetype without stereotyping.
+_CLASS_FLAVOR = {
+    "barbarian": "visceral, physical, raw — think breath, heartbeat, primal instincts",
+    "bard": "performative, observant of social undercurrents, attuned to rumor and rhythm",
+    "cleric": "reverent and disciplined; the divine is quiet pressure, not constant miracle",
+    "druid": "rooted in weather, animal signs, the smell of earth; nature as a character",
+    "fighter": "practical, trained eye for terrain, weapons, exits, and threats",
+    "monk": "spare, precise, attentive to breath, balance, and the stillness between sounds",
+    "paladin": "moral weight and conviction; oaths color how the world is seen",
+    "ranger": "tracker's eye — footprints, broken twigs, wind direction, animal silence",
+    "rogue": "shadows, sightlines, escape routes, pockets, locks — always reading the room",
+    "sorcerer": "magic is in the blood; subtle currents, intuition, flickers of the uncanny",
+    "warlock": "a patron's presence lurks at the edge; whispered debts, unsettling omens",
+    "wizard": "cerebral, analytical — arcane patterns, etymology, cataloged observation",
+    "artificer": "tinker's eye — materials, mechanisms, opportunities to improvise",
+    "_default": "grounded, observant, driven by the hero's own reasons",
+}
+
+
 def _build_starting_location(intent: CampaignIntent) -> Dict:
     scope_names = {
         "City": "Gate of Emberfall",
@@ -45,12 +65,25 @@ def build_world_blueprint(intent: CampaignIntent, character: Dict | None) -> Dic
         f"tailored for a {hero_desc}."
     )
 
+    realm_name = f"Realm of {_format_title(intent.focus)}"
+
     return {
         "summary": summary,
         "tags": [intent.tone.lower(), intent.focus.lower(), intent.scope.lower(), intent.danger.lower()],
         "startingLocation": starting_location,
         "theme": intent.focus,
         "tone": intent.tone,
+        # Legacy-compatible aliases so the frontend WorldInfoPanel shows real names
+        # instead of "Unknown Realm / Unknown Town".
+        "world_core": {
+            "name": realm_name,
+            "summary": summary,
+            "tone": intent.tone,
+        },
+        "starting_town": {
+            "name": starting_location["name"],
+            "summary": starting_location["description"],
+        },
     }
 
 
@@ -88,47 +121,107 @@ async def build_starting_scene_with_ai(
 
         starting_location = world.get("startingLocation", {})
         location_name = starting_location.get("name", "the starting point")
+        location_desc = starting_location.get("description", "")
 
-        hero_bits: List[str] = []
+        # Collect hero details
+        name = "the adventurer"
+        race_name = "human"
+        class_name = "adventurer"
+        class_key = "adventurer"
+        bg_name = "drifter"
+        appearance_bits: List[str] = []
+        age_category = ""
+        sex = ""
+
         if character:
             identity = character.get("identity") or {}
             race = character.get("race") or {}
             class_info = character.get("class") or character.get("class_") or {}
             bg = character.get("background") or {}
             appearance = character.get("appearance") or {}
-            name = identity.get("name") or "the adventurer"
+            name = identity.get("name") or name
+            sex = identity.get("sex") or ""
             race_name = _format_title(race.get("key", "human"))
-            class_name = _format_title(class_info.get("key", "adventurer"))
+            class_key = (class_info.get("key") or "adventurer").lower()
+            class_name = _format_title(class_key)
             bg_name = _format_title(bg.get("key", "drifter"))
-            hero_bits.append(f"{name}, a {race_name} {class_name} ({bg_name} background)")
+            age_category = appearance.get("ageCategory") or ""
+            build = appearance.get("build") or ""
+            hair = appearance.get("hairColor") or ""
+            eyes = appearance.get("eyeColor") or ""
             notable = appearance.get("notableFeatures") or []
+            if build:
+                appearance_bits.append(f"{build} build")
+            if hair:
+                appearance_bits.append(f"{hair} hair")
+            if eyes:
+                appearance_bits.append(f"{eyes} eyes")
             if notable:
-                hero_bits.append("notable features: " + ", ".join(notable))
+                appearance_bits.append("notable: " + ", ".join(notable[:3]))
+
+        class_flavor = _CLASS_FLAVOR.get(class_key, _CLASS_FLAVOR["_default"])
+        appearance_line = "; ".join(appearance_bits) if appearance_bits else "unremarkable at first glance"
+        hero_header = f"{name} — a {age_category or 'adult'} {sex or ''} {race_name} {class_name}, {bg_name} background".replace("  ", " ").strip()
+
+        system_message = (
+            "You are a master Dungeons & Dragons 5e storyteller. You write grounded, cinematic "
+            "second-person openings that PERSONALIZE the scene to the specific hero and campaign "
+            "tone given. You never produce generic fantasy filler."
+        )
 
         prompt = (
-            "Write a short cinematic campaign OPENING narration for a Dungeons & Dragons 5e session.\n\n"
-            f"Tone: {intent.tone}\nFocus: {intent.focus}\nScope: {intent.scope}\nDanger: {intent.danger}\n"
-            f"Starting location: {location_name} — {starting_location.get('description', '')}\n"
-            f"World theme: {world.get('theme', 'mixed')} | world tone: {world.get('tone', 'mixed')}\n"
-            f"Hero: {'; '.join(hero_bits) if hero_bits else 'unknown traveler'}\n\n"
-            "REQUIREMENTS:\n"
-            "- 110-160 words, exactly one paragraph, written in SECOND PERSON (\"you\").\n"
-            "- Vivid sensory detail: sight, sound, smell — ground the reader in the scene.\n"
-            "- Introduce the starting location and a subtle hook (a rumor, a stranger, a tension in the air).\n"
-            "- End on a small cliff of intrigue that invites the player's first action.\n"
-            "- DO NOT name NPCs who aren't established; keep the hook vague enough for the DM to develop.\n"
-            "- Output ONLY the narration text. No headings, no quotes, no meta commentary."
+            "Write the OPENING narration of a new D&D 5e campaign.\n\n"
+            "=== CAMPAIGN ===\n"
+            f"Tone: {intent.tone} | Focus: {intent.focus} | Scope: {intent.scope} | Danger: {intent.danger}\n"
+            f"World theme: {world.get('theme', 'mixed')} | World tone: {world.get('tone', 'mixed')}\n\n"
+            "=== LOCATION (use this exact name; do NOT invent a different place) ===\n"
+            f"{location_name} — {location_desc}\n\n"
+            "=== HERO (reference them BY NAME, at least once) ===\n"
+            f"{hero_header}\n"
+            f"Appearance cues: {appearance_line}\n"
+            f"Class flavor to honor: {class_flavor}\n\n"
+            "=== STYLE REQUIREMENTS ===\n"
+            "- 110-160 words, EXACTLY ONE paragraph, SECOND PERSON present tense (\"you\").\n"
+            f"- Address the hero by name (\"{name}\") naturally at least once.\n"
+            "- Ground the reader with at least TWO distinct sensory details from different senses "
+            "(sight, sound, smell, touch, or taste). Be concrete and specific — real textures, "
+            "weather, faint noises, a smell on the wind.\n"
+            f"- Match the campaign tone ({intent.tone}). Do NOT drift into cartoonish or saccharine prose.\n"
+            f"- Reflect the class flavor: {class_flavor}\n"
+            f"- Use the starting location name ({location_name}) at least once; do not invent a tavern, inn, "
+            "or marketplace if the location isn't one.\n\n"
+            "=== HARD BANS (do not write any of these) ===\n"
+            "- The words/phrases: \"tavern\", \"wizened old man\", \"a chill runs down your spine\", \"destiny awaits\", "
+            "\"little did you know\", \"dark and stormy\", \"legends speak\", \"in a land far away\", "
+            "\"a mysterious stranger approaches you\", \"ye olde\", \"bustling marketplace\".\n"
+            "- Do NOT name any NPC who isn't already established.\n"
+            "- Do NOT describe the hero's internal feelings as abstractions (\"you feel destiny calling\"). "
+            "Show reactions through body and environment instead.\n"
+            "- No headings, no quotes around the passage, no OOC commentary, no stats, no meta text.\n\n"
+            "=== MANDATORY ENDING ===\n"
+            "The final 1-2 sentences MUST present the player with a CONCRETE next move. Choose exactly one:\n"
+            "  (A) Offer 2-3 tangible, actionable choices the hero can take RIGHT NOW (e.g., "
+            "\"You can approach the hooded figure at the well, duck into the narrow side-street, "
+            "or wait and watch from the shadow of the archway.\"). Write them as a natural sentence, not a list.\n"
+            "  (B) Pose ONE pressing, specific question that forces an immediate decision "
+            "(e.g., \"Do you follow the bloody footprints now, or turn back before the gate closes?\").\n"
+            "Do NOT end on vague mood, foreshadowing, or \"the adventure begins.\" The player must "
+            "know what they can do next.\n\n"
+            "Output ONLY the narration paragraph."
         )
 
         chat = LlmChat(
             api_key=api_key,
             session_id=f"campaign-intro-{campaign_id}",
-            system_message="You are a master D&D storyteller writing cinematic campaign openings.",
+            system_message=system_message,
         )
         chat.with_model("openai", "gpt-4o-mini")
 
         response = await chat.send_message(UserMessage(text=prompt))
         text = (response or "").strip()
+        # Strip accidental wrapping quotes if the model added them
+        if text.startswith('"') and text.endswith('"') and len(text) > 2:
+            text = text[1:-1].strip()
         if text:
             return {"seed": f"scene_{campaign_id[:8]}", "introText": text}
         logger.warning("AI intro returned empty text; using template fallback")

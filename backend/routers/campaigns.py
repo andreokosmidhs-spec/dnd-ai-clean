@@ -403,3 +403,134 @@ async def remember_as_quest(
     )
     await _upsert_cards(campaignId, [card], [])
     return {"ok": True, "quest": _quest_card_to_ui(card.model_dump())}
+
+
+
+# ==================== Scene Reports ============================================
+# "Report this scene" — a one-click dev snapshot a player can submit when a
+# DM turn feels off. Captures the rendered text + player action + full context
+# (character, campaign intent, active/closed quests, knowledge cards, world).
+
+
+def _scene_reports_collection():
+    if _db is None:
+        raise RuntimeError("Database not initialized. Call set_database() first.")
+    return _db["scene_reports"]
+
+
+@router.post("/{campaignId}/scene-reports")
+async def create_scene_report(
+    campaignId: str,
+    payload: Dict = Body(...),
+):
+    """Store a rich snapshot of the moment a player flagged.
+
+    Client payload (all fields optional except messageText or message_text):
+      - messageText / message_text: the DM narration the player is reporting
+      - playerActionText / player_action_text: what the player wrote (previous turn)
+      - userNote / user_note: free-text from the "What went wrong?" field
+      - tags: list[str] of quick reason flags (e.g. ["pov-leak", "cliche"])
+    """
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    message_text = (
+        (payload.get("messageText") or payload.get("message_text") or "").strip()
+    )
+    if not message_text:
+        raise HTTPException(status_code=400, detail="messageText is required")
+
+    player_action_text = (
+        (payload.get("playerActionText") or payload.get("player_action_text") or "").strip()
+    )
+    user_note = (payload.get("userNote") or payload.get("user_note") or "").strip()
+    raw_tags = payload.get("tags") or []
+    tags = [str(t).strip().lower() for t in raw_tags if t]
+
+    # Fetch rich snapshot context
+    character = None
+    try:
+        character = await _fetch_character(campaign.get("character_id"))
+    except Exception:  # noqa: BLE001
+        character = None
+
+    cards = await _get_cards(campaignId)
+    quest_cards = [c for c in cards if (c.get("type") or "").lower() == "quest"]
+    non_quest_cards = [c for c in cards if (c.get("type") or "").lower() != "quest"]
+    active_quests = [_quest_card_to_ui(c) for c in quest_cards if (c.get("status") or "active") == "active"]
+    closed_quests = [_quest_card_to_ui(c) for c in quest_cards if (c.get("status") or "") in {"completed", "failed"}]
+
+    # Pull the character's personality + a tight snapshot (avoid mega blobs)
+    character_snapshot = None
+    if character:
+        identity = character.get("identity") or {}
+        cls = character.get("class") or character.get("class_") or {}
+        bg = character.get("background") or {}
+        character_snapshot = {
+            "id": character.get("id"),
+            "name": identity.get("name"),
+            "race": (character.get("race") or {}).get("key"),
+            "class": cls.get("key"),
+            "level": cls.get("level", 1),
+            "background": bg.get("key"),
+            "abilityScores": character.get("abilityScores"),
+            "personality": bg.get("personality"),
+            "appearance": character.get("appearance"),
+        }
+
+    report_id = str(uuid4())
+    now = datetime.utcnow()
+    report = {
+        "id": report_id,
+        "campaign_id": campaignId,
+        "created_at": now,
+        "message_text": message_text,
+        "player_action_text": player_action_text,
+        "user_note": user_note,
+        "tags": tags,
+        "context": {
+            "intent": campaign.get("intent"),
+            "world": campaign.get("world"),
+            "character": character_snapshot,
+            "active_quests": active_quests,
+            "closed_quests": closed_quests,
+            "knowledge_cards": [
+                {
+                    "id": c.get("id"),
+                    "type": c.get("type"),
+                    "title": c.get("title"),
+                    "description": c.get("description"),
+                    "tags": c.get("tags"),
+                    "status": c.get("status"),
+                }
+                for c in non_quest_cards[:20]
+            ],
+        },
+    }
+
+    if is_db_available():
+        await _scene_reports_collection().insert_one({**report, "_id": report_id})
+
+    # Drop _id before returning
+    report.pop("_id", None)
+    return {"ok": True, "report_id": report_id, "created_at": now.isoformat()}
+
+
+@router.get("/{campaignId}/scene-reports")
+async def list_scene_reports(campaignId: str, limit: int = 50):
+    """Browse recent scene reports for a campaign (newest first)."""
+    if not is_db_available():
+        return {"reports": []}
+    cursor = (
+        _scene_reports_collection()
+        .find({"campaign_id": campaignId}, {"_id": 0})
+        .sort("created_at", -1)
+        .limit(max(1, min(200, int(limit))))
+    )
+    reports = await cursor.to_list(length=limit)
+    # Stringify datetimes for transport
+    for r in reports:
+        if isinstance(r.get("created_at"), datetime):
+            r["created_at"] = r["created_at"].isoformat()
+    return {"reports": reports}

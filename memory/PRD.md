@@ -56,6 +56,16 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-23 (scene reports)
+- **Feature: "Report this scene" — one-click dev snapshot on DM messages.**
+  - Backend:
+    - `POST /api/campaigns/:id/scene-reports` — stores a rich snapshot in `db.scene_reports`: the reported DM text, the player's prior action (auto-detected from message history), user note, quick-reason tags (pov-leak, cliche, ignores-context, personality-miss, quest-off, wrong-location, stalling, other), plus full context: character snapshot, active/closed quests, up to 20 knowledge cards, campaign intent, world.
+    - `GET /api/campaigns/:id/scene-reports?limit=N` — list newest first for later review/debugging.
+  - Frontend:
+    - New `SceneReportDialog.jsx` — clickable quick-reason badges, 500-char free-text note, beat + prior-action previews.
+    - Red 🚩 Flag button next to Remember/Pin-as-quest on every DM message in `AdventureLogWithDM.jsx`. Once reported, button turns rose and disables.
+  - **Verified end-to-end**: submitted a report referencing a fabricated POV-leak beat → Mongo persisted 1 doc in `dnd_ai_db.scene_reports` with full context (character name/class, 1 active quest, 3 knowledge cards, selected tags). `GET` returns it correctly.
+
 ### 2026-04-23 (direct fixes from user screenshot)
 - **Fix: "Unknown Realm / Unknown Town" on the adventure top bar.** The bridge in `RPGGame.jsx` was hardcoding `starting_town: { name: 'Starting Area' }` and never consumed the campaign's real world data. Now reads `world` from the existing `GET /api/campaigns/:id` fetch and threads `world_core` (e.g., "Realm of Mystery") + `starting_town` (e.g., "Gate of Emberfall") into `setWorldBlueprint`.
 - **Fix: Blank "Hit Points /" in the Health sidebar.** `CharacterSidebar` reads `character.hitPoints` (flat int) in three places; the bridge set only `hp` / `maxHp`. Added `hitPoints: computedMaxHp` to `baseCharacter` so both Quick Stats and the Health card render correctly.

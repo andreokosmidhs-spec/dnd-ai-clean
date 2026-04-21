@@ -3,7 +3,7 @@ import { Card, CardContent } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Dice6, MessageSquare, Loader2, User, Sparkles, Volume2, X, BookOpen, Bookmark, BookmarkCheck, Scroll } from 'lucide-react';
+import { Dice6, MessageSquare, Loader2, User, Sparkles, Volume2, X, BookOpen, Bookmark, BookmarkCheck, Scroll, Flag } from 'lucide-react';
 import { useGameState } from '../contexts/GameStateContext';
 // CheckRequestCard and RollResultCard removed - CheckRollPanel handles all rolls now
 import NarrationAudioPlayer from './NarrationAudioPlayer';
@@ -15,6 +15,7 @@ import CombatHUD from './CombatHUD';
 import WorldInfoPanel from './WorldInfoPanel';
 import QuestLogPanel from './QuestLogPanel';
 import RememberCardDialog from './RememberCardDialog';
+import SceneReportDialog from './SceneReportDialog';
 import DefeatModal from './DefeatModal';
 import { getCheckOutcome, getAbilityModifier, isProficient } from '../utils/dndMechanics';
 import { useTTS } from '../hooks/useTTS';
@@ -245,6 +246,67 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
     messageIndex: null,
     saving: false,
   });
+
+  // "Report this scene" — one-click dev snapshot for off-feeling DM turns.
+  const [reportDialog, setReportDialog] = useState({
+    open: false,
+    messageIndex: null,
+    saving: false,
+  });
+
+  const handleOpenReport = (messageIndex) => {
+    const message = messages[messageIndex];
+    if (!message || message.type !== 'dm') return;
+    if (!campaignId) {
+      window.showToast && window.showToast('No active campaign to report against.', 'error');
+      return;
+    }
+    setReportDialog({ open: true, messageIndex, saving: false });
+  };
+
+  const handleReportConfirm = async ({ note, tags }) => {
+    const { messageIndex } = reportDialog;
+    const message = messageIndex != null ? messages[messageIndex] : null;
+    if (!message || !campaignId) {
+      setReportDialog({ open: false, messageIndex: null, saving: false });
+      return;
+    }
+    // Find the most recent player action before this DM beat — provides rich
+    // context to the report without requiring the client to pass turn history.
+    let priorActionText = '';
+    for (let i = messageIndex - 1; i >= 0; i -= 1) {
+      const m = messages[i];
+      if (m && (m.type === 'player' || m.type === 'action' || m.type === 'say')) {
+        priorActionText = m.text || m.message || '';
+        break;
+      }
+    }
+    setReportDialog((d) => ({ ...d, saving: true }));
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/scene-reports`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageText: message.text,
+          playerActionText: priorActionText,
+          userNote: note || '',
+          tags: tags || [],
+        }),
+      });
+      if (!res.ok) throw new Error(`Report failed: ${res.status}`);
+      await res.json();
+      // Mark the message so the flag button turns red + disables.
+      setMessages((prev) =>
+        prev.map((m, i) => (i === messageIndex ? { ...m, reported: true } : m))
+      );
+      window.showToast && window.showToast('Scene reported. Thanks — full context captured.', 'success');
+      setReportDialog({ open: false, messageIndex: null, saving: false });
+    } catch (err) {
+      console.error('Scene report failed:', err);
+      window.showToast && window.showToast('Could not file report. Try again.', 'error');
+      setReportDialog((d) => ({ ...d, saving: false }));
+    }
+  };
 
   const handleRememberBeat = (messageIndex) => {
     const message = messages[messageIndex];
@@ -1106,6 +1168,22 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                                 <Scroll className="h-4 w-4" />
                               )}
                             </Button>
+                            {/* Report this scene → dev snapshot for off-feeling turns */}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleOpenReport(idx)}
+                              disabled={entry.reported || !campaignId}
+                              title={entry.reported ? 'Scene already reported' : 'Report this scene — captures full context for debugging'}
+                              data-testid={`report-scene-${idx}`}
+                              className={`h-7 w-7 p-0 ${
+                                entry.reported
+                                  ? 'text-rose-400 hover:text-rose-400'
+                                  : 'text-violet-300 hover:text-rose-400 hover:bg-violet-600/20'
+                              }`}
+                            >
+                              <Flag className="h-4 w-4" />
+                            </Button>
                             {/* Regenerate Intro Button (only for first cinematic message) */}
                             {entry.isCinematic && idx === 0 && (
                               <Button
@@ -1300,6 +1378,32 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           setRememberDialog((d) => (open ? d : { ...d, open: false }))
         }
         onConfirm={handleRememberConfirm}
+      />
+
+      {/* Scene report dialog (one-click debug snapshot) */}
+      <SceneReportDialog
+        open={reportDialog.open}
+        saving={reportDialog.saving}
+        beatText={
+          reportDialog.messageIndex != null
+            ? messages[reportDialog.messageIndex]?.text || ''
+            : ''
+        }
+        playerActionText={(() => {
+          const mi = reportDialog.messageIndex;
+          if (mi == null) return '';
+          for (let i = mi - 1; i >= 0; i -= 1) {
+            const m = messages[i];
+            if (m && (m.type === 'player' || m.type === 'action' || m.type === 'say')) {
+              return m.text || m.message || '';
+            }
+          }
+          return '';
+        })()}
+        onOpenChange={(open) =>
+          setReportDialog((d) => (open ? d : { ...d, open: false }))
+        }
+        onConfirm={handleReportConfirm}
       />
       
       {/* P3: Defeat Modal */}

@@ -63,7 +63,7 @@ const enrichRoleplay = (character, raceKey, backgroundKey) => {
 
 const RPGGame = () => {
   const navigate = useNavigate();
-  const { updateCharacter, updateWorld, resetSession, setCampaignId, campaignId, setWorldBlueprint, setSessionId } = useGameState();
+  const { updateCharacter, updateWorld, resetSession, setCampaignId, campaignId, worldBlueprint, setWorldBlueprint, setSessionId } = useGameState();
   
   // CRITICAL FIX: Restore campaignId from localStorage if missing
   useEffect(() => {
@@ -290,15 +290,41 @@ const RPGGame = () => {
         } catch (err) {
           console.warn('Failed to fetch campaign intro, using fallback:', err);
         }
-        setGameLog([{
-          type: 'narration',
+        const introEntry = {
+          type: 'dm',
+          text: introMessage,
           message: introMessage,
-          timestamp: Date.now()
-        }]);
+          timestamp: Date.now(),
+          isCinematic: true,
+          source: 'intro',
+          entity_mentions: [],
+        };
+        setGameLog([introEntry]);
         
         // Create session for AdventureLogWithDM
         const newSessionId = sessionManager.createNewSessionId(activeCampaignId);
         setSessionId(newSessionId);
+        localStorage.setItem('game-state-session-id', newSessionId);
+
+        // CRITICAL: Seed AdventureLogWithDM's per-session message store so the
+        // intro is visible in the Adventure Log, and mark intro as played so it
+        // doesn't attempt to auto-generate another one via the (broken) DM path.
+        localStorage.setItem(
+          `dm-log-messages-${newSessionId}`,
+          JSON.stringify([introEntry])
+        );
+        localStorage.removeItem(`dm-log-options-${newSessionId}`);
+        localStorage.setItem('dm-intro-played', '1');
+
+        // Provide a minimal worldBlueprint so AdventureLogWithDM's auto-intro
+        // guard passes (no-op because dm-intro-played is set).
+        if (setWorldBlueprint && !worldBlueprint) {
+          setWorldBlueprint({
+            intro: introMessage,
+            entity_mentions: [],
+            starting_town: { name: 'Starting Area' },
+          });
+        }
         
         // Transition to playing state
         setGameState('playing');

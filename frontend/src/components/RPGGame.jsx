@@ -233,17 +233,34 @@ const RPGGame = () => {
         console.log('🌉 Bridge: Character data set and saved to legacy storage');
 
         // If the portrait isn't ready yet (Nano Banana generation runs in the
-        // background), poll a few times to pick it up once persisted.
+        // background), trigger generation (self-healing in case the initial
+        // fire-and-forget from ReviewStep was dropped) and poll to pick it up.
         if (!characterForRPG.portrait && activeCharacterId) {
+          // Kick off (or re-kick) generation — backend overwrites if already running
+          fetch(`${BACKEND_URL}/api/characters/v2/${activeCharacterId}/generate-portrait`, {
+            method: 'POST',
+          }).then(async (r) => {
+            if (r.ok) {
+              const d = await r.json();
+              if (d?.portraitDataUrl) {
+                setCharacter((prev) => (prev ? { ...prev, portrait: d.portraitDataUrl } : prev));
+              }
+            }
+          }).catch((err) => {
+            console.warn('Bridge portrait generation failed:', err);
+          });
+
+          // Poll as a fallback in case the POST above was kicked off earlier and
+          // is mid-flight on another client.
           const pollPortrait = async (attempts = 0) => {
-            if (attempts >= 6) return;
+            if (attempts >= 8) return;
             await new Promise((r) => setTimeout(r, 5000));
             try {
               const res = await fetch(`${BACKEND_URL}/api/v2/characters/${activeCharacterId}`);
               const d = await res.json();
               const url = d?.portraitDataUrl || d?.portrait;
               if (url) {
-                setCharacter((prev) => (prev ? { ...prev, portrait: url } : prev));
+                setCharacter((prev) => (prev && !prev.portrait ? { ...prev, portrait: url } : prev));
                 return;
               }
             } catch (_) { /* ignore */ }

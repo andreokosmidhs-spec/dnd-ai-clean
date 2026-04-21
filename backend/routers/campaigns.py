@@ -17,6 +17,7 @@ from services.campaign_service import (
     build_starting_scene_with_ai,
     build_world_blueprint,
     generate_initial_cards,
+    generate_opening_quest_card_with_ai,
 )
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
@@ -162,7 +163,17 @@ async def generate_world(campaignId: str):
     character = await _fetch_character(campaign.get("character_id"))
 
     world = build_world_blueprint(intent, character)
-    starting_scene = await build_starting_scene_with_ai(campaignId, world, intent, character)
+
+    # Generate the AI opening-quest card FIRST so it can be planted in the intro.
+    opening_quest = await generate_opening_quest_card_with_ai(intent, world, character)
+
+    starting_scene = await build_starting_scene_with_ai(
+        campaignId,
+        world,
+        intent,
+        character,
+        active_quest=opening_quest.model_dump(),
+    )
 
     campaign.update({
         "world": world,
@@ -172,7 +183,9 @@ async def generate_world(campaignId: str):
     })
     await _save_campaign_doc(campaign)
 
+    # Seed non-quest cards + pin the opening quest to the deck.
     initial_cards = generate_initial_cards(campaignId, intent, world, character)
+    initial_cards.append(opening_quest)
     await _replace_cards(campaignId, initial_cards)
 
     return GenerateWorldResponse(

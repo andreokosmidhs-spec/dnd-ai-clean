@@ -105,9 +105,12 @@ async def build_starting_scene_with_ai(
     world: Dict,
     intent: CampaignIntent,
     character: Optional[Dict],
+    active_quest: Optional[Dict] = None,
 ) -> Dict:
     """Produce a cinematic second-person campaign intro using the LLM.
     Falls back to the template intro on any failure.
+    `active_quest` (optional): a dict with `title`, `description` — the opening
+    quest card that should be planted as the concrete hook in the intro.
     """
     fallback = build_starting_scene(campaign_id, world)
     try:
@@ -179,6 +182,20 @@ async def build_starting_scene_with_ai(
             personality_lines.append(f"- Flaw: {flaw}")
         personality_block = "\n".join(personality_lines) if personality_lines else "- (no personality hooks set)"
 
+        # Active quest hook (the opening lead). When present, the intro MUST
+        # plant this concretely so the ending choices tie back to it.
+        quest_title = ""
+        quest_desc = ""
+        if active_quest:
+            quest_title = (active_quest.get("title") or "").strip()
+            quest_desc = (active_quest.get("description") or "").strip()
+        has_quest = bool(quest_title and quest_desc)
+        quest_block = (
+            f"- Title: {quest_title}\n- Details: {quest_desc}"
+            if has_quest
+            else "- (no opening lead set; invent a subtle hook aligned with the campaign focus)"
+        )
+
         system_message = (
             "You are a master Dungeons & Dragons 5e storyteller. You write grounded, cinematic "
             "second-person openings that PERSONALIZE the scene to the specific hero and campaign "
@@ -199,6 +216,8 @@ async def build_starting_scene_with_ai(
             "Personality hooks (weave in ONE subtly — a reaction, a hesitation, "
             "or a detail the hero notices because of who they are; do NOT quote verbatim):\n"
             f"{personality_block}\n\n"
+            "=== ACTIVE OPENING LEAD (plant this as the scene's concrete hook) ===\n"
+            f"{quest_block}\n\n"
             "=== STYLE REQUIREMENTS ===\n"
             "- 110-160 words, EXACTLY ONE paragraph, SECOND PERSON present tense (\"you\").\n"
             f"- Address the hero by name (\"{name}\") naturally at least once.\n"
@@ -232,14 +251,17 @@ async def build_starting_scene_with_ai(
             "- Do NOT name any NPC who isn't already established.\n"
             "- No headings, no quotes around the passage, no OOC commentary, no stats, no meta text.\n\n"
             "=== MANDATORY ENDING ===\n"
-            "The final 1-2 sentences MUST present the player with a CONCRETE next move. Choose exactly one:\n"
-            "  (A) Offer 2-3 tangible, actionable choices the hero can take RIGHT NOW (e.g., "
-            "\"You can approach the hooded figure at the well, duck into the narrow side-street, "
-            "or wait and watch from the shadow of the archway.\"). Write them as a natural sentence, not a list.\n"
+            "The final 1-2 sentences MUST present the player with a CONCRETE next move "
+            "tied to the ACTIVE OPENING LEAD above (unless no lead was set). Choose exactly one:\n"
+            "  (A) Offer 2-3 tangible, actionable choices the hero can take RIGHT NOW that "
+            "relate to the lead (e.g., \"You can knock on the shuttered door, follow the "
+            "wet footprints to the canal, or corner the watchman before his shift changes.\"). "
+            "Write them as a natural sentence, not a list.\n"
             "  (B) Pose ONE pressing, specific question that forces an immediate decision "
-            "(e.g., \"Do you follow the bloody footprints now, or turn back before the gate closes?\").\n"
+            "connected to the lead (e.g., \"Do you follow the bloody footprints now, or turn "
+            "back before the gate closes?\").\n"
             "Do NOT end on vague mood, foreshadowing, or \"the adventure begins.\" The player must "
-            "know what they can do next.\n\n"
+            "know what they can do next AND how it ties to the lead.\n\n"
             "Output ONLY the narration paragraph."
         )
 
@@ -264,9 +286,12 @@ async def build_starting_scene_with_ai(
 
 
 def generate_initial_cards(campaign_id: str, intent: CampaignIntent, world: Dict, character: Dict | None) -> List[KnowledgeCard]:
+    """Generate the non-quest seed cards. The opening quest card is produced
+    separately (async) by `generate_opening_quest_card_with_ai` so it can be
+    properly personalized by the LLM.
+    """
     starting_location = world.get("startingLocation", {})
     race_name = _format_title(character.get("race", {}).get("key", "traveler")) if character else "traveler"
-    class_name = _format_title((character.get("class", {}) or character.get("class_", {})).get("key", "adventurer")) if character else "adventurer"
     background_name = _format_title(character.get("background", {}).get("key", "wanderer")) if character else "wanderer"
 
     cards: List[KnowledgeCard] = [
@@ -300,16 +325,136 @@ def generate_initial_cards(campaign_id: str, intent: CampaignIntent, world: Dict
             ),
             tags=[race_name.lower(), background_name.lower()],
         ),
-        KnowledgeCard(
-            id=str(uuid4()),
-            type="quest",
-            title="Opening Lead",
-            description=(
-                f"Rumors speak of a task suited for a {class_name}: safeguard the {starting_location.get('name', 'outpost')} "
-                f"as tension rises ({intent.danger.lower()} danger)."
-            ),
-            tags=["quest", intent.danger.lower()],
-        ),
     ]
 
     return cards
+
+
+def _template_opening_quest(intent: CampaignIntent, world: Dict, character: Dict | None) -> KnowledgeCard:
+    """Deterministic fallback used when the LLM is unavailable."""
+    starting_location = world.get("startingLocation", {})
+    class_name = _format_title((character.get("class", {}) or character.get("class_", {})).get("key", "adventurer")) if character else "adventurer"
+    return KnowledgeCard(
+        id=str(uuid4()),
+        type="quest",
+        title="Opening Lead",
+        description=(
+            f"Rumors speak of a task suited for a {class_name}: safeguard the {starting_location.get('name', 'outpost')} "
+            f"as tension rises ({intent.danger.lower()} danger)."
+        ),
+        tags=["quest", intent.danger.lower(), "opening"],
+    )
+
+
+async def generate_opening_quest_card_with_ai(
+    intent: CampaignIntent,
+    world: Dict,
+    character: Optional[Dict],
+) -> KnowledgeCard:
+    """Produce a juicy, campaign-specific opening quest card via the LLM.
+    Falls back to the deterministic template on any failure.
+    """
+    fallback = _template_opening_quest(intent, world, character)
+    try:
+        import json as _json
+        import os
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+        api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return fallback
+
+        starting = world.get("startingLocation", {})
+        location_name = starting.get("name", "the starting area")
+        class_key = "adventurer"
+        bg_key = "wanderer"
+        hero_name = "the hero"
+        if character:
+            identity = character.get("identity") or {}
+            hero_name = identity.get("name") or hero_name
+            cls = character.get("class") or character.get("class_") or {}
+            class_key = (cls.get("key") or "adventurer").lower()
+            bg_key = ((character.get("background") or {}).get("key") or "wanderer").lower()
+
+        class_flavor = _CLASS_FLAVOR.get(class_key, _CLASS_FLAVOR["_default"])
+
+        prompt = (
+            "Design a SPECIFIC, INTRIGUING opening quest hook for a Dungeons & Dragons 5e campaign. "
+            "The player should see this on their Knowledge Deck the moment the campaign begins.\n\n"
+            "=== CAMPAIGN ===\n"
+            f"Tone: {intent.tone} | Focus: {intent.focus} | Scope: {intent.scope} | Danger: {intent.danger}\n"
+            f"Starting location: {location_name} — {starting.get('description', '')}\n\n"
+            "=== HERO ===\n"
+            f"{hero_name} ({_format_title(class_key)}, {_format_title(bg_key)} background)\n"
+            f"Class flavor: {class_flavor}\n\n"
+            "=== REQUIREMENTS ===\n"
+            f"- The hook MUST feel {intent.focus.lower()}-flavored (e.g., Political Intrigue → a sealed letter, a "
+            "missing witness, a suspicious alliance; Exploration → unmapped ruin, trade route gone silent; "
+            "Combat → raiders hitting caravans; Mystery → a body with no wound).\n"
+            f"- It must be plausible for a level-1 hero to investigate; no epic-tier threats.\n"
+            f"- It must anchor to {location_name} or a specific nearby place the player can reach on foot.\n"
+            "- Give it TEETH: name a concrete first step the player can take (find X, meet Y at Z, inspect Q before dawn).\n"
+            "- No clichés (\"mysterious stranger\", \"ancient prophecy\", \"chosen one\", \"a tavern\").\n"
+            "- Do NOT name NPCs unless essential; if named, give them 1-2 vivid details.\n\n"
+            "=== OUTPUT (strict JSON, no prose, no code fence) ===\n"
+            "{\n"
+            "  \"title\": \"Short evocative title, 3-6 words, no quotation marks\",\n"
+            "  \"description\": \"1-3 sentences (<=280 chars) describing the hook + the concrete first step.\",\n"
+            "  \"tags\": [\"2-4 lowercase tags, e.g. 'murder', 'dockside', 'political']\"\n"
+            "}\n"
+        )
+
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"campaign-opening-quest-{uuid4()}",
+            system_message=(
+                "You are a senior D&D campaign designer. You generate specific, grounded, player-ready "
+                "quest hooks tailored to the campaign's tone, focus, and hero. Output strict JSON only."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+
+        # Best-effort JSON extraction (strip code fences if the model ignored the instruction)
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            # drop a leading 'json' language tag if present
+            if text.lower().startswith("json"):
+                text = text[4:].lstrip()
+        try:
+            data = _json.loads(text)
+        except Exception:
+            # Try to locate the first {...} block
+            start = text.find("{")
+            end = text.rfind("}")
+            if start != -1 and end > start:
+                data = _json.loads(text[start : end + 1])
+            else:
+                raise
+
+        title = str(data.get("title") or "").strip() or fallback.title
+        description = str(data.get("description") or "").strip() or fallback.description
+        tags = data.get("tags") or []
+        if not isinstance(tags, list):
+            tags = []
+        tags = [str(t).strip().lower() for t in tags if t]
+        # Always include an 'opening' tag so the UI/DM can find THE active lead
+        if "opening" not in tags:
+            tags = [*tags, "opening"]
+        if "quest" not in tags:
+            tags = [*tags, "quest"]
+        # Trim
+        if len(description) > 360:
+            description = description[:360].rstrip() + "…"
+
+        return KnowledgeCard(
+            id=str(uuid4()),
+            type="quest",
+            title=title[:80],
+            description=description,
+            tags=tags[:6],
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"AI opening quest generation failed, using template: {exc}")
+        return fallback

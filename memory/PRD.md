@@ -56,6 +56,14 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-23 (quest connection)
+- **Feature: Quests now drive the narration end-to-end (Tiers A+B+C).**
+  - **Tier C**: New `generate_opening_quest_card_with_ai(intent, world, character)` replaces the templated "Opening Lead" with a rich LLM-authored hook tailored to the campaign focus/tone/class. Returns JSON → `KnowledgeCard(type=quest, tags=[…, 'opening', 'quest'])`. Falls back to the old template on any failure.
+  - **Tier A**: `build_starting_scene_with_ai` now accepts `active_quest` and plants it as the concrete hook in the intro. Ending instructions updated to require the 2-3 choices (or 1 question) to tie back to the lead.
+  - **Tier B**: Lean DM prompt now splits "ACTIVE OPENING LEAD(S)" from "OTHER KNOWLEDGE CARDS" and instructs the DM to *advance or raise the stakes on the lead in the next 1-3 turns unless the player pivots hard*. Quest-type cards tagged `opening`/`active` are routed into the leads bucket.
+  - `generate-world` endpoint wires them in order: quest card → intro (with the quest) → persist everything.
+  - **Verified live**: Political Intrigue campaign → AI card "A Missing Silver Seal" + archives hook in intro + DM directly advanced into the archives, AND kept the lead alive (as one of three options) even when the player deliberately pivoted to a drink. 
+
 ### 2026-04-23 (later)
 - **Feature: Auto-calc HP from class + CON modifier (5e fixed-average rule).**
   - New `utils/hp.js` with `computeMaxHp(classKey, conScore, level)` — case-insensitive on class key, floors at 1, uses standard 5e fixed-average per level (`floor(hit_die/2) + 1 + conMod`).

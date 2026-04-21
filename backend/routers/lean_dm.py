@@ -113,13 +113,24 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
     appearance_line = "; ".join(appearance_bits) if appearance_bits else "unremarkable at first glance"
 
     card_summaries: List[str] = []
-    for c in cards[:12]:
+    active_leads: List[str] = []
+    for c in cards[:16]:
         title = c.get("title") or ""
-        content = (c.get("content") or c.get("description") or "")[:140]
-        ctype = c.get("type") or "lore"
-        if title:
-            card_summaries.append(f"- [{ctype}] {title}: {content}")
+        content = (c.get("content") or c.get("description") or "")[:200]
+        ctype = (c.get("type") or "lore").lower()
+        tags = [str(t).lower() for t in (c.get("tags") or [])]
+        if not title:
+            continue
+        is_active_quest = ctype == "quest" and "opening" in tags or "active" in tags
+        line = f"- [{ctype}] {title}: {content}"
+        if is_active_quest:
+            active_leads.append(line)
+        else:
+            card_summaries.append(line)
+    # Cap lore cards at 12 to keep prompt tight, but always include leads.
+    card_summaries = card_summaries[:12]
     card_block = "\n".join(card_summaries) if card_summaries else "(no active cards — rely on campaign context)"
+    active_lead_block = "\n".join(active_leads) if active_leads else "(no active opening lead — advance scene naturally)"
 
     tone = intent.get("tone", "heroic")
 
@@ -144,7 +155,9 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
         "Personality hooks (use sparingly — let them color reactions, create friction, "
         "or give NPCs leverage; do NOT quote them verbatim):\n"
         f"{personality_block}\n\n"
-        "=== ACTIVE KNOWLEDGE CARDS (weave relevant ones in when natural) ===\n"
+        "=== ACTIVE OPENING LEAD(S) (prioritize these — advance or raise stakes in the next 1-3 turns unless the player pivots hard) ===\n"
+        f"{active_lead_block}\n\n"
+        "=== OTHER KNOWLEDGE CARDS (weave relevant ones in when natural) ===\n"
         f"{card_block}\n\n"
         "=== STYLE REQUIREMENTS ===\n"
         "- 80-160 words, one to two tight paragraphs, SECOND PERSON present tense.\n"

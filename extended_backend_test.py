@@ -8,7 +8,7 @@ import requests
 import json
 import sys
 
-BACKEND_URL = "https://tabletop-companion-12.preview.emergentagent.com/api"
+BACKEND_URL = "https://dragon-quest-58.preview.emergentagent.com/api"
 
 def test_additional_dice_scenarios():
     """Test additional dice rolling scenarios"""

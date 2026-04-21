@@ -118,7 +118,7 @@ const FocusedRPG = ({
             console.log('🎲 Rolling:', formula, 'for', skill, 'check, DC:', dc);
             
             // Call dice API
-            const diceResponse = await fetch('https://tabletop-companion-12.preview.emergentagent.com/api/dice', {
+            const diceResponse = await fetch('https://dragon-quest-58.preview.emergentagent.com/api/dice', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ formula })

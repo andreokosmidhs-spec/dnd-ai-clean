@@ -7,7 +7,7 @@ import requests
 import json
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://tabletop-companion-12.preview.emergentagent.com/api"
+BACKEND_URL = "https://dragon-quest-58.preview.emergentagent.com/api"
 
 def get_detailed_response():
     """Get a detailed response to analyze the AI output"""

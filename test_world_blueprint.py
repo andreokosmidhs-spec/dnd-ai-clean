@@ -5,7 +5,7 @@ Test the new world blueprint generation system.
 import requests
 import json
 
-BACKEND_URL = "https://tabletop-companion-12.preview.emergentagent.com/api"
+BACKEND_URL = "https://dragon-quest-58.preview.emergentagent.com/api"
 
 def test_world_blueprint_generation():
     """Test generating a world blueprint"""

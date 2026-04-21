@@ -106,7 +106,8 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
 
     try {
       const payload = buildCharacterPayload(wizardState);
-      const res = await fetch("/api/characters/v2/create", {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
+      const res = await fetch(`${backendUrl}/api/characters/v2/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

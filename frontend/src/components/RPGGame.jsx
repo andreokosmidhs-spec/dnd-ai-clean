@@ -14,8 +14,52 @@ import { generateWorldBlueprint, createCharacter, getLastCampaign } from '../api
 import sessionManager from '../state/SessionManager';
 import { checkLevelUp, getLevelFromXP, getXPForNextLevel } from '../data/levelingData';
 import { useSessionCore } from '../store/useSessionCore';
+import { raceData as RACE_DATA } from '../data/raceData';
+import { BACKGROUNDS_BY_KEY } from '../data/backgroundData';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+
+// Deterministic index from string (so the same character keeps the same seeded roleplay picks)
+const hashIndex = (seed, modulo) => {
+  if (!seed || modulo <= 0) return 0;
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return hash % modulo;
+};
+
+// Enrich the character for the legacy RPG UI with roleplay details pulled
+// from the chosen race + background data (ideals / bonds / flaws / traits)
+const enrichRoleplay = (character, raceKey, backgroundKey) => {
+  const raceEntry = raceKey ? RACE_DATA[raceKey] : null;
+  const raceTraits = (raceEntry?.traits || []).map((t) => ({
+    name: t?.name || '',
+    text: t?.summary || t?.description || t?.mechanical_effect || '',
+  })).filter((t) => t.name);
+
+  const bg = backgroundKey ? BACKGROUNDS_BY_KEY[backgroundKey] : null;
+  const personality = bg?.personality || {};
+  const idealsPool = personality.ideals || [];
+  const bondsPool = personality.bonds || [];
+  const flawsPool = personality.flaws || [];
+  const seed = character?.id || character?.name || '';
+
+  const idealPick = idealsPool.length ? idealsPool[hashIndex(seed + ':ideal', idealsPool.length)] : null;
+  const bondPick = bondsPool.length ? bondsPool[hashIndex(seed + ':bond', bondsPool.length)] : null;
+  const flawPick = flawsPool.length ? flawsPool[hashIndex(seed + ':flaw', flawsPool.length)] : null;
+
+  return {
+    ...character,
+    traits: raceTraits,
+    ideals: idealPick ? [{ principle: idealPick, inspiration: bg?.feature?.description || '' }] : [],
+    bonds: bondPick ? [{ person_or_cause: bondPick }] : [],
+    flaws_detailed: flawPick ? [{ habit: flawPick, interference: '' }] : [],
+    aspiration: bg?.feature
+      ? { goal: bg.feature.name, motivation: bg.feature.description }
+      : null,
+  };
+};
 
 const RPGGame = () => {
   const navigate = useNavigate();
@@ -113,7 +157,7 @@ const RPGGame = () => {
           
           // Build character object for RPGGame from CharacterCreationV2 format
           const identity = characterData?.identity || {};
-          const raceData = characterData?.race || {};
+          const raceField = characterData?.race || {};
           const classData = characterData?.class || {};
           // Backend returns abilityScores (camelCase) with lowercase keys (str, dex, con, int, wis, cha)
           // Fallback to legacy abilities shape just in case
@@ -122,13 +166,13 @@ const RPGGame = () => {
           
           // Spread characterData first, then override with properly extracted values
           // This ensures object fields like background are converted to strings
-          characterForRPG = {
+          const baseCharacter = {
             ...characterData,
             id: activeCharacterId,
             name: identity.name || characterData?.name || 'Adventurer',
             class: classData.key || characterData?.class_ || 'Unknown',
             subclass: classData.subclassKey || '',
-            race: raceData.key || characterData?.race || 'Unknown',
+            race: raceField.key || characterData?.race || 'Unknown',
             level: classData.level || characterData?.level || 1,
             hp: characterData?.hitPoints?.current || characterData?.hp || 10,
             maxHp: characterData?.hitPoints?.max || characterData?.max_hp || 10,
@@ -156,7 +200,11 @@ const RPGGame = () => {
             skills: characterData?.skills || [],
             equipment: characterData?.equipment || [],
             spells: characterData?.spells || [],
+            // Portrait (AI-generated via Nano Banana, may be null until ready)
+            portrait: characterData?.portraitDataUrl || characterData?.portrait || null,
           };
+
+          characterForRPG = enrichRoleplay(baseCharacter, raceField.key, bgData.key);
           
           console.log('🌉 Bridge: Built character:', characterForRPG.name, characterForRPG.race, characterForRPG.class);
         } catch (err) {
@@ -183,6 +231,26 @@ const RPGGame = () => {
         // Bridge to legacy storage for compatibility with other components
         localStorage.setItem('rpg-campaign-character', JSON.stringify(characterForRPG));
         console.log('🌉 Bridge: Character data set and saved to legacy storage');
+
+        // If the portrait isn't ready yet (Nano Banana generation runs in the
+        // background), poll a few times to pick it up once persisted.
+        if (!characterForRPG.portrait && activeCharacterId) {
+          const pollPortrait = async (attempts = 0) => {
+            if (attempts >= 6) return;
+            await new Promise((r) => setTimeout(r, 5000));
+            try {
+              const res = await fetch(`${BACKEND_URL}/api/v2/characters/${activeCharacterId}`);
+              const d = await res.json();
+              const url = d?.portraitDataUrl || d?.portrait;
+              if (url) {
+                setCharacter((prev) => (prev ? { ...prev, portrait: url } : prev));
+                return;
+              }
+            } catch (_) { /* ignore */ }
+            pollPortrait(attempts + 1);
+          };
+          pollPortrait();
+        }
         
         // Set campaign ID in GameStateContext
         setCampaignId(activeCampaignId);

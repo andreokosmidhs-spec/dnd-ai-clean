@@ -64,6 +64,7 @@ class CharacterV2Base(BaseModel):
     background: BackgroundInfo
     appearance: AppearanceInfo
     meta: MetaInfo = Field(default_factory=MetaInfo)
+    portraitDataUrl: Optional[str] = None
 
     # allow aliases like "class" and "str" when constructing from dicts
     model_config = ConfigDict(populate_by_name=True)

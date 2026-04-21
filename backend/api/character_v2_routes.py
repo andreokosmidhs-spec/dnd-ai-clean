@@ -9,6 +9,7 @@ from models.character_v2 import (
     CharacterV2Stored,
     CharacterV2Update,
 )
+from api.character_portrait import generate_character_portrait, persist_portrait
 
 COLLECTION_NAME = "characters_v2"
 
@@ -199,6 +200,40 @@ async def delete_character_v2(character_id: str):
         del _in_memory_store[character_id]
 
 
+@router.post("/{character_id}/generate-portrait")
+async def generate_portrait(character_id: str):
+    """Generate an AI portrait via Gemini Nano Banana and persist it to the character."""
+
+    # Load character
+    if is_db_available():
+        collection = get_collection()
+        object_id = validate_object_id(character_id)
+        doc = await collection.find_one({"_id": object_id})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Character not found")
+        character_data = doc
+    else:
+        if character_id not in _in_memory_store:
+            raise HTTPException(status_code=404, detail="Character not found")
+        stored = _in_memory_store[character_id]
+        character_data = stored.model_dump(by_alias=True)
+
+    data_url = await generate_character_portrait(character_data)
+    if not data_url:
+        raise HTTPException(status_code=502, detail="Portrait generation failed")
+
+    ok = await persist_portrait(
+        _db if is_db_available() else None,
+        character_id,
+        data_url,
+        _in_memory_store,
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="Portrait persist failed")
+
+    return {"portraitDataUrl": data_url}
+
+
 # Alias routes that maintain compatibility with clients using the alternate prefix
 @router_alias.post("/create", response_model=CharacterV2Stored)
 async def create_character_v2_alias(character: CharacterV2Create):
@@ -237,6 +272,11 @@ async def patch_character_v2_alias(character_id: str, character: CharacterV2Upda
 @router_alias.delete("/{character_id}", status_code=204)
 async def delete_character_v2_alias(character_id: str):
     return await delete_character_v2(character_id)
+
+
+@router_alias.post("/{character_id}/generate-portrait")
+async def generate_portrait_alias(character_id: str):
+    return await generate_portrait(character_id)
 
 
 # Quick local smoke test guidance (no automated test suite available here):

@@ -126,6 +126,27 @@ const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
 
         {/* Character Info */}
         <div className="p-3 space-y-4 flex-1 overflow-y-auto">
+          {/* Portrait */}
+          <div className="flex justify-center">
+            {character.portrait ? (
+              <img
+                src={character.portrait}
+                alt={`${character.name || 'Character'} portrait`}
+                data-testid="character-portrait-img"
+                className="w-32 h-32 rounded-lg object-cover border-2 border-amber-500/60 shadow-[0_0_18px_rgba(245,158,11,0.35)]"
+              />
+            ) : (
+              <div
+                data-testid="character-portrait-placeholder"
+                className="w-32 h-32 rounded-lg border-2 border-dashed border-amber-500/40 bg-gray-900/60 flex flex-col items-center justify-center text-amber-300/80"
+              >
+                <User className="h-8 w-8 mb-1" />
+                <span className="text-[10px] uppercase tracking-wide">Portrait</span>
+                <span className="text-[9px] text-amber-300/60">generating...</span>
+              </div>
+            )}
+          </div>
+
           {/* Basic Info */}
           <div className="bg-gray-900/50 rounded-lg p-3">
             <h3 className="text-white font-semibold text-lg mb-1">{character.name}</h3>

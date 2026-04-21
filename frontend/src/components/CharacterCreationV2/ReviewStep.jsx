@@ -131,6 +131,16 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
         campaignStatus: "none",
       });
 
+      // Kick off portrait generation in the background. Don't block navigation on it —
+      // the portrait may take 10-20s, while the user will already be on the campaign
+      // setup screen. The image is persisted server-side and the in-game sidebar
+      // picks it up on the next fetch.
+      fetch(`${backendUrl}/api/characters/v2/${data.id}/generate-portrait`, {
+        method: "POST",
+      }).catch((err) => {
+        console.warn("Portrait generation failed (non-fatal):", err);
+      });
+
       setSubmitSuccess("Character created successfully!");
       navigate("/campaign-setup");
     } catch (err) {

@@ -1,7 +1,7 @@
 """Lean DM endpoint for the V2 campaign flow.
 
 Consumes campaigns (campaigns.py), V2 characters (characters_v2), and knowledge
-cards (campaign_log_cards) — no dependency on the legacy dungeon_forge world_state
+cards (campaign_cards) — no dependency on the legacy dungeon_forge world_state
 pipeline. Uses emergentintegrations + gpt-4o-mini for narration.
 """
 
@@ -191,10 +191,10 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     if not character:
         raise HTTPException(status_code=404, detail=f"Character not found: {req.character_id}")
 
-    # Load active knowledge cards
-    cards_cursor = db.campaign_log_cards.find(
+    # Load active knowledge cards (canonical collection: campaign_cards)
+    cards_cursor = db.campaign_cards.find(
         {"campaign_id": campaign_id}, {"_id": 0}
-    ).sort("created_at", -1).limit(20)
+    ).sort("updatedAt", -1).limit(20)
     cards = await cards_cursor.to_list(length=20)
 
     # Load recent message history (session = campaign + character)

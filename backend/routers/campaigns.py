@@ -212,3 +212,57 @@ async def upsert_cards(
 
     await _upsert_cards(campaignId, new_cards, updated_cards)
     return {"ok": True}
+
+
+def _derive_card_title(text: str, fallback: str = "Remembered Beat") -> str:
+    text = (text or "").strip()
+    if not text:
+        return fallback
+    # Prefer the first sentence; cap at 60 chars
+    for delim in (". ", "! ", "? ", "\n"):
+        idx = text.find(delim)
+        if 10 <= idx <= 70:
+            return text[:idx].strip()
+    return text[:60].rstrip() + ("…" if len(text) > 60 else "")
+
+
+@router.post("/{campaignId}/log/cards/remember")
+async def remember_beat(
+    campaignId: str,
+    payload: Dict = Body(...),
+):
+    """Promote a DM narration beat into a pinned knowledge card so the DM will
+    keep it in context on future turns.
+    """
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    text = (payload.get("text") or payload.get("content") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    title = (payload.get("title") or "").strip() or _derive_card_title(text)
+    card_type = (payload.get("type") or "event").strip() or "event"
+    tags = payload.get("tags") or []
+    if not isinstance(tags, list):
+        tags = []
+    # Always include 'remembered' tag so the UI can distinguish user-pinned beats
+    if "remembered" not in tags:
+        tags = [*tags, "remembered"]
+
+    # Truncate overly long descriptions — the DM prompt already trims to 140 chars
+    description = text if len(text) <= 600 else text[:600].rstrip() + "…"
+
+    now = datetime.utcnow()
+    card = KnowledgeCard(
+        type=card_type,
+        title=title,
+        description=description,
+        source="player-remember",
+        confidence="high",
+        tags=tags,
+        updatedAt=now,
+    )
+    await _upsert_cards(campaignId, [card], [])
+    return {"ok": True, "card": card.model_dump()}

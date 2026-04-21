@@ -3,7 +3,7 @@ import { Card, CardContent } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Dice6, MessageSquare, Loader2, User, Sparkles, Volume2, X, BookOpen } from 'lucide-react';
+import { Dice6, MessageSquare, Loader2, User, Sparkles, Volume2, X, BookOpen, Bookmark, BookmarkCheck } from 'lucide-react';
 import { useGameState } from '../contexts/GameStateContext';
 // CheckRequestCard and RollResultCard removed - CheckRollPanel handles all rolls now
 import NarrationAudioPlayer from './NarrationAudioPlayer';
@@ -234,6 +234,46 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
       console.error('Failed to generate audio:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // "Remember this" — promote a DM narration beat into a pinned knowledge card
+  // so the DM keeps it in context on future turns.
+  const handleRememberBeat = async (messageIndex) => {
+    const message = messages[messageIndex];
+    if (!message || message.type !== 'dm' || message.remembered) return;
+    if (!campaignId) {
+      window.showToast && window.showToast('No active campaign to remember this in.', 'error');
+      return;
+    }
+
+    // Optimistic UI: mark the message as remembered locally so the button flips
+    setMessages(prev => prev.map((m, i) => (i === messageIndex ? { ...m, remembering: true } : m)));
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/log/cards/remember`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: message.text,
+          type: 'event',
+          tags: ['remembered', 'dm-beat'],
+        }),
+      });
+      if (!res.ok) throw new Error(`Remember failed: ${res.status}`);
+      const data = await res.json();
+      setMessages(prev =>
+        prev.map((m, i) =>
+          i === messageIndex
+            ? { ...m, remembered: true, remembering: false, rememberedCardId: data?.card?.id }
+            : m
+        )
+      );
+      window.showToast && window.showToast(`Pinned to Knowledge Deck: "${data?.card?.title || 'beat'}"`, 'success');
+    } catch (err) {
+      console.error('Failed to remember beat:', err);
+      setMessages(prev => prev.map((m, i) => (i === messageIndex ? { ...m, remembering: false } : m)));
+      window.showToast && window.showToast('Could not save that beat. Try again.', 'error');
     }
   };
 
@@ -923,6 +963,28 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                               onGenerateAudio={() => generateAudioForMessage(idx)}
                               isGenerating={entry.isGeneratingAudio}
                             />
+                            {/* Remember this → pin into Knowledge Deck */}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleRememberBeat(idx)}
+                              disabled={entry.remembered || entry.remembering || !campaignId}
+                              title={entry.remembered ? 'Saved to Knowledge Deck' : 'Remember this beat'}
+                              data-testid={`remember-beat-${idx}`}
+                              className={`h-7 w-7 p-0 ${
+                                entry.remembered
+                                  ? 'text-amber-300 hover:text-amber-300'
+                                  : 'text-violet-300 hover:text-amber-300 hover:bg-violet-600/20'
+                              }`}
+                            >
+                              {entry.remembering ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : entry.remembered ? (
+                                <BookmarkCheck className="h-4 w-4" />
+                              ) : (
+                                <Bookmark className="h-4 w-4" />
+                              )}
+                            </Button>
                             {/* Regenerate Intro Button (only for first cinematic message) */}
                             {entry.isCinematic && idx === 0 && (
                               <Button

@@ -56,6 +56,12 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-23 (direct fixes from user screenshot)
+- **Fix: "Unknown Realm / Unknown Town" on the adventure top bar.** The bridge in `RPGGame.jsx` was hardcoding `starting_town: { name: 'Starting Area' }` and never consumed the campaign's real world data. Now reads `world` from the existing `GET /api/campaigns/:id` fetch and threads `world_core` (e.g., "Realm of Mystery") + `starting_town` (e.g., "Gate of Emberfall") into `setWorldBlueprint`.
+- **Fix: Blank "Hit Points /" in the Health sidebar.** `CharacterSidebar` reads `character.hitPoints` (flat int) in three places; the bridge set only `hp` / `maxHp`. Added `hitPoints: computedMaxHp` to `baseCharacter` so both Quick Stats and the Health card render correctly.
+- **Fix: False "✦ chosen" badge on placeholder personality values.** Hardened `playerChosen` check: now requires a non-empty, trimmed string (`typeof 'string' && v.trim().length > 0`). Empty-but-present fields from old schemas no longer pass.
+- **Prompt hardening: expanded POV ban list.** Added "feels personal", "pulls at you", "pulls at your heart", "tugs at your heart", "weighs on your soul", "stirs something deep within", "a weight settles on your chest" — all emotion-as-abstraction tics the user spotted in live intros. Verified 5/5 fresh intros scan clean.
+
 ### 2026-04-23 (remember dialog)
 - **Feature: Inline edit of a Remembered card's title/type before saving.**
   - New `RememberCardDialog.jsx`: clean shadcn Dialog with auto-derived title (first sentence, 60-char cap, editable), a type Select (event / npc / place / item / lore / belief), a live preview of the beat text, and a character counter.

@@ -14,6 +14,7 @@ import { CampaignLogPanel } from './CampaignLogPanel';
 import CombatHUD from './CombatHUD';
 import WorldInfoPanel from './WorldInfoPanel';
 import QuestLogPanel from './QuestLogPanel';
+import RememberCardDialog from './RememberCardDialog';
 import DefeatModal from './DefeatModal';
 import { getCheckOutcome, getAbilityModifier, isProficient } from '../utils/dndMechanics';
 import { useTTS } from '../hooks/useTTS';
@@ -237,18 +238,36 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
     }
   };
 
-  // "Remember this" — promote a DM narration beat into a pinned knowledge card
-  // so the DM keeps it in context on future turns.
-  const handleRememberBeat = async (messageIndex) => {
+  // "Remember this" — opens a dialog so the player can edit the auto-derived
+  // title and type before committing to the Knowledge Deck.
+  const [rememberDialog, setRememberDialog] = useState({
+    open: false,
+    messageIndex: null,
+    saving: false,
+  });
+
+  const handleRememberBeat = (messageIndex) => {
     const message = messages[messageIndex];
     if (!message || message.type !== 'dm' || message.remembered) return;
     if (!campaignId) {
       window.showToast && window.showToast('No active campaign to remember this in.', 'error');
       return;
     }
+    setRememberDialog({ open: true, messageIndex, saving: false });
+  };
 
-    // Optimistic UI: mark the message as remembered locally so the button flips
-    setMessages(prev => prev.map((m, i) => (i === messageIndex ? { ...m, remembering: true } : m)));
+  const handleRememberConfirm = async ({ title, type }) => {
+    const { messageIndex } = rememberDialog;
+    const message = messageIndex != null ? messages[messageIndex] : null;
+    if (!message || !campaignId) {
+      setRememberDialog({ open: false, messageIndex: null, saving: false });
+      return;
+    }
+
+    setRememberDialog((d) => ({ ...d, saving: true }));
+    setMessages((prev) =>
+      prev.map((m, i) => (i === messageIndex ? { ...m, remembering: true } : m))
+    );
 
     try {
       const res = await fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/log/cards/remember`, {
@@ -256,24 +275,30 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: message.text,
-          type: 'event',
+          title,
+          type,
           tags: ['remembered', 'dm-beat'],
         }),
       });
       if (!res.ok) throw new Error(`Remember failed: ${res.status}`);
       const data = await res.json();
-      setMessages(prev =>
+      setMessages((prev) =>
         prev.map((m, i) =>
           i === messageIndex
             ? { ...m, remembered: true, remembering: false, rememberedCardId: data?.card?.id }
             : m
         )
       );
-      window.showToast && window.showToast(`Pinned to Knowledge Deck: "${data?.card?.title || 'beat'}"`, 'success');
+      window.showToast &&
+        window.showToast(`Pinned to Knowledge Deck: "${data?.card?.title || title}"`, 'success');
+      setRememberDialog({ open: false, messageIndex: null, saving: false });
     } catch (err) {
       console.error('Failed to remember beat:', err);
-      setMessages(prev => prev.map((m, i) => (i === messageIndex ? { ...m, remembering: false } : m)));
+      setMessages((prev) =>
+        prev.map((m, i) => (i === messageIndex ? { ...m, remembering: false } : m))
+      );
       window.showToast && window.showToast('Could not save that beat. Try again.', 'error');
+      setRememberDialog((d) => ({ ...d, saving: false }));
     }
   };
 
@@ -1261,6 +1286,21 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
       
       {/* Hidden Audio Element for TTS Playback */}
       <audio ref={audioRef} style={{ display: 'none' }} />
+
+      {/* Remember-beat dialog (edit title + type before saving) */}
+      <RememberCardDialog
+        open={rememberDialog.open}
+        saving={rememberDialog.saving}
+        beatText={
+          rememberDialog.messageIndex != null
+            ? messages[rememberDialog.messageIndex]?.text || ''
+            : ''
+        }
+        onOpenChange={(open) =>
+          setRememberDialog((d) => (open ? d : { ...d, open: false }))
+        }
+        onConfirm={handleRememberConfirm}
+      />
       
       {/* P3: Defeat Modal */}
       {showDefeatModal && defeatInfo && (

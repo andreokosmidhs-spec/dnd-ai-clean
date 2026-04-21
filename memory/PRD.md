@@ -56,6 +56,13 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-23 (remember dialog)
+- **Feature: Inline edit of a Remembered card's title/type before saving.**
+  - New `RememberCardDialog.jsx`: clean shadcn Dialog with auto-derived title (first sentence, 60-char cap, editable), a type Select (event / npc / place / item / lore / belief), a live preview of the beat text, and a character counter.
+  - `AdventureLogWithDM` now opens this dialog when the player clicks 🔖 Remember; the POST only fires on **Save to deck**, with the player's chosen title + type.
+  - Backend `/remember` endpoint already accepted `title` and `type` — verified round-trip persists both ("Smith trusts me — 3rd stall" / type="npc").
+  - Cancel leaves the beat un-pinned and re-enables the bookmark button.
+
 ### 2026-04-23 (quest connection — Tier D)
 - **Feature: Quest Log fully wired to V2 — "Pin as quest" + live status management.**
   - Backend:

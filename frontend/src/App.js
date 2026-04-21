@@ -1,4 +1,7 @@
 import CharacterCreationV2 from './pages/CharacterCreationV2';
+import CharactersList from './pages/CharactersList';
+import CharacterPreview from './pages/CharacterPreview';
+import CharacterEdit from './pages/CharacterEdit';
 import MainMenu from "./components/MainMenu";
 import { useEffect } from "react";
 import "./App.css";
@@ -113,6 +116,11 @@ function App() {
 
             {/* New Character Creation V2 Wizard */}
             <Route path="/character-v2" element={<CharacterCreationV2 />} />
+
+            {/* Load existing V2 characters */}
+            <Route path="/characters" element={<CharactersList />} />
+            <Route path="/characters/:characterId" element={<CharacterPreview />} />
+            <Route path="/characters/:characterId/edit" element={<CharacterEdit />} />
 
             {/* Campaign setup and draft generation placeholder */}
             <Route path="/campaign-setup" element={<CampaignSetup />} />

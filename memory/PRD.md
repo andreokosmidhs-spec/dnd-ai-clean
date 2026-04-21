@@ -56,6 +56,15 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-23
+- **Feature: Load / Preview / Edit / Delete existing hero flow.**
+  - Main menu → **"Load existing hero"** → `/characters` grid listing all V2 heroes with portraits (50+ heroes render correctly).
+  - `/characters/:id` — Character sheet preview: portrait, level/race/class, ability scores, appearance, personality, with **Start new campaign** / **Edit** / **Delete** actions.
+  - `/characters/:id/edit` — Lean edit form: identity (name, age), appearance (build, skin, hair, eyes, notable features), personality (ideal/bond/flaw), plus **Regenerate portrait** button. Race, class, ability scores, and background.key are intentionally locked to protect campaign state.
+  - **Delete** has a confirm modal and calls `DELETE /api/characters/v2/:id` (existing endpoint).
+  - **Start new campaign** wires the selected hero into `useSessionCore` and navigates to `/campaign-setup` — same flow the wizard uses after creation, so no downstream changes needed.
+  - Verified end-to-end with Playwright: preview → edit → save → preview now reflects the new flaw. Backend PATCH round-trip clean.
+
 ### 2026-04-22 (final)
 - **Feature: Role Play sidebar now shows the player's chosen Ideal/Bond/Flaw with a ✦ chosen indicator.**
   - `enrichRoleplay(character, raceKey, bgKey, persistedPersonality)` in `RPGGame.jsx` now prefers the persisted wizard selection and only falls back to a deterministic pick from the background's pool if nothing was chosen.

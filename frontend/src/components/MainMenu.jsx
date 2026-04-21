@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Sword, Play, PlusCircle, Trash2, User, Crown, Database } from "lucide-react";
+import { Sword, Play, PlusCircle, Trash2, User, Crown, Database, Users } from "lucide-react";
 import apiClient, { isSuccess, getErrorMessage } from "../lib/apiClient";
 import { useSessionCore } from "../store/useSessionCore";
 
@@ -216,6 +216,18 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
                 New Campaign
               </Button>
             )}
+
+            {/* Load existing hero → characters list */}
+            <Button
+              onClick={() => navigate("/characters")}
+              variant="outline"
+              className="w-full border-amber-600/40 text-amber-300 hover:bg-amber-600/10 font-semibold py-5"
+              size="lg"
+              data-testid="main-menu-load-character-btn"
+            >
+              <Users className="h-5 w-5 mr-2" />
+              Load existing hero
+            </Button>
 
             {hasSavedCampaign && (
               <Button

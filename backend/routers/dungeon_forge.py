@@ -197,10 +197,112 @@ async def create_character_doc(campaign_id: str, character_id: str, character_st
     return char_dict
 
 async def get_character_doc(campaign_id: str, character_id: str) -> Optional[Dict[str, Any]]:
-    """Retrieve character by campaign and character ID"""
+    """Retrieve character by campaign and character ID.
+
+    Falls back to the V2 characters collection (`characters_v2`) and auto-mirrors
+    a legacy character doc on first use, so the DM pipeline works for characters
+    created via the CharacterCreationV2 wizard.
+    """
     db = get_db()
     char_doc = await db.characters.find_one({"campaign_id": campaign_id, "character_id": character_id})
-    return char_doc
+    if char_doc:
+        return char_doc
+
+    # Compatibility fallback: look up in characters_v2 and mirror into legacy collection
+    try:
+        from bson import ObjectId as _ObjectId
+        v2_doc = None
+        try:
+            v2_doc = await db.characters_v2.find_one({"_id": _ObjectId(character_id)})
+        except Exception:  # noqa: BLE001
+            v2_doc = None
+        if not v2_doc:
+            return None
+
+        identity = v2_doc.get("identity") or {}
+        race_field = v2_doc.get("race") or {}
+        class_field = v2_doc.get("class") or {}
+        bg_field = v2_doc.get("background") or {}
+        abilities_raw = v2_doc.get("abilityScores") or {}
+        appearance = v2_doc.get("appearance") or {}
+        skills = class_field.get("skillProficiencies") or v2_doc.get("skills") or []
+
+        abilities_map = {
+            "str": abilities_raw.get("str", 10),
+            "dex": abilities_raw.get("dex", 10),
+            "con": abilities_raw.get("con", 10),
+            "int": abilities_raw.get("int", 10),
+            "wis": abilities_raw.get("wis", 10),
+            "cha": abilities_raw.get("cha", 10),
+        }
+        con_mod = (abilities_map["con"] - 10) // 2
+        level = class_field.get("level", 1) or 1
+        hit_dice = {
+            "barbarian": 12,
+            "fighter": 10,
+            "paladin": 10,
+            "ranger": 10,
+            "bard": 8,
+            "cleric": 8,
+            "druid": 8,
+            "monk": 8,
+            "rogue": 8,
+            "warlock": 8,
+            "sorcerer": 6,
+            "wizard": 6,
+        }
+        class_key = (class_field.get("key") or "").lower()
+        base_hp = hit_dice.get(class_key, 8) + con_mod
+        base_hp = max(base_hp, 1)
+
+        now = datetime.now(timezone.utc).isoformat()
+        legacy_doc = {
+            "campaign_id": campaign_id,
+            "character_id": character_id,
+            "player_id": None,
+            "character_state": {
+                "name": identity.get("name") or "Adventurer",
+                "race": race_field.get("key") or "Human",
+                "subrace": race_field.get("variantKey") or None,
+                "class": class_field.get("key") or "fighter",
+                "background": bg_field.get("key") or "soldier",
+                "goal": "Explore and grow stronger.",
+                "level": level,
+                "hp": base_hp,
+                "max_hp": base_hp,
+                "ac": 10,
+                "abilities": abilities_map,
+                "proficiencies": skills,
+                "languages": [],
+                "inventory": [],
+                "features": appearance.get("notableFeatures") or [],
+                "conditions": [],
+                "reputation": {},
+                "gold": 0,
+                "tool_proficiencies": [],
+                "weapon_proficiencies": [],
+                "armor_proficiencies": [],
+                "racial_traits": [],
+                "speed": 30,
+                "current_xp": 0,
+                "xp_to_next": 100,
+                "proficiency_bonus": 2,
+                "attack_bonus": 0,
+                "injury_count": 0,
+            },
+            "created_at": now,
+            "updated_at": now,
+        }
+        try:
+            await db.characters.insert_one(legacy_doc)
+            logger.info(f"🌉 Mirrored V2 character {character_id} into legacy collection for campaign {campaign_id}")
+        except Exception as insert_err:  # noqa: BLE001
+            # Likely a race / duplicate; re-fetch
+            logger.warning(f"Legacy mirror insert failed (will re-fetch): {insert_err}")
+        return await db.characters.find_one({"campaign_id": campaign_id, "character_id": character_id})
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"V2 fallback failed for character {character_id}: {exc}")
+        return None
 
 async def update_character_state(campaign_id: str, character_id: str, character_state: Dict[str, Any]) -> Dict[str, Any]:
     """Update character state"""

@@ -14,7 +14,7 @@ from models.campaign_models import (
     KnowledgeCard,
 )
 from services.campaign_service import (
-    build_starting_scene,
+    build_starting_scene_with_ai,
     build_world_blueprint,
     generate_initial_cards,
 )
@@ -162,7 +162,7 @@ async def generate_world(campaignId: str):
     character = await _fetch_character(campaign.get("character_id"))
 
     world = build_world_blueprint(intent, character)
-    starting_scene = build_starting_scene(campaignId, world)
+    starting_scene = await build_starting_scene_with_ai(campaignId, world, intent, character)
 
     campaign.update({
         "world": world,

@@ -57,20 +57,23 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 ## Changelog
 
 ### 2026-04-21
-- **Feature**: AI-generated character portraits via Gemini Nano Banana (`gemini-3.1-flash-image-preview`)
-  - New backend module: `backend/api/character_portrait.py` builds a prompt from identity/race/class/appearance and calls `emergentintegrations` with `EMERGENT_LLM_KEY`.
-  - New endpoint: `POST /api/characters/v2/{id}/generate-portrait` (plus alias under `/api/v2/characters/*`). Returns `{portraitDataUrl}` and persists it to the character document.
-  - Added `portraitDataUrl: Optional[str]` to `CharacterV2Base` model.
-  - Frontend: `ReviewStep.jsx` kicks off portrait generation in the background after character creation (fire-and-forget). `CharacterSidebar.jsx` renders the portrait (or a "generating..." placeholder). `RPGGame.jsx` bridge polls every 5s (up to 30s) if the portrait isn't ready at campaign load.
-- **Feature**: Role Play panel now populates from D&D data
-  - `RPGGame.jsx` bridge now enriches the character with `traits` (from `raceData`), `ideals / bonds / flaws_detailed` (from `backgroundData.personality`), and `aspiration` (from `background.feature`). Picks are seeded deterministically by character ID so each character keeps a consistent persona.
-- **Bug Fix (P0)**: Duplicate ability scores in sidebar/sheet/InfoDrawer
-  - The bridge emits both `STR/DEX/…` and `strength/dexterity/…` for cross-component compatibility. The three iterators now whitelist only the 6 canonical uppercase keys.
-- **Bug Fix (P0)**: CloudFront 403 during character creation submit
-  - `ReviewStep.jsx` fetch now uses `${REACT_APP_BACKEND_URL}/api/characters/v2/create` instead of a relative path that hit the frontend CDN.
-- **Bug Fix (P0)**: Ability scores defaulting to 10 in-game
-  - Bridge reads `characterData.abilityScores` (camelCase) with lowercase keys (`str/dex/con/int/wis/cha`) instead of the non-existent `characterData.abilities.STR`.
-- **Verification**: Full curl round-trip — character creation + portrait generation (~16s) + GET returns persisted 1.1MB data URL.
+- **Feature**: Cinematic AI-generated campaign intro narration (`services/campaign_service.py::build_starting_scene_with_ai`)
+  - Uses `emergentintegrations` + `gpt-4o-mini`. Produces a 110-160 word second-person opening tuned to tone/focus/scope/danger + character details. Persisted to `campaign.starting_scene.introText`.
+  - New endpoint: `GET /api/campaigns/{campaignId}` returns the campaign doc (including `starting_scene`).
+  - `RPGGame.jsx` bridge fetches the campaign and uses the intro as the first Adventure Log entry. Falls back to a template intro if AI generation fails.
+- **Feature**: AI-generated character portraits via Gemini Nano Banana
+  - Backend: `backend/api/character_portrait.py`; endpoint `POST /api/characters/v2/{id}/generate-portrait` (+ alias).
+  - Frontend: fired from `ReviewStep.jsx` after character creation; the bridge self-heals by retrying + polling if not ready. Portrait displayed at 192x192 in `CharacterSidebar.jsx`.
+- **Feature**: Role Play panel populates from D&D data
+  - `RPGGame.jsx` bridge enriches character with traits (race), ideals/bonds/flaws (background), and aspiration (background feature); seeded deterministically by character id.
+- **Bug Fix (partial)**: DM `Character not found` 404
+  - `dungeon_forge.py::get_character_doc` auto-mirrors V2 characters into the legacy `characters` collection on demand. Unblocks character-lookup but DM actions still fail on `world_states` lookup (see Known Issues).
+- **Bug Fix (P0)**: Duplicate ability scores in sidebar/sheet/InfoDrawer (iterators now whitelist 6 canonical keys)
+- **Bug Fix (P0)**: CloudFront 403 on character creation (relative fetch → full backend URL)
+- **Bug Fix (P0)**: Ability scores defaulting to 10 in-game (bridge now reads `abilityScores` camelCase)
+
+## Known Issues
+- **DM actions fail with `World state not found`** — the `dungeon_forge` DM pipeline requires `world_states` + richly-structured `world_blueprint` that the new V2 → `campaigns.py` flow does not produce. Requires architectural work to bridge the two subsystems (or retire `dungeon_forge.py` and build a leaner DM on top of `campaigns.py` + knowledge cards).
 
 ### 2026-01-17
 - **Bug Fix**: Fixed campaign generation flow returning to main menu

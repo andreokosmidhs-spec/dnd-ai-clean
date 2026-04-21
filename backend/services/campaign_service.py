@@ -1,8 +1,11 @@
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 from uuid import uuid4
+import logging
 
 from models.campaign_models import CampaignIntent, KnowledgeCard
+
+logger = logging.getLogger(__name__)
 
 
 def _format_title(text: str) -> str:
@@ -62,6 +65,76 @@ def build_starting_scene(campaign_id: str, world: Dict) -> Dict:
         "seed": f"scene_{campaign_id[:8]}",
         "introText": intro_text,
     }
+
+
+async def build_starting_scene_with_ai(
+    campaign_id: str,
+    world: Dict,
+    intent: CampaignIntent,
+    character: Optional[Dict],
+) -> Dict:
+    """Produce a cinematic second-person campaign intro using the LLM.
+    Falls back to the template intro on any failure.
+    """
+    fallback = build_starting_scene(campaign_id, world)
+    try:
+        import os
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+        api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.warning("No LLM key for intro generation; using fallback")
+            return fallback
+
+        starting_location = world.get("startingLocation", {})
+        location_name = starting_location.get("name", "the starting point")
+
+        hero_bits: List[str] = []
+        if character:
+            identity = character.get("identity") or {}
+            race = character.get("race") or {}
+            class_info = character.get("class") or character.get("class_") or {}
+            bg = character.get("background") or {}
+            appearance = character.get("appearance") or {}
+            name = identity.get("name") or "the adventurer"
+            race_name = _format_title(race.get("key", "human"))
+            class_name = _format_title(class_info.get("key", "adventurer"))
+            bg_name = _format_title(bg.get("key", "drifter"))
+            hero_bits.append(f"{name}, a {race_name} {class_name} ({bg_name} background)")
+            notable = appearance.get("notableFeatures") or []
+            if notable:
+                hero_bits.append("notable features: " + ", ".join(notable))
+
+        prompt = (
+            "Write a short cinematic campaign OPENING narration for a Dungeons & Dragons 5e session.\n\n"
+            f"Tone: {intent.tone}\nFocus: {intent.focus}\nScope: {intent.scope}\nDanger: {intent.danger}\n"
+            f"Starting location: {location_name} — {starting_location.get('description', '')}\n"
+            f"World theme: {world.get('theme', 'mixed')} | world tone: {world.get('tone', 'mixed')}\n"
+            f"Hero: {'; '.join(hero_bits) if hero_bits else 'unknown traveler'}\n\n"
+            "REQUIREMENTS:\n"
+            "- 110-160 words, exactly one paragraph, written in SECOND PERSON (\"you\").\n"
+            "- Vivid sensory detail: sight, sound, smell — ground the reader in the scene.\n"
+            "- Introduce the starting location and a subtle hook (a rumor, a stranger, a tension in the air).\n"
+            "- End on a small cliff of intrigue that invites the player's first action.\n"
+            "- DO NOT name NPCs who aren't established; keep the hook vague enough for the DM to develop.\n"
+            "- Output ONLY the narration text. No headings, no quotes, no meta commentary."
+        )
+
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"campaign-intro-{campaign_id}",
+            system_message="You are a master D&D storyteller writing cinematic campaign openings.",
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+
+        response = await chat.send_message(UserMessage(text=prompt))
+        text = (response or "").strip()
+        if text:
+            return {"seed": f"scene_{campaign_id[:8]}", "introText": text}
+        logger.warning("AI intro returned empty text; using template fallback")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"AI intro generation failed, using template fallback: {exc}")
+    return fallback
 
 
 def generate_initial_cards(campaign_id: str, intent: CampaignIntent, world: Dict, character: Dict | None) -> List[KnowledgeCard]:

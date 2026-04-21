@@ -133,16 +133,16 @@ const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
                 src={character.portrait}
                 alt={`${character.name || 'Character'} portrait`}
                 data-testid="character-portrait-img"
-                className="w-32 h-32 rounded-lg object-cover border-2 border-amber-500/60 shadow-[0_0_18px_rgba(245,158,11,0.35)]"
+                className="w-48 h-48 rounded-lg object-cover border-2 border-amber-500/60 shadow-[0_0_24px_rgba(245,158,11,0.4)]"
               />
             ) : (
               <div
                 data-testid="character-portrait-placeholder"
-                className="w-32 h-32 rounded-lg border-2 border-dashed border-amber-500/40 bg-gray-900/60 flex flex-col items-center justify-center text-amber-300/80"
+                className="w-48 h-48 rounded-lg border-2 border-dashed border-amber-500/40 bg-gray-900/60 flex flex-col items-center justify-center text-amber-300/80"
               >
-                <User className="h-8 w-8 mb-1" />
-                <span className="text-[10px] uppercase tracking-wide">Portrait</span>
-                <span className="text-[9px] text-amber-300/60">generating...</span>
+                <User className="h-10 w-10 mb-1" />
+                <span className="text-xs uppercase tracking-wide">Portrait</span>
+                <span className="text-[10px] text-amber-300/60">generating...</span>
               </div>
             )}
           </div>

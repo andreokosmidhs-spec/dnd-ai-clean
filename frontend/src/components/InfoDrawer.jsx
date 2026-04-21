@@ -202,14 +202,18 @@ const InfoDrawer = ({ character, currentLocation, inventory, gameLog, isOpen, on
                           </AccordionTrigger>
                           <AccordionContent className="pb-3">
                             <div className="space-y-1">
-                              {character.stats && Object.entries(character.stats).map(([stat, value]) => (
-                                <StatBlock 
-                                  key={stat}
-                                  label={stat.charAt(0).toUpperCase() + stat.slice(1)}
-                                  value={value}
-                                  modifier={getStatModifierString(value)}
-                                />
-                              ))}
+                              {['STR','DEX','CON','INT','WIS','CHA'].map((stat) => {
+                                const value = character.stats?.[stat];
+                                if (value == null) return null;
+                                return (
+                                  <StatBlock 
+                                    key={stat}
+                                    label={stat}
+                                    value={value}
+                                    modifier={getStatModifierString(value)}
+                                  />
+                                );
+                              })}
                             </div>
                           </AccordionContent>
                         </AccordionItem>

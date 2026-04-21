@@ -96,13 +96,17 @@ const CharacterSheet = ({ character }) => {
             <span className="text-green-400 text-sm font-medium">Abilities</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            {Object.entries(character.stats).map(([stat, value]) => (
-              <div key={stat} className="bg-gray-800/50 p-2 rounded text-center">
-                <div className="text-gray-400 text-xs capitalize">{stat.slice(0, 3)}</div>
-                <div className="text-white font-semibold">{value}</div>
-                <div className="text-gray-300 text-xs">{getStatModifierString(value)}</div>
-              </div>
-            ))}
+            {['STR','DEX','CON','INT','WIS','CHA'].map((stat) => {
+              const value = character.stats?.[stat];
+              if (value == null) return null;
+              return (
+                <div key={stat} className="bg-gray-800/50 p-2 rounded text-center">
+                  <div className="text-gray-400 text-xs">{stat}</div>
+                  <div className="text-white font-semibold">{value}</div>
+                  <div className="text-gray-300 text-xs">{getStatModifierString(value)}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

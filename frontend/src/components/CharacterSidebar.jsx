@@ -278,8 +278,19 @@ const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
             {/* Ideal */}
             {character.ideals && character.ideals.length > 0 && character.ideals[0]?.principle && (
               <div className="mb-3">
-                <span className="text-xs text-gray-400 font-semibold block mb-1">Ideal</span>
-                <p className="text-xs text-purple-200">{character.ideals[0].principle}</p>
+                <span className="text-xs text-gray-400 font-semibold block mb-1 flex items-center gap-1">
+                  Ideal
+                  {character.ideals[0].playerChosen && (
+                    <span
+                      className="text-amber-300 text-[10px] font-normal"
+                      title="Chosen during character creation — the DM weaves it into narration."
+                      data-testid="ideal-chosen-badge"
+                    >
+                      ✦ chosen
+                    </span>
+                  )}
+                </span>
+                <p className="text-xs text-purple-200" data-testid="sidebar-ideal">{character.ideals[0].principle}</p>
                 {showMore.roleplay && character.ideals[0].inspiration && (
                   <p className="text-xs text-gray-400 mt-1">{character.ideals[0].inspiration}</p>
                 )}
@@ -289,16 +300,38 @@ const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
             {/* Bond */}
             {character.bonds && character.bonds.length > 0 && character.bonds[0]?.person_or_cause && (
               <div className="mb-3">
-                <span className="text-xs text-gray-400 font-semibold block mb-1">Bond</span>
-                <p className="text-xs text-purple-200">{character.bonds[0].person_or_cause}</p>
+                <span className="text-xs text-gray-400 font-semibold block mb-1 flex items-center gap-1">
+                  Bond
+                  {character.bonds[0].playerChosen && (
+                    <span
+                      className="text-amber-300 text-[10px] font-normal"
+                      title="Chosen during character creation — the DM weaves it into narration."
+                      data-testid="bond-chosen-badge"
+                    >
+                      ✦ chosen
+                    </span>
+                  )}
+                </span>
+                <p className="text-xs text-purple-200" data-testid="sidebar-bond">{character.bonds[0].person_or_cause}</p>
               </div>
             )}
             
             {/* Flaw */}
             {character.flaws_detailed && character.flaws_detailed.length > 0 && character.flaws_detailed[0]?.habit && (
               <div>
-                <span className="text-xs text-gray-400 font-semibold block mb-1">Flaw</span>
-                <p className="text-xs text-purple-200">{character.flaws_detailed[0].habit}</p>
+                <span className="text-xs text-gray-400 font-semibold block mb-1 flex items-center gap-1">
+                  Flaw
+                  {character.flaws_detailed[0].playerChosen && (
+                    <span
+                      className="text-amber-300 text-[10px] font-normal"
+                      title="Chosen during character creation — the DM weaves it into narration."
+                      data-testid="flaw-chosen-badge"
+                    >
+                      ✦ chosen
+                    </span>
+                  )}
+                </span>
+                <p className="text-xs text-purple-200" data-testid="sidebar-flaw">{character.flaws_detailed[0].habit}</p>
                 {showMore.roleplay && character.flaws_detailed[0].interference && (
                   <p className="text-xs text-gray-400 mt-1">{character.flaws_detailed[0].interference}</p>
                 )}

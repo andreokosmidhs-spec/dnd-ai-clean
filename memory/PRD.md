@@ -56,6 +56,11 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-22 (final)
+- **Feature: Role Play sidebar now shows the player's chosen Ideal/Bond/Flaw with a ✦ chosen indicator.**
+  - `enrichRoleplay(character, raceKey, bgKey, persistedPersonality)` in `RPGGame.jsx` now prefers the persisted wizard selection and only falls back to a deterministic pick from the background's pool if nothing was chosen.
+  - `CharacterSidebar.jsx` shows a subtle amber "✦ chosen" badge with a tooltip ("Chosen during character creation — the DM weaves it into narration") next to player-selected Ideal/Bond/Flaw — closes the loop between what the player picked and what the DM is actually using.
+
 ### 2026-04-22 (even later)
 - **Feature: Strict POV discipline in intro + Lean DM prompts.** Added a "POV DISCIPLINE (strict)" block that bans outside-the-head appearance descriptions (hero can't see their own "slim frame" or "keen green eyes") and meta-narrated thoughts ("you think…", "thoughts swirl in your mind", "in the back of your mind"). Appearance cues are only allowed via: (1) physical sensation, (2) a reflection the hero actually sees, (3) clothing/gear they can look at, or (4) another character reacting to them. The DM also may not narrate decisions the player didn't make.
 - Verified: 5/5 fresh intros scanned clean against a regex panel of forbidden patterns; DM turns now describe weight of a dagger or cool leather on skin instead of eye color.

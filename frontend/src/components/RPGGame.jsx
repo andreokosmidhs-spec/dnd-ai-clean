@@ -30,8 +30,11 @@ const hashIndex = (seed, modulo) => {
 };
 
 // Enrich the character for the legacy RPG UI with roleplay details pulled
-// from the chosen race + background data (ideals / bonds / flaws / traits)
-const enrichRoleplay = (character, raceKey, backgroundKey) => {
+// from the chosen race + background data (ideals / bonds / flaws / traits).
+// If the player explicitly picked an Ideal/Bond/Flaw in the wizard, those are
+// preferred; otherwise we fall back to a deterministic pick from the pool so
+// the sidebar still has something to show.
+const enrichRoleplay = (character, raceKey, backgroundKey, persistedPersonality = null) => {
   const raceEntry = raceKey ? RACE_DATA[raceKey] : null;
   const raceTraits = (raceEntry?.traits || []).map((t) => ({
     name: t?.name || '',
@@ -45,16 +48,27 @@ const enrichRoleplay = (character, raceKey, backgroundKey) => {
   const flawsPool = personality.flaws || [];
   const seed = character?.id || character?.name || '';
 
-  const idealPick = idealsPool.length ? idealsPool[hashIndex(seed + ':ideal', idealsPool.length)] : null;
-  const bondPick = bondsPool.length ? bondsPool[hashIndex(seed + ':bond', bondsPool.length)] : null;
-  const flawPick = flawsPool.length ? flawsPool[hashIndex(seed + ':flaw', flawsPool.length)] : null;
+  // Player-chosen values win when present
+  const playerIdeal = (persistedPersonality?.ideal || '').trim();
+  const playerBond = (persistedPersonality?.bond || '').trim();
+  const playerFlaw = (persistedPersonality?.flaw || '').trim();
+
+  const idealPick = playerIdeal || (idealsPool.length ? idealsPool[hashIndex(seed + ':ideal', idealsPool.length)] : null);
+  const bondPick = playerBond || (bondsPool.length ? bondsPool[hashIndex(seed + ':bond', bondsPool.length)] : null);
+  const flawPick = playerFlaw || (flawsPool.length ? flawsPool[hashIndex(seed + ':flaw', flawsPool.length)] : null);
 
   return {
     ...character,
     traits: raceTraits,
-    ideals: idealPick ? [{ principle: idealPick, inspiration: bg?.feature?.description || '' }] : [],
-    bonds: bondPick ? [{ person_or_cause: bondPick }] : [],
-    flaws_detailed: flawPick ? [{ habit: flawPick, interference: '' }] : [],
+    ideals: idealPick
+      ? [{ principle: idealPick, inspiration: bg?.feature?.description || '', playerChosen: !!playerIdeal }]
+      : [],
+    bonds: bondPick
+      ? [{ person_or_cause: bondPick, playerChosen: !!playerBond }]
+      : [],
+    flaws_detailed: flawPick
+      ? [{ habit: flawPick, interference: '', playerChosen: !!playerFlaw }]
+      : [],
     aspiration: bg?.feature
       ? { goal: bg.feature.name, motivation: bg.feature.description }
       : null,
@@ -204,7 +218,7 @@ const RPGGame = () => {
             portrait: characterData?.portraitDataUrl || characterData?.portrait || null,
           };
 
-          characterForRPG = enrichRoleplay(baseCharacter, raceField.key, bgData.key);
+          characterForRPG = enrichRoleplay(baseCharacter, raceField.key, bgData.key, bgData?.personality);
           
           console.log('🌉 Bridge: Built character:', characterForRPG.name, characterForRPG.race, characterForRPG.class);
         } catch (err) {

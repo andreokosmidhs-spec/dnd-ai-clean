@@ -115,7 +115,9 @@ const RPGGame = () => {
           const identity = characterData?.identity || {};
           const raceData = characterData?.race || {};
           const classData = characterData?.class || {};
-          const abilities = characterData?.abilities || {};
+          // Backend returns abilityScores (camelCase) with lowercase keys (str, dex, con, int, wis, cha)
+          // Fallback to legacy abilities shape just in case
+          const abilities = characterData?.abilityScores || characterData?.abilities || {};
           const bgData = characterData?.background || {};
           
           // Spread characterData first, then override with properly extracted values
@@ -130,14 +132,25 @@ const RPGGame = () => {
             level: classData.level || characterData?.level || 1,
             hp: characterData?.hitPoints?.current || characterData?.hp || 10,
             maxHp: characterData?.hitPoints?.max || characterData?.max_hp || 10,
-            stats: {
-              STR: abilities.STR || 10,
-              DEX: abilities.DEX || 10,
-              CON: abilities.CON || 10,
-              INT: abilities.INT || 10,
-              WIS: abilities.WIS || 10,
-              CHA: abilities.CHA || 10,
-            },
+            stats: (() => {
+              const str = abilities.str ?? abilities.STR ?? abilities.strength ?? 10;
+              const dex = abilities.dex ?? abilities.DEX ?? abilities.dexterity ?? 10;
+              const con = abilities.con ?? abilities.CON ?? abilities.constitution ?? 10;
+              const intel = abilities.int ?? abilities.INT ?? abilities.intelligence ?? 10;
+              const wis = abilities.wis ?? abilities.WIS ?? abilities.wisdom ?? 10;
+              const cha = abilities.cha ?? abilities.CHA ?? abilities.charisma ?? 10;
+              return {
+                // Short uppercase keys (used by newer components)
+                STR: str, DEX: dex, CON: con, INT: intel, WIS: wis, CHA: cha,
+                // Full lowercase names (used by CharacterSheet, CharacterSidebar, InfoDrawer, Inventory, LevelUpScreen)
+                strength: str,
+                dexterity: dex,
+                constitution: con,
+                intelligence: intel,
+                wisdom: wis,
+                charisma: cha,
+              };
+            })(),
             // Ensure background is a string, not an object
             background: bgData.key || bgData.name || '',
             skills: characterData?.skills || [],
@@ -156,7 +169,11 @@ const RPGGame = () => {
             level: 1,
             hp: 10,
             maxHp: 10,
-            stats: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 }
+            stats: {
+              STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10,
+              strength: 10, dexterity: 10, constitution: 10,
+              intelligence: 10, wisdom: 10, charisma: 10,
+            }
           };
         }
         

@@ -57,23 +57,20 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 ## Changelog
 
 ### 2026-04-21
-- **Feature**: Cinematic AI-generated campaign intro narration (`services/campaign_service.py::build_starting_scene_with_ai`)
-  - Uses `emergentintegrations` + `gpt-4o-mini`. Produces a 110-160 word second-person opening tuned to tone/focus/scope/danger + character details. Persisted to `campaign.starting_scene.introText`.
-  - New endpoint: `GET /api/campaigns/{campaignId}` returns the campaign doc (including `starting_scene`).
-  - `RPGGame.jsx` bridge fetches the campaign and uses the intro as the first Adventure Log entry. Falls back to a template intro if AI generation fails.
-- **Feature**: AI-generated character portraits via Gemini Nano Banana
-  - Backend: `backend/api/character_portrait.py`; endpoint `POST /api/characters/v2/{id}/generate-portrait` (+ alias).
-  - Frontend: fired from `ReviewStep.jsx` after character creation; the bridge self-heals by retrying + polling if not ready. Portrait displayed at 192x192 in `CharacterSidebar.jsx`.
-- **Feature**: Role Play panel populates from D&D data
-  - `RPGGame.jsx` bridge enriches character with traits (race), ideals/bonds/flaws (background), and aspiration (background feature); seeded deterministically by character id.
-- **Bug Fix (partial)**: DM `Character not found` 404
-  - `dungeon_forge.py::get_character_doc` auto-mirrors V2 characters into the legacy `characters` collection on demand. Unblocks character-lookup but DM actions still fail on `world_states` lookup (see Known Issues).
-- **Bug Fix (P0)**: Duplicate ability scores in sidebar/sheet/InfoDrawer (iterators now whitelist 6 canonical keys)
-- **Bug Fix (P0)**: CloudFront 403 on character creation (relative fetch → full backend URL)
-- **Bug Fix (P0)**: Ability scores defaulting to 10 in-game (bridge now reads `abilityScores` camelCase)
-
-## Known Issues
-- **DM actions fail with `World state not found`** — the `dungeon_forge` DM pipeline requires `world_states` + richly-structured `world_blueprint` that the new V2 → `campaigns.py` flow does not produce. Requires architectural work to bridge the two subsystems (or retire `dungeon_forge.py` and build a leaner DM on top of `campaigns.py` + knowledge cards).
+- **Feature**: Lean DM endpoint (`POST /api/campaigns/{campaign_id}/dm/action`)
+  - New module: `backend/routers/lean_dm.py`. Uses emergentintegrations + gpt-4o-mini. Pulls context from the campaign (world, intent), V2 character (`characters_v2`), and active knowledge cards (`campaign_log_cards`). Session id = `{campaign_id}:{character_id}`, last 10 messages persisted in new `campaign_messages` collection for multi-turn memory.
+  - Response shape compatible with `AdventureLogWithDM` (`{success, data:{narration, options, entity_mentions, world_state_update, player_updates}}`).
+  - `AdventureLogWithDM.jsx` now uses the lean endpoint whenever a `campaignId` is in scope; falls back to legacy `/api/rpg_dm/action` otherwise.
+  - Verified: ~3s latency for ~170-word cinematic narration; second turn correctly references entities from turn 1 (multi-turn memory works).
+- **Fix**: Adventure Log intro now visible
+  - The bridge in `RPGGame.jsx` writes the AI-generated intro into `localStorage[dm-log-messages-{sessionId}]` (which `AdventureLogWithDM` reads) and sets `dm-intro-played=1` to bypass the legacy auto-intro path.
+- **Feature**: Cinematic AI-generated campaign intro narration (`services/campaign_service.py::build_starting_scene_with_ai`, via emergentintegrations + gpt-4o-mini). New `GET /api/campaigns/{id}` endpoint.
+- **Feature**: AI-generated character portraits via Gemini Nano Banana. Portrait 192×192 in sidebar. Self-healing generation + polling in the bridge.
+- **Feature**: Role Play panel populated from D&D data (race traits, background ideals/bonds/flaws, deterministic seed per character).
+- **Fix (DM character 404, now superseded)**: `dungeon_forge.py` auto-mirrors V2 characters into legacy `characters` collection. Still useful as a safety net for the legacy path; the new V2 flow goes through the lean DM.
+- **Fix**: Duplicate ability scores whitelisted to 6 canonical keys.
+- **Fix**: CloudFront 403 on character creation (full backend URL).
+- **Fix**: Ability scores defaulting to 10 in-game (bridge now reads `abilityScores` camelCase with lowercase keys).
 
 ### 2026-01-17
 - **Bug Fix**: Fixed campaign generation flow returning to main menu

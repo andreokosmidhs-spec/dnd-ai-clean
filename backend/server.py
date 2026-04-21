@@ -118,6 +118,7 @@ from routers import debug as debug_router
 from routers import knowledge as knowledge_router
 from routers import campaign_log as campaign_log_router
 from routers import campaigns as campaigns_router
+from routers import lean_dm as lean_dm_router
 
 # Create the main app without a prefix
 app = FastAPI(title="Sentient RPG Engine", description="AI-Powered Text RPG Framework")
@@ -4153,6 +4154,7 @@ app.include_router(debug_router.router)  # Debug endpoints
 app.include_router(knowledge_router.router)  # Knowledge & Player Notes endpoints
 app.include_router(campaign_log_router.router)  # Campaign Log System endpoints
 app.include_router(campaigns_router.router)  # Campaign creation and world generation
+app.include_router(lean_dm_router.router)  # Lean DM on top of campaigns + knowledge cards
 app.include_router(character_v2_router)
 app.include_router(character_v2_router_alias)
 
@@ -4167,6 +4169,7 @@ debug_router.set_database(db)
 knowledge_router.set_database(db)
 campaign_log_router.set_database(db)
 campaigns_router.set_database(db)
+lean_dm_router.set_database(db)
 scene_refresh_router.set_database(db)
 set_character_v2_database(db)
 

@@ -73,8 +73,11 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
     }
   }, [isLoading, onLoadingChange]);
 
-  // DUNGEON FORGE: Use new action endpoint
-  const apiEndpoint = `${BACKEND_URL}/api/rpg_dm/action`;
+  // Lean DM: campaign-scoped endpoint built on campaigns.py + knowledge cards.
+  // Falls back to the legacy dungeon_forge endpoint if no campaignId is in scope.
+  const apiEndpoint = campaignId
+    ? `${BACKEND_URL}/api/campaigns/${campaignId}/dm/action`
+    : `${BACKEND_URL}/api/rpg_dm/action`;
   const diceEndpoint = `${BACKEND_URL}/api/dice`;
 
   // Auto-scroll to bottom (with message count instead of array reference)

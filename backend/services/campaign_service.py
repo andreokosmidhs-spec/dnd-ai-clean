@@ -132,6 +132,9 @@ async def build_starting_scene_with_ai(
         appearance_bits: List[str] = []
         age_category = ""
         sex = ""
+        ideal = ""
+        bond = ""
+        flaw = ""
 
         if character:
             identity = character.get("identity") or {}
@@ -158,10 +161,23 @@ async def build_starting_scene_with_ai(
                 appearance_bits.append(f"{eyes} eyes")
             if notable:
                 appearance_bits.append("notable: " + ", ".join(notable[:3]))
+            personality = bg.get("personality") or {}
+            ideal = (personality.get("ideal") or "").strip()
+            bond = (personality.get("bond") or "").strip()
+            flaw = (personality.get("flaw") or "").strip()
 
         class_flavor = _CLASS_FLAVOR.get(class_key, _CLASS_FLAVOR["_default"])
         appearance_line = "; ".join(appearance_bits) if appearance_bits else "unremarkable at first glance"
         hero_header = f"{name} — a {age_category or 'adult'} {sex or ''} {race_name} {class_name}, {bg_name} background".replace("  ", " ").strip()
+
+        personality_lines: List[str] = []
+        if ideal:
+            personality_lines.append(f"- Ideal: {ideal}")
+        if bond:
+            personality_lines.append(f"- Bond: {bond}")
+        if flaw:
+            personality_lines.append(f"- Flaw: {flaw}")
+        personality_block = "\n".join(personality_lines) if personality_lines else "- (no personality hooks set)"
 
         system_message = (
             "You are a master Dungeons & Dragons 5e storyteller. You write grounded, cinematic "
@@ -179,7 +195,10 @@ async def build_starting_scene_with_ai(
             "=== HERO (reference them BY NAME, at least once) ===\n"
             f"{hero_header}\n"
             f"Appearance cues: {appearance_line}\n"
-            f"Class flavor to honor: {class_flavor}\n\n"
+            f"Class flavor to honor: {class_flavor}\n"
+            "Personality hooks (weave in ONE subtly — a reaction, a hesitation, "
+            "or a detail the hero notices because of who they are; do NOT quote verbatim):\n"
+            f"{personality_block}\n\n"
             "=== STYLE REQUIREMENTS ===\n"
             "- 110-160 words, EXACTLY ONE paragraph, SECOND PERSON present tense (\"you\").\n"
             f"- Address the hero by name (\"{name}\") naturally at least once.\n"

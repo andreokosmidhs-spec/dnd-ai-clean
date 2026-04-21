@@ -28,6 +28,12 @@ export const buildCharacterPayload = (state) => {
     background: {
       key: state.background?.key || "",
       variantKey: state.background?.variantKey || "",
+      personality: {
+        ideal: state.background?.personality?.ideal || "",
+        bond: state.background?.personality?.bond || "",
+        flaw: state.background?.personality?.flaw || "",
+      },
+      toolChoices: state.background?.toolChoices || [],
     },
     appearance: {
       ageCategory: state.appearance?.ageCategory || "",

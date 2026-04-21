@@ -86,6 +86,20 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
     bg_name = _format_title(bg.get("key"))
     class_flavor = _CLASS_FLAVOR.get(class_key, _CLASS_FLAVOR["_default"])
 
+    personality = bg.get("personality") or {}
+    ideal = (personality.get("ideal") or "").strip()
+    bond = (personality.get("bond") or "").strip()
+    flaw = (personality.get("flaw") or "").strip()
+
+    personality_lines: List[str] = []
+    if ideal:
+        personality_lines.append(f"- Ideal: {ideal}")
+    if bond:
+        personality_lines.append(f"- Bond: {bond}")
+    if flaw:
+        personality_lines.append(f"- Flaw: {flaw}")
+    personality_block = "\n".join(personality_lines) if personality_lines else "- (no personality hooks set)"
+
     appearance_bits: List[str] = []
     if appearance.get("build"):
         appearance_bits.append(f"{appearance['build']} build")
@@ -126,7 +140,10 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
         f"Class flavor to honor: {class_flavor}\n"
         f"Abilities: STR {abilities.get('str', 10)}, DEX {abilities.get('dex', 10)}, "
         f"CON {abilities.get('con', 10)}, INT {abilities.get('int', 10)}, "
-        f"WIS {abilities.get('wis', 10)}, CHA {abilities.get('cha', 10)}\n\n"
+        f"WIS {abilities.get('wis', 10)}, CHA {abilities.get('cha', 10)}\n"
+        "Personality hooks (use sparingly — let them color reactions, create friction, "
+        "or give NPCs leverage; do NOT quote them verbatim):\n"
+        f"{personality_block}\n\n"
         "=== ACTIVE KNOWLEDGE CARDS (weave relevant ones in when natural) ===\n"
         f"{card_block}\n\n"
         "=== STYLE REQUIREMENTS ===\n"

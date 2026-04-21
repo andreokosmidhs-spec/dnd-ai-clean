@@ -39,6 +39,17 @@ class AbilityScores(BaseModel):
 class BackgroundInfo(BaseModel):
     key: str
     variantKey: Optional[str] = None
+    personality: Optional["Personality"] = None
+    toolChoices: List[str] = Field(default_factory=list)
+
+
+class Personality(BaseModel):
+    """Background-driven roleplaying hooks selected in the wizard.
+    Used by the DM to personalize narration.
+    """
+    ideal: Optional[str] = None
+    bond: Optional[str] = None
+    flaw: Optional[str] = None
 
 
 class AppearanceInfo(BaseModel):
@@ -54,6 +65,10 @@ class AppearanceInfo(BaseModel):
 class MetaInfo(BaseModel):
     version: int = 2
     createdAt: datetime = Field(default_factory=datetime.utcnow)
+
+
+# Resolve forward ref on BackgroundInfo -> Personality
+BackgroundInfo.model_rebuild()
 
 
 class CharacterV2Base(BaseModel):

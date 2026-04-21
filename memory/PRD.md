@@ -56,6 +56,13 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-23 (later)
+- **Feature: Auto-calc HP from class + CON modifier (5e fixed-average rule).**
+  - New `utils/hp.js` with `computeMaxHp(classKey, conScore, level)` — case-insensitive on class key, floors at 1, uses standard 5e fixed-average per level (`floor(hit_die/2) + 1 + conMod`).
+  - `RPGGame.jsx` bridge now computes max HP from class + CON instead of defaulting to 10 for every hero.
+  - `CharacterPreview.jsx` surfaces "Max HP: X (hit die + CON modifier)" with a heart icon.
+  - Verified with Playwright: Paladin (d10) with CON 14 → **Max HP: 12**. Unit-tested 9 cases including unknown class → null.
+
 ### 2026-04-23
 - **Feature: Load / Preview / Edit / Delete existing hero flow.**
   - Main menu → **"Load existing hero"** → `/characters` grid listing all V2 heroes with portraits (50+ heroes render correctly).

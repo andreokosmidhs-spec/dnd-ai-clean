@@ -16,6 +16,7 @@ import { checkLevelUp, getLevelFromXP, getXPForNextLevel } from '../data/levelin
 import { useSessionCore } from '../store/useSessionCore';
 import { raceData as RACE_DATA } from '../data/raceData';
 import { BACKGROUNDS_BY_KEY } from '../data/backgroundData';
+import { computeMaxHp } from '../utils/hp';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -180,6 +181,10 @@ const RPGGame = () => {
           
           // Spread characterData first, then override with properly extracted values
           // This ensures object fields like background are converted to strings
+          // Compute max HP from class + CON using the 5e fixed-average rule.
+          const conForHp = abilities.con ?? abilities.CON ?? abilities.constitution ?? 10;
+          const computedMaxHp =
+            computeMaxHp(classData.key, conForHp, classData.level || 1) ?? 10;
           const baseCharacter = {
             ...characterData,
             id: activeCharacterId,
@@ -188,8 +193,8 @@ const RPGGame = () => {
             subclass: classData.subclassKey || '',
             race: raceField.key || characterData?.race || 'Unknown',
             level: classData.level || characterData?.level || 1,
-            hp: characterData?.hitPoints?.current || characterData?.hp || 10,
-            maxHp: characterData?.hitPoints?.max || characterData?.max_hp || 10,
+            hp: characterData?.hitPoints?.current || characterData?.hp || computedMaxHp,
+            maxHp: characterData?.hitPoints?.max || characterData?.max_hp || computedMaxHp,
             stats: (() => {
               const str = abilities.str ?? abilities.STR ?? abilities.strength ?? 10;
               const dex = abilities.dex ?? abilities.DEX ?? abilities.dexterity ?? 10;

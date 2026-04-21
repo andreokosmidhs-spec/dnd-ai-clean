@@ -3,8 +3,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { ChevronLeft, Play, Pencil, Trash2, Loader2, User } from "lucide-react";
+import { ChevronLeft, Play, Pencil, Trash2, Loader2, User, Heart } from "lucide-react";
 import { useSessionCore } from "../store/useSessionCore";
+import { computeMaxHp } from "../utils/hp";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
 
@@ -176,6 +177,24 @@ const CharacterPreview = () => {
                 <StatCell label="WIS" value={abilities.wis} />
                 <StatCell label="CHA" value={abilities.cha} />
               </div>
+              {(() => {
+                const maxHp = computeMaxHp(klass.key, abilities.con, klass.level || 1);
+                if (maxHp == null) return null;
+                return (
+                  <div
+                    className="mt-3 flex items-center gap-2 text-sm text-rose-300"
+                    data-testid="preview-max-hp"
+                  >
+                    <Heart className="h-4 w-4" />
+                    <span>
+                      Max HP: <span className="font-semibold text-rose-200">{maxHp}</span>
+                      <span className="text-slate-500 ml-2 text-xs">
+                        (hit die + CON modifier)
+                      </span>
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Appearance */}

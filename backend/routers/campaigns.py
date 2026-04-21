@@ -166,6 +166,7 @@ async def generate_world(campaignId: str):
 
     campaign.update({
         "world": world,
+        "starting_scene": starting_scene,
         "status": "ready",
         "updated_at": datetime.utcnow(),
     })
@@ -180,6 +181,15 @@ async def generate_world(campaignId: str):
         world=world,
         startingScene=starting_scene,
     )
+
+
+@router.get("/{campaignId}")
+async def get_campaign(campaignId: str):
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.pop("_id", None)
+    return campaign
 
 
 @router.get("/{campaignId}/log/cards")

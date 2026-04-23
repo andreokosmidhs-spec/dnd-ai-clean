@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { raceData } from "../../data/raceData";
 import { CLASS_PROFICIENCIES } from "../../data/classProficiencies";
 import { BACKGROUNDS_BY_KEY } from "../../data/backgroundData";
@@ -67,8 +67,32 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(null);
+  // 'checking' | 'ok' | 'unreachable'
+  const [backendStatus, setBackendStatus] = useState("checking");
   const navigate = useNavigate();
   const { setSession } = useSessionCore();
+
+  // Ping the backend as soon as the user lands on the Review step so they
+  // know up front if the app was loaded from a stale preview URL or is
+  // otherwise unreachable. Tries a cheap existing route.
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
+      // Cheap endpoint that exists, returns 200 quickly.
+      const probe = `${backendUrl}/api/characters/v2/`;
+      try {
+        const res = await fetch(probe, { method: "GET" });
+        if (!cancelled) setBackendStatus(res.ok ? "ok" : "unreachable");
+      } catch (_e) {
+        if (!cancelled) setBackendStatus("unreachable");
+      }
+    };
+    check();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const raceInfo = useMemo(() => {
     if (!wizardState.race?.key) return null;
@@ -104,46 +128,76 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
     setSubmitError(null);
     setSubmitSuccess(null);
 
-    try {
-      const payload = buildCharacterPayload(wizardState);
-      const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
-      const targetUrl = `${backendUrl}/api/characters/v2/create`;
-      const res = await fetch(targetUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    const payload = buildCharacterPayload(wizardState);
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
+    // Two endpoints serve the same handler. If one is blocked by a stale
+    // cache / proxy rule, fall back to the alias so users aren't stuck.
+    const endpoints = [
+      `${backendUrl}/api/characters/v2/create`,
+      `${backendUrl}/api/v2/characters/create`,
+    ];
 
-      if (!res.ok) {
-        // Parse the response body intelligently so we never leak raw HTML
-        // (e.g. CloudFront / proxy "404 page not found" HTML) into the UI.
-        const ctype = (res.headers.get("content-type") || "").toLowerCase();
-        let detail = "";
-        try {
-          if (ctype.includes("application/json")) {
-            const data = await res.json();
-            detail =
-              (typeof data?.detail === "string" && data.detail) ||
-              (Array.isArray(data?.detail) && data.detail.map((d) => d?.msg || JSON.stringify(d)).join("; ")) ||
-              JSON.stringify(data);
-          } else {
-            const raw = await res.text();
-            // Strip HTML to a short snippet; most upstream 404 pages are HTML.
-            const stripped = raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-            detail = stripped.slice(0, 180);
-          }
-        } catch (_e) {
-          detail = "";
+    const parseErrorBody = async (res) => {
+      const ctype = (res.headers.get("content-type") || "").toLowerCase();
+      try {
+        if (ctype.includes("application/json")) {
+          const data = await res.json();
+          return (
+            (typeof data?.detail === "string" && data.detail) ||
+            (Array.isArray(data?.detail) && data.detail.map((d) => d?.msg || JSON.stringify(d)).join("; ")) ||
+            JSON.stringify(data)
+          );
         }
+        const raw = await res.text();
+        return raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
+      } catch (_e) {
+        return "";
+      }
+    };
 
+    try {
+      let res = null;
+      let lastError = "";
+      let lastStatus = 0;
+      let triedUrls = [];
+
+      for (const url of endpoints) {
+        triedUrls.push(url);
+        try {
+          const attempt = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (attempt.ok) {
+            res = attempt;
+            break;
+          }
+          lastStatus = attempt.status;
+          lastError = await parseErrorBody(attempt);
+          // Only worth trying the alias on 404; any other error is likely a
+          // real server/validation problem that the alias won't fix.
+          if (attempt.status !== 404) {
+            res = attempt;
+            break;
+          }
+        } catch (netErr) {
+          lastError = netErr?.message || "Network error";
+          lastStatus = 0;
+        }
+      }
+
+      if (!res || !res.ok) {
         const friendly =
-          res.status === 404
-            ? `The character-creation endpoint wasn't reachable (404). This usually means the app was opened from a stale preview URL. Try a hard refresh (Ctrl/Cmd+Shift+R). Target: ${targetUrl}`
-            : res.status === 422 || res.status === 400
-              ? `We couldn't validate your character (${res.status}). ${detail || "Please re-check the wizard steps."}`
-              : res.status >= 500
-                ? `The server hit an error (${res.status}). Please try again in a moment.${detail ? ` Detail: ${detail}` : ""}`
-                : `Failed to create character (HTTP ${res.status}).${detail ? ` ${detail}` : ""}`;
+          lastStatus === 404
+            ? `The character-creation endpoint wasn't reachable (404). This usually means a stale preview URL or an ad-blocker. Try a hard refresh (Ctrl/Cmd+Shift+R). Tried: ${triedUrls.join(" , ")}`
+            : lastStatus === 422 || lastStatus === 400
+              ? `We couldn't validate your character (${lastStatus}). ${lastError || "Please re-check the wizard steps."}`
+              : lastStatus >= 500
+                ? `The server hit an error (${lastStatus}). Please try again in a moment.${lastError ? ` Detail: ${lastError}` : ""}`
+                : lastStatus === 0
+                  ? `Couldn't reach the backend from your browser. Please check your internet connection or try a hard refresh.${lastError ? ` (${lastError})` : ""}`
+                  : `Failed to create character (HTTP ${lastStatus}).${lastError ? ` ${lastError}` : ""}`;
         throw new Error(friendly);
       }
 
@@ -160,10 +214,7 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
         campaignStatus: "none",
       });
 
-      // Kick off portrait generation in the background. Don't block navigation on it —
-      // the portrait may take 10-20s, while the user will already be on the campaign
-      // setup screen. The image is persisted server-side and the in-game sidebar
-      // picks it up on the next fetch.
+      // Kick off portrait generation in the background. Don't block navigation on it.
       fetch(`${backendUrl}/api/characters/v2/${data.id}/generate-portrait`, {
         method: "POST",
       }).catch((err) => {
@@ -194,6 +245,18 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
     >
       <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg text-slate-100 space-y-6">
         <h2 className="text-2xl font-bold text-amber-400">Step 7 – Review & Submit</h2>
+
+        {backendStatus === "unreachable" && (
+          <div
+            className="rounded-md border border-amber-500/50 bg-amber-900/20 text-amber-100 px-3 py-2 text-sm"
+            data-testid="review-backend-unreachable-banner"
+            role="alert"
+          >
+            ⚠️ The backend isn't responding from your browser. If you click
+            Create Character now it will probably fail with 404. Try a hard
+            refresh (<kbd className="px-1 py-0.5 border border-amber-500/50 rounded text-xs">Ctrl/Cmd+Shift+R</kbd>) first.
+          </div>
+        )}
 
         <div className="space-y-4">
           <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">

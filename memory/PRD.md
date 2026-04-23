@@ -56,6 +56,13 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-23 (review resilience)
+- **Fix: "404 page not found" in Review Step — defensive layer added.**
+  - Proactive **backend-reachability ping** on Review mount. If the GET probe fails, an amber warning banner appears at the top of the Review step (with `data-testid="review-backend-unreachable-banner"`) telling the user to hard-refresh BEFORE they waste a click.
+  - **Endpoint failover**: submit now tries `/api/characters/v2/create`, and on 404 falls back to the alias `/api/v2/characters/create`. Both routes share the same handler, so if one path is blocked by a stale cache or proxy rule the other still succeeds.
+  - Cleaner error parser (JSON → `detail`; HTML → tag-stripped; network error → "Couldn't reach the backend").
+  - Verified alias accepts the full wizard payload (including new personality + toolChoices fields).
+
 ### 2026-04-23 (review error handling)
 - **Fix: Raw "404 page not found" HTML leaking into the Review Step error box.** `ReviewStep.jsx` was calling `await res.text()` and throwing the body verbatim, which exposed upstream HTML 404 pages (e.g. stale preview URL / proxy misses) as-is to the user. New parser:
   - Detects content-type: JSON → pull `detail`; HTML/text → strip tags and cap at 180 chars.

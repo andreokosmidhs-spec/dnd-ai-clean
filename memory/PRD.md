@@ -56,6 +56,13 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-23 (review error handling)
+- **Fix: Raw "404 page not found" HTML leaking into the Review Step error box.** `ReviewStep.jsx` was calling `await res.text()` and throwing the body verbatim, which exposed upstream HTML 404 pages (e.g. stale preview URL / proxy misses) as-is to the user. New parser:
+  - Detects content-type: JSON → pull `detail`; HTML/text → strip tags and cap at 180 chars.
+  - Status-specific friendly messages (404 suggests hard refresh + shows the target URL; 400/422 quote validation detail; 5xx suggests retry).
+  - New red alert box with **Retry** and **Dismiss** buttons + `data-testid` tags, clean layout, role=alert.
+- Verified that FastAPI 404s (JSON `{detail:"Not Found"}`) and proxy HTML 404s both render cleanly now.
+
 ### 2026-04-23 (scene reports)
 - **Feature: "Report this scene" — one-click dev snapshot on DM messages.**
   - Backend:

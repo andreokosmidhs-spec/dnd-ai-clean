@@ -107,15 +107,44 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
     try {
       const payload = buildCharacterPayload(wizardState);
       const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
-      const res = await fetch(`${backendUrl}/api/characters/v2/create`, {
+      const targetUrl = `${backendUrl}/api/characters/v2/create`;
+      const res = await fetch(targetUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Failed to create character");
+        // Parse the response body intelligently so we never leak raw HTML
+        // (e.g. CloudFront / proxy "404 page not found" HTML) into the UI.
+        const ctype = (res.headers.get("content-type") || "").toLowerCase();
+        let detail = "";
+        try {
+          if (ctype.includes("application/json")) {
+            const data = await res.json();
+            detail =
+              (typeof data?.detail === "string" && data.detail) ||
+              (Array.isArray(data?.detail) && data.detail.map((d) => d?.msg || JSON.stringify(d)).join("; ")) ||
+              JSON.stringify(data);
+          } else {
+            const raw = await res.text();
+            // Strip HTML to a short snippet; most upstream 404 pages are HTML.
+            const stripped = raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+            detail = stripped.slice(0, 180);
+          }
+        } catch (_e) {
+          detail = "";
+        }
+
+        const friendly =
+          res.status === 404
+            ? `The character-creation endpoint wasn't reachable (404). This usually means the app was opened from a stale preview URL. Try a hard refresh (Ctrl/Cmd+Shift+R). Target: ${targetUrl}`
+            : res.status === 422 || res.status === 400
+              ? `We couldn't validate your character (${res.status}). ${detail || "Please re-check the wizard steps."}`
+              : res.status >= 500
+                ? `The server hit an error (${res.status}). Please try again in a moment.${detail ? ` Detail: ${detail}` : ""}`
+                : `Failed to create character (HTTP ${res.status}).${detail ? ` ${detail}` : ""}`;
+        throw new Error(friendly);
       }
 
       const data = await res.json();
@@ -296,8 +325,34 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
           </section>
 
           {submitError && (
-            <div className="rounded border border-red-500 bg-red-900/40 text-red-200 px-4 py-2 text-sm">
-              {submitError}
+            <div
+              className="rounded-md border border-red-500/60 bg-red-900/30 text-red-100 px-4 py-3 text-sm space-y-2"
+              data-testid="review-submit-error"
+              role="alert"
+            >
+              <div className="flex items-start gap-2">
+                <span className="font-semibold text-red-200">Couldn't create character.</span>
+              </div>
+              <p className="text-red-200 leading-relaxed break-words">{submitError}</p>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="text-xs px-3 py-1 rounded border border-red-400/60 bg-red-600/30 hover:bg-red-600/50 text-red-50 disabled:opacity-50"
+                  data-testid="review-submit-retry-btn"
+                >
+                  {isSubmitting ? "Retrying…" : "Retry"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubmitError(null)}
+                  className="text-xs px-3 py-1 rounded border border-slate-500/50 bg-slate-700/40 hover:bg-slate-700/70 text-slate-200"
+                  data-testid="review-submit-dismiss-btn"
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
           )}
           {submitSuccess && (

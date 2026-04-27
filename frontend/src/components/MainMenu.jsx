@@ -87,7 +87,9 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
       const response = await apiClient.get('/api/campaigns/v2/latest');
 
       if (isSuccess(response)) {
-        const { campaign_id, character_id, status, character_name } = response.data || {};
+        // apiClient unwraps response.data — the body { campaign_id, character_id, ... }
+        // is the response object itself, not nested under `.data`.
+        const { campaign_id, character_id, status, character_name } = response || {};
 
         if (!campaign_id || !character_id) {
           throw new Error('Latest campaign returned no IDs');

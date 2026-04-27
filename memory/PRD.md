@@ -56,6 +56,21 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-23 (Mercer style overhaul)
+- **Major: Intro + Lean DM prompts rewritten in Matthew Mercer's narration style.**
+  - Both system prompts now explicitly invoke "the tradition of Matthew Mercer (Critical Role)" and codify his hallmarks as 9 strict rules:
+    1. **Static scene** — the hero is observing, the world happens AROUND them. Never auto-narrate "you scan / step / reach / decide / turn".
+    2. Never override perception or judgment ("you wonder", "you know", "in the back of your mind" — banned).
+    3. **One simile maximum** per reply (zero preferred). No "like X, like Y" chains.
+    4. **NPCs as silhouettes/voices/postures** — "the hooded figure at the well", "a man's frantic voice" — names emerge naturally, never invented.
+    5. Time, light, weather carry mood (no adjective stacks).
+    6. Tone-matched prose — gritty = short sentences + cold details; heroic = open vistas, no saccharine; mystery = emphasize what's OUT of place.
+    7. No dice/DC/check language.
+    8. Appearance only via physical sensation, reflection, gear, or NPC reaction (never described from outside).
+    9. Expanded hard-ban list: "swirl like autumn leaves", "like fingers across", "gleam and promise fortune", "What better place...?", and previous emotion-as-abstraction phrases.
+  - **Endings hand agency back, Mercer-style**: state 2-3 concrete observable facts unique to THIS scene + "What do you do?" — schematic example so the model never reuses sample text. Verified across 3 fresh intros: each ended with a different set of facts tied to its unique opening lead (pier/sailors; royal envelope; altar/journal).
+  - **Length tightened**: intro 90-140 words (was 110-160), DM turn 70-130 (was 80-160) — Mercer is concise, not verbose.
+
 ### 2026-04-23 (review resilience)
 - **Fix: "404 page not found" in Review Step — defensive layer added.**
   - Proactive **backend-reachability ping** on Review mount. If the GET probe fails, an amber warning banner appears at the top of the Review step (with `data-testid="review-backend-unreachable-banner"`) telling the user to hard-refresh BEFORE they waste a click.

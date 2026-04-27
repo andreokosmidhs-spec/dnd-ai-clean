@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { raceData } from "../../data/raceData";
 import { CLASS_PROFICIENCIES } from "../../data/classProficiencies";
 import { BACKGROUNDS_BY_KEY } from "../../data/backgroundData";
@@ -67,32 +67,8 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(null);
-  // 'checking' | 'ok' | 'unreachable'
-  const [backendStatus, setBackendStatus] = useState("checking");
   const navigate = useNavigate();
   const { setSession } = useSessionCore();
-
-  // Ping the backend as soon as the user lands on the Review step so they
-  // know up front if the app was loaded from a stale preview URL or is
-  // otherwise unreachable. Tries a cheap existing route.
-  useEffect(() => {
-    let cancelled = false;
-    const check = async () => {
-      const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
-      // Cheap endpoint that exists, returns 200 quickly.
-      const probe = `${backendUrl}/api/characters/v2/`;
-      try {
-        const res = await fetch(probe, { method: "GET" });
-        if (!cancelled) setBackendStatus(res.ok ? "ok" : "unreachable");
-      } catch (_e) {
-        if (!cancelled) setBackendStatus("unreachable");
-      }
-    };
-    check();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const raceInfo = useMemo(() => {
     if (!wizardState.race?.key) return null;
@@ -245,18 +221,6 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
     >
       <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg text-slate-100 space-y-6">
         <h2 className="text-2xl font-bold text-amber-400">Step 7 – Review & Submit</h2>
-
-        {backendStatus === "unreachable" && (
-          <div
-            className="rounded-md border border-amber-500/50 bg-amber-900/20 text-amber-100 px-3 py-2 text-sm"
-            data-testid="review-backend-unreachable-banner"
-            role="alert"
-          >
-            ⚠️ The backend isn't responding from your browser. If you click
-            Create Character now it will probably fail with 404. Try a hard
-            refresh (<kbd className="px-1 py-0.5 border border-amber-500/50 rounded text-xs">Ctrl/Cmd+Shift+R</kbd>) first.
-          </div>
-        )}
 
         <div className="space-y-4">
           <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">

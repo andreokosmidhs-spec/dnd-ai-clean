@@ -87,6 +87,219 @@ def build_world_blueprint(intent: CampaignIntent, character: Dict | None) -> Dic
     }
 
 
+def _template_world_setting(intent: CampaignIntent, world: Dict) -> Dict:
+    """Deterministic fallback used when the LLM is unavailable.
+    Provides minimal but coherent setting context.
+    """
+    realm_name = world.get("world_core", {}).get("name", "the realm")
+    return {
+        "era": "An age where steel rules the field, magic is real but uncommon, and most folk distrust both.",
+        "factions": [
+            {
+                "name": "The Crown's Council",
+                "domain": "the law of the realm",
+                "stance": "publicly benevolent, privately overreaching",
+            },
+            {
+                "name": "The Merchant Concord",
+                "domain": "trade routes and lending",
+                "stance": "wealth-first; will tolerate any flag that pays",
+            },
+            {
+                "name": "The Hollow Order",
+                "domain": "old magics and forbidden lore",
+                "stance": "outlawed in cities; tolerated in border towns",
+            },
+        ],
+        "recent_events": [
+            {
+                "title": "The Long Drought",
+                "summary": f"Three poor harvests have hardened {realm_name}; bread is scarce and tempers shorter.",
+            },
+            {
+                "title": "The Sealed Pact",
+                "summary": "A treaty between the Crown and the Merchant Concord shifted power; some call it a betrayal.",
+            },
+        ],
+        "current_tension": (
+            f"Power tilts uneasily in {realm_name}. The streets feel watched, "
+            "and small loyalties matter more than grand titles right now."
+        ),
+    }
+
+
+async def generate_world_setting_with_ai(
+    intent: CampaignIntent,
+    world: Dict,
+    character: Optional[Dict],
+) -> Dict:
+    """Generate a campaign-specific SETTING block: era, factions, recent
+    events, current tension. Falls back to a coherent template on any failure.
+    """
+    fallback = _template_world_setting(intent, world)
+    try:
+        import json as _json
+        import os
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+        api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return fallback
+
+        starting = world.get("startingLocation", {})
+        realm_name = world.get("world_core", {}).get("name", "the realm")
+        location_name = starting.get("name", "the starting area")
+
+        race_key = "human"
+        class_key = "adventurer"
+        bg_key = "wanderer"
+        if character:
+            race_key = (character.get("race") or {}).get("key", race_key)
+            cls = character.get("class") or character.get("class_") or {}
+            class_key = (cls.get("key") or class_key).lower()
+            bg_key = ((character.get("background") or {}).get("key") or bg_key).lower()
+
+        prompt = (
+            "Design the SETTING for a Dungeons & Dragons 5e campaign. The hero will see this on "
+            "their world panel; the DM will use it on every turn. It must feel like a real place "
+            "with real history and real factions in conflict — not generic fantasy soup.\n\n"
+            "=== CAMPAIGN PARAMETERS ===\n"
+            f"Tone: {intent.tone} | Focus: {intent.focus} | Scope: {intent.scope} | Danger: {intent.danger}\n"
+            f"Realm name: {realm_name}\n"
+            f"Starting location: {location_name} — {starting.get('description', '')}\n"
+            f"Hero: {_format_title(race_key)} {_format_title(class_key)} ({_format_title(bg_key)} background)\n\n"
+            "=== STRICT REQUIREMENTS ===\n"
+            f"- The era must clearly match the {intent.tone} tone (gritty = post-war, scarcity, "
+            "broken institutions; heroic = rising kingdoms, banners returning; mystery = secretive "
+            "guilds, occult rumors).\n"
+            f"- All three factions must have a clear DOMAIN (what they control or do) and a "
+            "STANCE (their attitude or method). They must be in conflict, openly or quietly.\n"
+            "- Recent events are events that happened RECENTLY (months to a few years ago), not "
+            "ancient history. They must shape the current mood of the streets.\n"
+            "- Current tension must be a concrete, palpable problem the player would notice "
+            "walking around — bread shortage, curfew, missing tax barge, watch arresting "
+            "songsmiths, something specific.\n"
+            "- NO clichés (no 'ancient evil awakens', 'chosen one', 'dark lord rises'). Real history.\n"
+            "- Names should feel earned, not Tolkien-pastiche. Avoid apostrophes.\n\n"
+            "=== OUTPUT (strict JSON, no prose, no code fence) ===\n"
+            "{\n"
+            "  \"era\": \"1-2 sentences capturing the time period and the dominant feel of life right now\",\n"
+            "  \"factions\": [\n"
+            "    {\"name\": \"...\", \"domain\": \"what they control or do, 4-10 words\", \"stance\": \"their attitude/method, 4-10 words\"},\n"
+            "    ... (exactly 3 factions, in active tension)\n"
+            "  ],\n"
+            "  \"recent_events\": [\n"
+            "    {\"title\": \"3-6 word event name\", \"summary\": \"1 sentence describing what happened and how it changed things\"},\n"
+            "    ... (exactly 2 recent events)\n"
+            "  ],\n"
+            "  \"current_tension\": \"1-2 sentence summary of the concrete pressure on the streets right now\"\n"
+            "}\n"
+        )
+
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"campaign-setting-{uuid4()}",
+            system_message=(
+                "You are a senior D&D worldbuilder. You produce specific, grounded setting bibles "
+                "with factions in real conflict and recent events that shape the day. Output strict JSON only."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.lower().startswith("json"):
+                text = text[4:].lstrip()
+        try:
+            data = _json.loads(text)
+        except Exception:
+            start = text.find("{")
+            end = text.rfind("}")
+            if start != -1 and end > start:
+                data = _json.loads(text[start : end + 1])
+            else:
+                raise
+
+        # Light validation: keep what's there, fall back on anything missing
+        era = (data.get("era") or "").strip()
+        factions_raw = data.get("factions") or []
+        events_raw = data.get("recent_events") or []
+        tension = (data.get("current_tension") or "").strip()
+
+        factions = []
+        for f in factions_raw[:3]:
+            if isinstance(f, dict) and f.get("name"):
+                factions.append({
+                    "name": str(f.get("name")).strip()[:60],
+                    "domain": str(f.get("domain") or "").strip()[:120],
+                    "stance": str(f.get("stance") or "").strip()[:120],
+                })
+        events = []
+        for e in events_raw[:2]:
+            if isinstance(e, dict) and e.get("title"):
+                events.append({
+                    "title": str(e.get("title")).strip()[:60],
+                    "summary": str(e.get("summary") or "").strip()[:200],
+                })
+
+        return {
+            "era": era or fallback["era"],
+            "factions": factions or fallback["factions"],
+            "recent_events": events or fallback["recent_events"],
+            "current_tension": tension or fallback["current_tension"],
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"AI world-setting generation failed, using template: {exc}")
+        return fallback
+
+
+def setting_knowledge_cards(setting: Dict) -> List[KnowledgeCard]:
+    """Convert the world setting into knowledge cards so factions, events,
+    and the current tension show up on the player's deck AND get fed into
+    the DM prompt every turn.
+    """
+    cards: List[KnowledgeCard] = []
+    for f in (setting.get("factions") or [])[:3]:
+        if not f.get("name"):
+            continue
+        desc = "; ".join(p for p in [f.get("domain"), f.get("stance")] if p)
+        cards.append(
+            KnowledgeCard(
+                id=str(uuid4()),
+                type="faction",
+                title=f["name"],
+                description=desc or "An active faction in the realm.",
+                tags=["faction", "setting"],
+            )
+        )
+    for e in (setting.get("recent_events") or [])[:2]:
+        if not e.get("title"):
+            continue
+        cards.append(
+            KnowledgeCard(
+                id=str(uuid4()),
+                type="event",
+                title=e["title"],
+                description=e.get("summary") or "A recent event that shapes the realm.",
+                tags=["history", "setting", "recent"],
+            )
+        )
+    tension = (setting.get("current_tension") or "").strip()
+    if tension:
+        cards.append(
+            KnowledgeCard(
+                id=str(uuid4()),
+                type="belief",
+                title="What the streets feel like",
+                description=tension,
+                tags=["tension", "setting", "mood"],
+            )
+        )
+    return cards
+
+
 def build_starting_scene(campaign_id: str, world: Dict) -> Dict:
     starting_location = world.get("startingLocation", {})
     location_name = starting_location.get("name", "the starting point")
@@ -106,11 +319,15 @@ async def build_starting_scene_with_ai(
     intent: CampaignIntent,
     character: Optional[Dict],
     active_quest: Optional[Dict] = None,
+    setting: Optional[Dict] = None,
 ) -> Dict:
     """Produce a cinematic second-person campaign intro using the LLM.
     Falls back to the template intro on any failure.
     `active_quest` (optional): a dict with `title`, `description` — the opening
     quest card that should be planted as the concrete hook in the intro.
+    `setting` (optional): a dict with `era`, `factions`, `recent_events`,
+    `current_tension` — the world's situation that should ground the player
+    BEFORE the personal scene zooms in.
     """
     fallback = build_starting_scene(campaign_id, world)
     try:
@@ -196,6 +413,31 @@ async def build_starting_scene_with_ai(
             else "- (no opening lead set; invent a subtle hook aligned with the campaign focus)"
         )
 
+        # Setting block: the world's actual situation (era, factions, recent
+        # events, current tension). The intro MUST use these as ground truth
+        # so the player feels they're stepping into a real place with real
+        # history — not a generic fantasy backdrop.
+        setting_lines: List[str] = []
+        if setting:
+            era = (setting.get("era") or "").strip()
+            tension = (setting.get("current_tension") or "").strip()
+            factions = setting.get("factions") or []
+            events = setting.get("recent_events") or []
+            if era:
+                setting_lines.append(f"- Era: {era}")
+            for f in factions[:3]:
+                if not f.get("name"):
+                    continue
+                detail = "; ".join(p for p in [f.get("domain"), f.get("stance")] if p)
+                setting_lines.append(f"- Faction — {f['name']}: {detail}")
+            for e in events[:2]:
+                if not e.get("title"):
+                    continue
+                setting_lines.append(f"- Recent event — {e['title']}: {e.get('summary', '')}")
+            if tension:
+                setting_lines.append(f"- Current tension: {tension}")
+        setting_block = "\n".join(setting_lines) if setting_lines else "(no setting context provided)"
+
         system_message = (
             "You are a master Dungeons & Dragons 5e storyteller in the tradition of "
             "Matthew Mercer: cinematic but restrained, grounded in concrete sensory "
@@ -222,7 +464,19 @@ async def build_starting_scene_with_ai(
             f"{personality_block}\n\n"
             "=== ACTIVE OPENING LEAD (plant as a fact in the world; do NOT hijack the hero into investigating it) ===\n"
             f"{quest_block}\n\n"
+            "=== WORLD SETTING (ground truth — the player must feel they're in this specific world, not generic fantasy) ===\n"
+            f"{setting_block}\n\n"
             "=== MERCER STYLE — STRICT ===\n"
+            "0) STRUCTURE (Mercer's classic opening, two beats):\n"
+            "   • BEAT ONE (1-2 sentences): GROUND THE PLAYER IN THE WORLD'S SITUATION. "
+            "Reference at least ONE concrete element from the WORLD SETTING above — name a "
+            "faction, name a recent event, or evoke the current tension as a felt fact on the "
+            "streets. Example: \"Three poor harvests have hardened {realm}; the bread queues "
+            "outside the Crown's grain hall stretch past the chapel now.\" This beat establishes "
+            "WHERE and WHEN the hero stands in history.\n"
+            "   • BEAT TWO (3-4 sentences): ZOOM INTO THE SCENE. Now describe the immediate "
+            "place around the still hero — weather, light, time of day, sound, smell, texture. "
+            "Plant the active opening lead as an observable fact in this specific moment.\n"
             "1) STATIC SCENE. The hero is still — standing, sitting, arriving, watching. "
             "The scene HAPPENS AROUND them. Show the place: weather, light, time of day, "
             "a sound, a smell, one specific texture. Make it feel like a real moment in a real place.\n"
@@ -255,8 +509,8 @@ async def build_starting_scene_with_ai(
             "\"like fingers across\", \"gleam and promise fortune\", \"ye olde\".\n"
             "10) Use the location name once naturally. Reference the hero's name once if it fits — never twice.\n\n"
             "=== LENGTH & FORM ===\n"
-            "- 90-140 words, ONE paragraph, second-person present tense.\n"
-            "- 4-6 sentences; mix sentence lengths (short, longer, short).\n"
+            "- 130-180 words, ONE paragraph, second-person present tense.\n"
+            "- 5-8 sentences across both beats; mix sentence lengths (short, longer, short).\n"
             "- No headings, no quotes around the passage, no OOC, no stats.\n\n"
             "=== ENDING (Mercer's signature — hand agency back) ===\n"
             "End by presenting the WORLD'S facts, not the hero's autopilot. Choose one:\n"

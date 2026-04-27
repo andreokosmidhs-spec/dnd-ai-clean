@@ -56,6 +56,19 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-27 (world setting)
+- **Major: Real world-setting context now generated and threaded through the entire narrative pipeline.**
+  - **New service**: `generate_world_setting_with_ai(intent, world, character)` produces a structured setting bible per campaign — `era`, 3 named **factions** (with `domain` + `stance` and in active conflict), 2 **recent events** (with `title` + `summary`), and a concrete `current_tension` describing what the streets actually feel like right now. Tone-adapted: Gritty → post-war scarcity / corruption; Heroic → rising orders / bandit threats; Mystery → secret guilds. Has a coherent template fallback if the LLM is unavailable.
+  - **Persisted on `world.setting`** so it loads back on every session — the DM uses it on every turn, not just the intro.
+  - **Setting auto-seeded as Knowledge Cards** (faction + event + tension types) so factions and history surface in the player's deck and feed into the DM prompt automatically.
+  - **Mercer two-beat opening** — intro prompt now requires:
+    1. Beat ONE (1-2 sentences): grounds the player in the world's situation, naming a faction or recent event or evoking the current tension as a felt fact on the streets.
+    2. Beat TWO (3-4 sentences): zooms into the static scene with concrete sensory details and plants the active opening lead.
+  - **Lean DM** prompt now has a SETTING block (era + factions + recent events + current tension) injected after the location, so every turn references factions/history naturally.
+  - **WorldInfoPanel** upgraded: new "The Age" (era), "What the Streets Feel Like" (current tension), "Factions in Play" (with domain + stance), and "Recent History" (events with summaries) sections — players can see the world they're in.
+  - `RPGGame.jsx` bridge passes `setting` through to the panel.
+  - **Verified live**: Gritty/Political-Intrigue campaign generated *Silver Council / Thorns of the Night / Ember Watch*, *Market Scandal*, *Disappearance of the Tax Barge*, *grain riots & curfew*. Intro opened with *"The streets bear the weight of recent turmoil…after the Market Scandal laid bare the council's greed."* Heroic/Wilderness produced completely different setting (Trail Wardens vs Cartographers Guild, bandit attacks); DM weaved them into NPC dialogue on turn 1.
+
 ### 2026-04-27 (Load Latest Campaign fix)
 - **Fix: "Load Last Campaign from DB" button was wired to a legacy `dungeon_forge` endpoint that scans the OLD `characters` collection, while V2 data lives in `characters_v2`. Net effect: button always returned 404 ("No campaigns with characters found") even with 94 V2 campaigns in the DB.**
   - New endpoint **`GET /api/campaigns/v2/latest`** in `routers/campaigns.py` that finds the most-recently-updated V2 campaign whose character still exists in `characters_v2`. Returns `{campaign_id, character_id, status, updated_at, character_name}`.

@@ -71,6 +71,7 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
+    setting = world.get("setting") or {}
 
     identity = character.get("identity") or {}
     race = character.get("race") or {}
@@ -141,6 +142,26 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
     active_lead_block = "\n".join(active_leads) if active_leads else "(no active opening lead — advance scene naturally)"
     closed_lead_block = "\n".join(closed_leads) if closed_leads else "(none)"
 
+    # Setting block — era, factions, recent events, current tension.
+    setting_lines: List[str] = []
+    if setting:
+        era = (setting.get("era") or "").strip()
+        if era:
+            setting_lines.append(f"- Era: {era}")
+        for f in (setting.get("factions") or [])[:3]:
+            if not f.get("name"):
+                continue
+            detail = "; ".join(p for p in [f.get("domain"), f.get("stance")] if p)
+            setting_lines.append(f"- Faction — {f['name']}: {detail}")
+        for e in (setting.get("recent_events") or [])[:2]:
+            if not e.get("title"):
+                continue
+            setting_lines.append(f"- Recent event — {e['title']}: {e.get('summary', '')}")
+        tension = (setting.get("current_tension") or "").strip()
+        if tension:
+            setting_lines.append(f"- Current tension: {tension}")
+    setting_block = "\n".join(setting_lines) if setting_lines else "(no setting context)"
+
     tone = intent.get("tone", "heroic")
 
     return (
@@ -154,6 +175,8 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
         f"Scope: {intent.get('scope', 'local')} | Danger: {intent.get('danger', 'medium')}\n"
         f"World theme: {world.get('theme', 'mixed')} | World tone: {world.get('tone', 'mixed')}\n"
         f"Starting location: {starting.get('name', 'Unknown')} — {starting.get('description', '')}\n\n"
+        "=== WORLD SETTING (ground truth — factions / events / tension that shape every scene) ===\n"
+        f"{setting_block}\n\n"
         "=== HERO (player-controlled) ===\n"
         f"Name: {hero_name} (use sparingly — never twice in one reply)\n"
         f"Race: {race_name} | Class: {class_name} (Level {class_.get('level', 1)}) | Background: {bg_name}\n"

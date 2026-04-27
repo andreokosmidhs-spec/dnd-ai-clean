@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Globe, MapPin, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import { Globe, MapPin, Users, ChevronDown, ChevronUp, Shield, Scroll, AlertTriangle } from 'lucide-react';
 
 const WorldInfoPanel = ({ worldBlueprint, currentLocation }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -13,7 +13,12 @@ const WorldInfoPanel = ({ worldBlueprint, currentLocation }) => {
   const startingTown = worldBlueprint.starting_town || {};
   const pois = worldBlueprint.points_of_interest || [];
   const npcs = worldBlueprint.key_npcs || [];
-  const factions = worldBlueprint.factions || [];
+  const setting = worldBlueprint.setting || {};
+  // Factions can be on worldBlueprint.factions (legacy) OR worldBlueprint.setting.factions (V2)
+  const factions = setting.factions?.length ? setting.factions : (worldBlueprint.factions || []);
+  const recentEvents = setting.recent_events || [];
+  const era = setting.era;
+  const currentTension = setting.current_tension;
 
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700">
@@ -54,6 +59,28 @@ const WorldInfoPanel = ({ worldBlueprint, currentLocation }) => {
               </p>
             )}
           </div>
+
+          {/* Era */}
+          {era && (
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Scroll className="text-amber-400" size={16} />
+                <h4 className="text-amber-400 font-semibold text-sm">The Age</h4>
+              </div>
+              <p className="text-gray-300 text-sm leading-relaxed ml-6" data-testid="world-era">{era}</p>
+            </div>
+          )}
+
+          {/* Current Tension */}
+          {currentTension && (
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle className="text-orange-400" size={16} />
+                <h4 className="text-orange-400 font-semibold text-sm">What the Streets Feel Like</h4>
+              </div>
+              <p className="text-gray-300 text-sm leading-relaxed italic ml-6" data-testid="world-tension">{currentTension}</p>
+            </div>
+          )}
 
           {/* Region */}
           {startingRegion.name && (
@@ -137,14 +164,42 @@ const WorldInfoPanel = ({ worldBlueprint, currentLocation }) => {
               <div className="flex items-center gap-2 mb-2">
                 <Shield className="text-red-400" size={16} />
                 <h4 className="text-red-400 font-semibold text-sm">
-                  Factions
+                  Factions in Play
                 </h4>
               </div>
-              <div className="space-y-1 ml-6">
-                {factions.slice(0, 3).map((faction, idx) => (
-                  <div key={idx} className="flex items-start gap-2">
-                    <span className="text-red-300 text-sm">•</span>
-                    <span className="text-white text-sm">{faction.name}</span>
+              <div className="space-y-2 ml-6" data-testid="world-factions">
+                {factions.slice(0, 4).map((faction, idx) => (
+                  <div key={idx} className="text-sm">
+                    <div className="text-white font-medium">{faction.name}</div>
+                    {(faction.domain || faction.stance) && (
+                      <div className="text-gray-400 text-xs mt-0.5">
+                        {faction.domain && <span>{faction.domain}</span>}
+                        {faction.domain && faction.stance && <span className="text-gray-600"> · </span>}
+                        {faction.stance && <span className="italic">{faction.stance}</span>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent Events */}
+          {recentEvents.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Scroll className="text-cyan-400" size={16} />
+                <h4 className="text-cyan-400 font-semibold text-sm">
+                  Recent History
+                </h4>
+              </div>
+              <div className="space-y-2 ml-6" data-testid="world-recent-events">
+                {recentEvents.slice(0, 3).map((event, idx) => (
+                  <div key={idx} className="text-sm">
+                    <div className="text-white font-medium">{event.title}</div>
+                    {event.summary && (
+                      <div className="text-gray-400 text-xs mt-0.5 leading-relaxed">{event.summary}</div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -155,8 +210,5 @@ const WorldInfoPanel = ({ worldBlueprint, currentLocation }) => {
     </div>
   );
 };
-
-// Missing import
-import { Shield } from 'lucide-react';
 
 export default WorldInfoPanel;

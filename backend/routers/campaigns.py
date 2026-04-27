@@ -18,6 +18,8 @@ from services.campaign_service import (
     build_world_blueprint,
     generate_initial_cards,
     generate_opening_quest_card_with_ai,
+    generate_world_setting_with_ai,
+    setting_knowledge_cards,
 )
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
@@ -210,6 +212,12 @@ async def generate_world(campaignId: str):
 
     world = build_world_blueprint(intent, character)
 
+    # Generate the world's SETTING (era, factions, recent events, current
+    # tension) so the intro can ground the player in a real place with real
+    # history, and the DM can reference factions/events on every turn.
+    setting = await generate_world_setting_with_ai(intent, world, character)
+    world["setting"] = setting
+
     # Generate the AI opening-quest card FIRST so it can be planted in the intro.
     opening_quest = await generate_opening_quest_card_with_ai(intent, world, character)
 
@@ -219,6 +227,7 @@ async def generate_world(campaignId: str):
         intent,
         character,
         active_quest=opening_quest.model_dump(),
+        setting=setting,
     )
 
     campaign.update({
@@ -229,8 +238,9 @@ async def generate_world(campaignId: str):
     })
     await _save_campaign_doc(campaign)
 
-    # Seed non-quest cards + pin the opening quest to the deck.
+    # Seed cards: location/contact/cultural + faction/event/tension + opening lead.
     initial_cards = generate_initial_cards(campaignId, intent, world, character)
+    initial_cards.extend(setting_knowledge_cards(setting))
     initial_cards.append(opening_quest)
     await _replace_cards(campaignId, initial_cards)
 

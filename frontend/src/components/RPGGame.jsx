@@ -366,6 +366,10 @@ const RPGGame = () => {
             world_core: worldCore,
             starting_town: startingTown,
             startingLocation,
+            // Pass the rich setting (era, factions, recent_events, current_tension)
+            // through so WorldInfoPanel can render era, faction details, history,
+            // and tension. Falls back to undefined if a legacy campaign without it.
+            setting: campaignWorld?.setting,
           });
         }
         

@@ -13,7 +13,7 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
   const [savedCharacter, setSavedCharacter] = useState(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [isLoadingCampaign, setIsLoadingCampaign] = useState(false);
-  const { activeCharacterId, activeCampaignId, resetSession } = useSessionCore();
+  const { activeCharacterId, activeCampaignId, resetSession, setSession } = useSessionCore();
   const hasActiveSession = !!activeCharacterId && !!activeCampaignId;
   const showLegacySavedCampaign = hasSavedCampaign && !hasActiveSession;
 
@@ -78,64 +78,52 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
 
   const handleLoadLastCampaign = async () => {
     setIsLoadingCampaign(true);
-    
+
     if (window.showToast) {
-      window.showToast('🔍 Loading last campaign from database...', 'info');
+      window.showToast('Loading latest V2 campaign…', 'info');
     }
-    
-    console.log('[FLOW] Load last campaign clicked');
-    
+
     try {
-      const response = await apiClient.get('/api/campaigns/latest');
-      
+      const response = await apiClient.get('/api/campaigns/v2/latest');
+
       if (isSuccess(response)) {
-        const { campaign_id, world_blueprint, intro, entity_mentions, scene_description, starting_location, character, character_id, world_state } = response.data;
-        
-        console.log('✅ [FLOW] Loaded campaign from DB:', campaign_id);
-        console.log('📜 [FLOW] Character:', character.name);
-        console.log('🔗 [FLOW] Entity mentions:', entity_mentions ? entity_mentions.length : 0);
-        console.log('📍 [FLOW] Scene description:', scene_description ? scene_description.location : 'none');
-        console.log('✅ [FLOW] Campaign and character exist in MongoDB');
-        
-        // Call the callback to handle the loaded data
-        if (onLoadLastCampaign) {
-          onLoadLastCampaign({
-            campaign_id,
-            world_blueprint,
-            intro,
-            entity_mentions,
-            scene_description,
-            starting_location,
-            character,
-            character_id,
-            world_state
-          });
+        const { campaign_id, character_id, status, character_name } = response.data || {};
+
+        if (!campaign_id || !character_id) {
+          throw new Error('Latest campaign returned no IDs');
         }
-        
+
+        // Wire session state and route to the adventure screen — same path
+        // we use after creating a brand-new campaign, so all the bridge
+        // logic (intro fetch, world blueprint, HP, personality) just works.
+        setSession({
+          activeCharacterId: character_id,
+          activeCampaignId: campaign_id,
+          campaignStatus: status || 'ready',
+        });
+
         if (window.showToast) {
-          window.showToast(`✅ Loaded campaign: ${character.name}`, 'success');
+          window.showToast(`Loaded ${character_name || 'campaign'} — opening adventure…`, 'success');
         }
+
+        navigate('/game');
       } else {
-        // Handle error response
-        const errorMessage = response.error?.type === 'not_found' 
-          ? 'No campaigns found in database. Create a new campaign first.'
+        const errorMessage = response.error?.type === 'not_found'
+          ? 'No V2 campaigns found. Create a new campaign first.'
           : getErrorMessage(response.error);
-        
-        console.error('❌ [FLOW] Load campaign failed:', errorMessage);
-        
+
         if (window.showToast) {
-          window.showToast(`❌ ${errorMessage}`, 'error');
+          window.showToast(`${errorMessage}`, 'error');
         } else {
           alert(errorMessage);
         }
       }
     } catch (error) {
-      console.error('❌ [FLOW] Load campaign exception:', error);
-      
+      console.error('Load latest V2 campaign failed:', error);
       if (window.showToast) {
-        window.showToast(`❌ Failed to load campaign`, 'error');
+        window.showToast('Failed to load latest campaign', 'error');
       } else {
-        alert('Failed to load campaign');
+        alert('Failed to load latest campaign');
       }
     } finally {
       setIsLoadingCampaign(false);
@@ -248,6 +236,7 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
               variant="outline"
               className="w-full border-blue-600/50 text-blue-400 hover:bg-blue-600/20 font-semibold py-4 disabled:opacity-50 disabled:cursor-not-allowed"
               size="sm"
+              data-testid="main-menu-load-latest-campaign-btn"
             >
               {isLoadingCampaign ? (
                 <>
@@ -257,7 +246,7 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
               ) : (
                 <>
                   <Database className="h-4 w-4 mr-2" />
-                  🧪 Load Last Campaign from DB
+                  Load Latest Campaign
                 </>
               )}
             </Button>

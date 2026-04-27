@@ -56,6 +56,13 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-27 (Load Latest Campaign fix)
+- **Fix: "Load Last Campaign from DB" button was wired to a legacy `dungeon_forge` endpoint that scans the OLD `characters` collection, while V2 data lives in `characters_v2`. Net effect: button always returned 404 ("No campaigns with characters found") even with 94 V2 campaigns in the DB.**
+  - New endpoint **`GET /api/campaigns/v2/latest`** in `routers/campaigns.py` that finds the most-recently-updated V2 campaign whose character still exists in `characters_v2`. Returns `{campaign_id, character_id, status, updated_at, character_name}`.
+  - Rewrote `handleLoadLastCampaign` in `MainMenu.jsx`: calls the new endpoint, seeds `useSessionCore` (`activeCharacterId`, `activeCampaignId`, `campaignStatus`), navigates to `/game`. From there the existing bridge does all the heavy lifting (intro, world, HP, personality, quest log) — no special "loaded campaign" code path needed.
+  - Re-labeled button to **"Load Latest Campaign"** + added `data-testid`.
+  - Verified: endpoint returns the Paladin campaign cleanly; click → adventure screen with full state restored.
+
 ### 2026-04-23 (Mercer style overhaul)
 - **Major: Intro + Lean DM prompts rewritten in Matthew Mercer's narration style.**
   - Both system prompts now explicitly invoke "the tradition of Matthew Mercer (Critical Role)" and codify his hallmarks as 9 strict rules:

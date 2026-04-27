@@ -153,6 +153,52 @@ async def create_campaign_draft(request: CampaignDraftRequest):
     return CampaignDraftResponse(campaignId=campaign_id, status="draft")
 
 
+@router.get("/v2/latest")
+async def get_latest_v2_campaign():
+    """V2-aware "load last campaign" endpoint.
+
+    Returns the most-recently-updated V2 campaign whose character still exists.
+    Frontend uses this to drop the player straight back into the adventure
+    screen with session state pre-populated.
+    """
+    if not is_db_available():
+        if not _in_memory_campaigns:
+            raise HTTPException(status_code=404, detail="No V2 campaigns found")
+        # Latest by updated_at in memory
+        latest = max(
+            _in_memory_campaigns.values(),
+            key=lambda c: c.get("updated_at") or c.get("created_at") or datetime.min,
+        )
+        return {
+            "campaign_id": latest.get("campaign_id"),
+            "character_id": latest.get("character_id"),
+            "status": latest.get("status"),
+            "updated_at": (latest.get("updated_at") or latest.get("created_at") or datetime.utcnow()).isoformat()
+            if not isinstance(latest.get("updated_at"), str)
+            else latest.get("updated_at"),
+        }
+
+    collection = get_campaign_collection()
+    cursor = (
+        collection.find({"character_id": {"$exists": True, "$ne": None}}, {"_id": 0})
+        .sort("updated_at", -1)
+        .limit(20)
+    )
+    candidates = await cursor.to_list(length=20)
+    for camp in candidates:
+        char = await _fetch_character(camp.get("character_id"))
+        if char:
+            updated = camp.get("updated_at")
+            return {
+                "campaign_id": camp.get("campaign_id"),
+                "character_id": camp.get("character_id"),
+                "status": camp.get("status"),
+                "updated_at": updated.isoformat() if isinstance(updated, datetime) else updated,
+                "character_name": (char.get("identity") or {}).get("name") or char.get("name"),
+            }
+    raise HTTPException(status_code=404, detail="No V2 campaigns with characters found")
+
+
 @router.post("/{campaignId}/generate-world", response_model=GenerateWorldResponse)
 async def generate_world(campaignId: str):
     campaign = await _get_campaign(campaignId)

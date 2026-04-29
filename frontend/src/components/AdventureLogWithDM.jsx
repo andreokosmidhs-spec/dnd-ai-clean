@@ -20,6 +20,7 @@ import DefeatModal from './DefeatModal';
 import { getCheckOutcome, getAbilityModifier, isProficient } from '../utils/dndMechanics';
 import { useTTS } from '../hooks/useTTS';
 import sessionManager from '../state/SessionManager';
+import '../styles/adventurePapyrus.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -1049,13 +1050,13 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   };
 
   return (
-    <Card className="h-full bg-black/95 border-amber-600/30 backdrop-blur-sm overflow-hidden flex flex-col">
+    <Card className="adventure-papyrus h-full bg-black/95 border-amber-600/30 backdrop-blur-sm overflow-hidden flex flex-col">
       <CardContent className="p-0 flex-1 flex flex-col overflow-hidden">
         
         {/* Header */}
         <div className="p-3 border-b border-amber-600/20 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <h2 className="text-amber-400 font-semibold text-sm flex items-center gap-2">
+            <h2 className="adv-papyrus-title text-amber-400 font-semibold text-sm flex items-center gap-2">
               <Dice6 className="h-4 w-4" />
               Adventure Log
             </h2>

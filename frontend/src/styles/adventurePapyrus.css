@@ -1,0 +1,161 @@
+/* Adventure Papyrus Theme
+ * Scoped parchment/calligraphy theme for the Adventure Log container.
+ * Applied by adding the `adventure-papyrus` class on the wrapper <Card>.
+ *
+ * Design decisions (deliberate, please don't "simplify"):
+ *   - Aged-paper base: warm cream (#f1e4c3) + layered radial blotches so
+ *     the surface reads as handmade, not a flat tan block.
+ *   - Parchment grain: very subtle SVG noise via a data URL so we don't
+ *     ship a binary asset.
+ *   - Burn/darkened edges: a large vignette radial gradient anchored to
+ *     the corners.
+ *   - Ink color: #2b1810 (warm sepia-black). Pure #000 on parchment reads
+ *     as printer-fresh, which breaks the illusion.
+ *   - Fonts:
+ *       Headings: "Tangerine" (flourished calligraphic script, 700 weight)
+ *       Body:     "IM Fell English" (revived 17th-century roman face)
+ *   - Text overrides: every Tailwind text-color utility applied by a child
+ *     (white, gray, slate, amber, violet, purple) is forced to ink.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Tangerine:wght@400;700&display=swap");
+
+.adventure-papyrus {
+  /* Layered parchment background */
+  background-color: #f1e4c3 !important;
+  background-image:
+    /* Vignette (burnt edges) */
+    radial-gradient(ellipse at top left, rgba(110, 70, 30, 0.25) 0%, transparent 45%),
+    radial-gradient(ellipse at bottom right, rgba(110, 70, 30, 0.25) 0%, transparent 45%),
+    radial-gradient(ellipse at top right, rgba(90, 55, 20, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse at bottom left, rgba(90, 55, 20, 0.18) 0%, transparent 55%),
+    /* Aged blotches */
+    radial-gradient(circle at 20% 30%, rgba(180, 140, 80, 0.14) 0%, transparent 25%),
+    radial-gradient(circle at 80% 65%, rgba(160, 120, 60, 0.12) 0%, transparent 30%),
+    radial-gradient(circle at 50% 50%, rgba(200, 170, 110, 0.08) 0%, transparent 60%),
+    /* Fine grain */
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3'/><feColorMatrix type='matrix' values='0 0 0 0 0.3 0 0 0 0 0.2 0 0 0 0 0.1 0 0 0 0.18 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-blend-mode: multiply, multiply, multiply, multiply, normal, normal, normal, multiply;
+  border: 1px solid rgba(110, 70, 30, 0.4) !important;
+  box-shadow:
+    inset 0 0 80px rgba(90, 55, 20, 0.28),
+    inset 0 0 16px rgba(60, 35, 10, 0.15),
+    0 4px 20px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Font faces for headings vs body */
+.adventure-papyrus,
+.adventure-papyrus * {
+  font-family: "IM Fell English", "Cormorant Garamond", Georgia, "Times New Roman", serif !important;
+  color: #2b1810 !important;
+}
+
+.adventure-papyrus h1,
+.adventure-papyrus h2,
+.adventure-papyrus h3,
+.adventure-papyrus h4,
+.adventure-papyrus .adv-papyrus-title {
+  font-family: "Tangerine", "IM Fell English", cursive !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em;
+}
+
+/* Bump Tangerine script sizes — it reads small at default sizes */
+.adventure-papyrus h2,
+.adventure-papyrus h3 {
+  font-size: 1.75rem !important;
+  line-height: 1.2 !important;
+}
+.adventure-papyrus h4 {
+  font-size: 1.4rem !important;
+  line-height: 1.2 !important;
+}
+
+/* Knock out dark card backgrounds — the parchment should show through */
+.adventure-papyrus [class*="bg-black"],
+.adventure-papyrus [class*="bg-gray-8"],
+.adventure-papyrus [class*="bg-gray-9"],
+.adventure-papyrus [class*="bg-slate-8"],
+.adventure-papyrus [class*="bg-slate-9"],
+.adventure-papyrus [class*="bg-zinc-8"],
+.adventure-papyrus [class*="bg-zinc-9"] {
+  background-color: rgba(240, 225, 185, 0.5) !important;
+  background-image: none !important;
+}
+
+/* Message bubbles (DM, player, world-brief) — darker parchment cards with
+ * warm ink borders instead of the purple/amber theme. World-brief keeps
+ * a slightly warmer tint so it still reads as special. */
+.adventure-papyrus [class*="violet"],
+.adventure-papyrus [class*="purple"],
+.adventure-papyrus [class*="indigo"],
+.adventure-papyrus [class*="blue"] {
+  background-color: rgba(225, 205, 160, 0.65) !important;
+  background-image: none !important;
+  border-color: rgba(110, 70, 30, 0.5) !important;
+  /* Tailwind gradient utilities paint via CSS custom properties even when
+   * background-image is stripped; neutralize those too. */
+  --tw-gradient-from: transparent !important;
+  --tw-gradient-to: transparent !important;
+  --tw-gradient-via: transparent !important;
+  --tw-gradient-stops: transparent !important;
+}
+.adventure-papyrus [class*="bg-amber-9"],
+.adventure-papyrus [class*="bg-stone-8"],
+.adventure-papyrus [data-testid="world-brief-message"] {
+  background-color: rgba(215, 185, 125, 0.5) !important;
+  background-image:
+    radial-gradient(circle at 30% 40%, rgba(140, 90, 40, 0.1) 0%, transparent 40%),
+    radial-gradient(circle at 75% 70%, rgba(130, 80, 30, 0.08) 0%, transparent 50%) !important;
+  border: 2px solid rgba(110, 70, 30, 0.6) !important;
+  box-shadow: inset 0 0 30px rgba(110, 70, 30, 0.2) !important;
+}
+
+/* Borders → warm sepia */
+.adventure-papyrus [class*="border-amber"],
+.adventure-papyrus [class*="border-violet"],
+.adventure-papyrus [class*="border-purple"],
+.adventure-papyrus [class*="border-gray-"],
+.adventure-papyrus [class*="border-slate-"],
+.adventure-papyrus [class*="border-stone-"] {
+  border-color: rgba(110, 70, 30, 0.45) !important;
+}
+
+/* Buttons in the adventure log — outline in sepia ink, hover fills with warm tan */
+.adventure-papyrus button {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.adventure-papyrus button:hover {
+  background-color: rgba(180, 140, 80, 0.25) !important;
+}
+
+/* Lucide icons should pick up the ink tone (they use `currentColor` fills) */
+.adventure-papyrus svg {
+  color: #2b1810 !important;
+}
+
+/* Subtle italic + justified body for narrative text — classic manuscript feel */
+.adventure-papyrus p {
+  text-align: justify;
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+/* Keep quest titles and "1 Active" badge readable */
+.adventure-papyrus [class*="text-amber"],
+.adventure-papyrus [class*="text-violet"],
+.adventure-papyrus [class*="text-purple"],
+.adventure-papyrus [class*="text-white"],
+.adventure-papyrus [class*="text-gray-"],
+.adventure-papyrus [class*="text-slate-"] {
+  color: #2b1810 !important;
+}
+
+/* Scrollbar — warm ink on parchment */
+.adventure-papyrus ::-webkit-scrollbar-thumb {
+  background-color: rgba(110, 70, 30, 0.4) !important;
+  border-radius: 6px;
+}
+.adventure-papyrus ::-webkit-scrollbar-track {
+  background-color: rgba(240, 225, 185, 0.2) !important;
+}

@@ -56,6 +56,19 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (papyrus/calligraphy theme for Adventure Log)
+- **Feature: Full visual redesign of the Adventure Log screen** — the former black/amber/violet dark theme is now a handmade **parchment + black-ink calligraphy manuscript**.
+  - **New `/app/frontend/src/styles/adventurePapyrus.css`** — a scoped theme applied via the `adventure-papyrus` class on the root `<Card>` of `AdventureLogWithDM.jsx`:
+    - Layered parchment background (cream `#f1e4c3` + 4 corner vignettes + aged blotches + SVG noise) with an inset box-shadow that mimics burnt edges.
+    - Ink color forced to warm sepia-black `#2b1810` for every descendant (text-white/gray/slate/amber/violet/purple utilities all overridden).
+    - Fonts: **Tangerine** (flourished calligraphic script, weight 700) for all headings and titles (Adventure Log, Realm of Story, Quest Log, A Chronicle of…, The Adventure Begins, timestamps). **IM Fell English** (revived 17th-century roman) for body narration, justified with 1.05rem/1.6 line-height.
+    - Message bubbles: violet/purple/blue/indigo backgrounds → same warm tan parchment with sepia borders; Tailwind gradient custom properties (`--tw-gradient-from/to/via/stops`) are also neutralized so `bg-gradient-to-r` utilities don't leak purple through.
+    - World-brief card keeps a slightly warmer tint + thicker border + inset shadow so it still reads as "special chronicle".
+    - Scrollbar, icons (SVG currentColor), and interactive buttons all tuned to the sepia palette.
+  - **Wired** via `import '../styles/adventurePapyrus.css'` and `className="adventure-papyrus ..."` on the root Card.
+  - **Gotcha caught & fixed**: initial CSS had a comment containing `text-gray-*/` which PostCSS read as the closing `*/` of the comment, breaking the whole file. Rewrote the comment. The bundle now compiles clean.
+  - Verified live: the Chronicle, Quest Log, Realm of Story, and "The Adventure Begins" cards all render as warm parchment with Tangerine headlines and IM Fell English body — no visible purple or dark surfaces inside the Adventure Log.
+
 ### 2026-04-29 (character pool capacity guard)
 - **Feature: Prevent new-character creation when the saved pool is full** (limit = **10 heroes**), with a clear toast guiding the user to delete one first.
   - **New `/app/frontend/src/utils/characterPool.js`** — single source of truth: `CHARACTER_POOL_LIMIT = 10`, `fetchCharacterCount()` (fail-open: returns `-1` on network error so a transient backend hiccup never bricks the wizard), and `canCreateCharacter()` which fires `window.showToast(...)` and returns `false` when at capacity.

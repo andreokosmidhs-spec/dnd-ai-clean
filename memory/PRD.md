@@ -56,6 +56,17 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (portrait reference image upload)
+- **Feature: Players can upload a reference image** (face / artwork / mood board) in Step 6 (Appearance) and Nano Banana uses it as visual inspiration alongside the written description when generating the portrait.
+  - **Frontend (`AppearanceStep.jsx`)**: Amber-bordered "Portrait Reference (optional)" card with an `Upload reference image` button. After upload: 240px-wide preview + `Replace` and `Remove` buttons. Errors surface inline. `data-testid` on every interactive control.
+  - **New `/app/frontend/src/utils/imageUpload.js`**: `fileToCompressedDataUrl(file)` — validates MIME (image/*), reads via `FileReader`, draws onto a `<canvas>` clamped to 1024px on the longest side, exports as JPEG quality 0.85. Keeps payloads under ~600 KB so JSON round-trip stays fast.
+  - **Wizard plumbing**: `useWizardState.js` initial state and `payload.js` build carry `referenceImage` (data URL). Persisted on `characters_v2.appearance.referenceImage`.
+  - **Backend**:
+    - `AppearanceInfo` adds `referenceImage: Optional[str] = None`.
+    - **`character_portrait.py`** parses the data URL into `(mime, base64)`, validates `image/jpeg|png|webp`, and attaches a `FileContent(content_type, file_content_base64)` onto the `UserMessage` via the `file_contents` kwarg. Augments the text prompt with: *"A reference image is provided; use it as visual inspiration … but adapt it to the described race, class, gear, and fantasy setting. The output must be a fresh painted portrait, not a copy of the reference."*
+    - Falls back gracefully (logs warning, skips attachment) if the data URL is malformed or MIME unsupported. Replaced legacy `print(...)` with `logger.warning(...)`.
+  - Verified live: `POST /api/characters/v2/create` with a tiny PNG data URL round-trips through MongoDB → `GET /api/characters/v2/{id}` returns the same data URL. AppearanceStep + portrait generator both lint clean.
+
 ### 2026-04-29 (facial hair + hair style fields)
 - **Feature: Players can now describe Hair Style and Facial Hair separately from Hair Color** in Step 6 (Appearance), and the values flow through to the portrait artist (Nano Banana) and the DM prompts.
   - **Frontend (`AppearanceStep.jsx`)**: Two new free-text inputs with `<datalist>` autocomplete suggestions (HAIR_STYLE_SUGGESTIONS: Buzz cut → Bald, 15 entries; FACIAL_HAIR_SUGGESTIONS: Clean-shaven → Forked beard, 12 entries). Players can pick a preset or type anything (e.g. "Topknot with shaved sides", "Forked beard with iron rings"). Help text under each input. `data-testid` on both for testing.

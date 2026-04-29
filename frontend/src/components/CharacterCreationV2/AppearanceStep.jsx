@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import WizardCard from "./WizardCard";
 import { validateAppearance } from "./utils/validation";
+import { fileToCompressedDataUrl } from "../../utils/imageUpload";
 
 const AGE_CATEGORIES = ["Young", "Adult", "Veteran", "Elder"];
 const BUILDS = ["Slim", "Average", "Athletic", "Muscular", "Heavy"];
@@ -50,6 +51,28 @@ const AppearanceStep = ({ wizardState, updateSection, onNext, onBack, steps, goT
   };
 
   const [newFeature, setNewFeature] = useState("");
+  const [referenceError, setReferenceError] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const handleReferenceUpload = async (e) => {
+    setReferenceError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await fileToCompressedDataUrl(file);
+      updateAppearance({ referenceImage: dataUrl });
+    } catch (err) {
+      setReferenceError(err.message || "Could not load image");
+    } finally {
+      // Reset so the same file can be selected again after removing
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveReference = () => {
+    updateAppearance({ referenceImage: "" });
+    setReferenceError(null);
+  };
 
   const updateAppearance = (patch) => {
     updateSection("appearance", { ...appearance, ...patch });
@@ -212,6 +235,68 @@ const AppearanceStep = ({ wizardState, updateSection, onNext, onBack, steps, goT
         </div>
 
         <div className="space-y-4">
+          <div className="rounded-lg border border-amber-700/40 bg-amber-950/20 p-4">
+            <h3 className="text-lg font-semibold text-amber-300 mb-1">Portrait Reference (optional)</h3>
+            <p className="text-xs text-slate-400 mb-3">
+              Upload a reference image (face, art, mood board) and the AI portrait artist will use it as visual inspiration alongside your written description. PNG, JPG, or WEBP. Resized client-side; nothing is uploaded until you submit.
+            </p>
+
+            {appearance.referenceImage ? (
+              <div className="space-y-3">
+                <div className="rounded-md overflow-hidden border border-slate-800 bg-slate-900 max-w-[240px]">
+                  <img
+                    src={appearance.referenceImage}
+                    alt="Portrait reference"
+                    className="w-full h-auto block"
+                    data-testid="appearance-reference-preview"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-100 text-sm"
+                    data-testid="appearance-reference-replace-btn"
+                  >
+                    Replace image
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemoveReference}
+                    className="px-3 py-2 rounded-lg border border-red-700/50 bg-transparent hover:bg-red-600/10 text-red-300 text-sm"
+                    data-testid="appearance-reference-remove-btn"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 rounded-lg bg-amber-500 text-black font-semibold hover:bg-amber-400 transition-colors"
+                data-testid="appearance-reference-upload-btn"
+              >
+                Upload reference image
+              </button>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={handleReferenceUpload}
+              className="hidden"
+              data-testid="appearance-reference-file-input"
+            />
+
+            {referenceError && (
+              <p className="text-xs text-red-300 mt-2" data-testid="appearance-reference-error">
+                {referenceError}
+              </p>
+            )}
+          </div>
+
           <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
             <h3 className="text-lg font-semibold text-amber-300 mb-2">Notable Features</h3>
             <div className="flex gap-2 mb-3">

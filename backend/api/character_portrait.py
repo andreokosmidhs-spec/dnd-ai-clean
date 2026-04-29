@@ -1,18 +1,44 @@
 """Character portrait generation using Gemini Nano Banana (gemini-3.1-flash-image-preview)."""
 
 import base64
+import logging
 import os
+import re
 import uuid
 from typing import Optional
 
 from bson import ObjectId
 from dotenv import load_dotenv
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from emergentintegrations.llm.chat import FileContent, LlmChat, UserMessage
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
 
 _PORTRAIT_MODEL = "gemini-3.1-flash-image-preview"
+
+# Accepted image MIME types for reference uploads
+_ALLOWED_REF_MIME = {"image/jpeg", "image/png", "image/webp"}
+
+
+def _parse_data_url(data_url: str):
+    """Parse a 'data:image/jpeg;base64,...' URL into (mime, base64_payload).
+
+    Returns (None, None) on any malformed input so callers can skip cleanly.
+    """
+    if not data_url or not isinstance(data_url, str):
+        return None, None
+    match = re.match(r"^data:([^;]+);base64,(.+)$", data_url, re.DOTALL)
+    if not match:
+        return None, None
+    mime = match.group(1).strip().lower()
+    payload = match.group(2).strip()
+    # Light validation: try a partial decode to ensure it's real base64
+    try:
+        base64.b64decode(payload[:64], validate=True)
+    except Exception:
+        return None, None
+    return mime, payload
 
 
 def _build_portrait_prompt(character: dict) -> str:
@@ -86,11 +112,30 @@ async def generate_character_portrait(character: dict) -> Optional[str]:
     )
     chat.with_model("gemini", _PORTRAIT_MODEL).with_params(modalities=["image", "text"])
 
-    msg = UserMessage(text=prompt)
+    # Optional reference image — when present, attach it as a FileContent so
+    # Nano Banana uses it as visual inspiration alongside the written prompt.
+    appearance = character.get("appearance") or {}
+    reference_data_url = appearance.get("referenceImage") or ""
+    file_contents = []
+    if reference_data_url:
+        mime, b64 = _parse_data_url(reference_data_url)
+        if mime in _ALLOWED_REF_MIME and b64:
+            file_contents.append(FileContent(content_type=mime, file_content_base64=b64))
+            prompt = (
+                prompt
+                + " A reference image is provided; use it as visual inspiration for "
+                "the character's face, hair, and overall mood — but adapt it to the "
+                "described race, class, gear, and fantasy setting. The output must "
+                "be a fresh painted portrait, not a copy of the reference."
+            )
+        else:
+            logger.warning("[portrait] ignoring malformed/unsupported reference image")
+
+    msg = UserMessage(text=prompt, file_contents=file_contents or None)
     try:
         _text, images = await chat.send_message_multimodal_response(msg)
     except Exception as exc:  # noqa: BLE001
-        print(f"[portrait] generation failed: {exc}")
+        logger.warning(f"[portrait] generation failed: {exc}")
         return None
 
     if not images:

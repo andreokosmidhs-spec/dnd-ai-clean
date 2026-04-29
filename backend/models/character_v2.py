@@ -62,6 +62,10 @@ class AppearanceInfo(BaseModel):
     facialHair: Optional[str] = None
     eyeColor: Optional[str] = None
     notableFeatures: List[str] = Field(default_factory=list)
+    # Optional reference image (data URL: "data:image/jpeg;base64,...") used
+    # by the portrait artist as visual inspiration alongside the text
+    # description.
+    referenceImage: Optional[str] = None
 
 
 class MetaInfo(BaseModel):

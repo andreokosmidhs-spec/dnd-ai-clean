@@ -58,6 +58,7 @@ export const initialWizardState = {
     facialHair: "",
     eyeColor: "",
     notableFeatures: [],
+    referenceImage: "",
   },
   review: {},
 };

@@ -45,6 +45,7 @@ export const buildCharacterPayload = (state) => {
       facialHair: state.appearance?.facialHair || "",
       eyeColor: state.appearance?.eyeColor || "",
       notableFeatures: state.appearance?.notableFeatures || [],
+      referenceImage: state.appearance?.referenceImage || "",
     },
   };
 };

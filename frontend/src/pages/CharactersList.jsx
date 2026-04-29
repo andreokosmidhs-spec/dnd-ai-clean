@@ -4,6 +4,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { PlusCircle, ChevronLeft, User, Loader2 } from "lucide-react";
+import { canCreateCharacter, CHARACTER_POOL_LIMIT } from "../utils/characterPool";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
 
@@ -17,6 +18,13 @@ const CharactersList = () => {
   const [characters, setCharacters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const isPoolFull = characters.length >= CHARACTER_POOL_LIMIT;
+
+  const handleForgeNew = async () => {
+    if (!(await canCreateCharacter())) return;
+    navigate("/character-v2");
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -58,12 +66,17 @@ const CharactersList = () => {
             <ChevronLeft className="h-4 w-4 mr-1" /> Back to menu
           </Button>
           <Button
-            onClick={() => navigate("/character-v2")}
-            className="bg-amber-600 hover:bg-amber-500 text-black font-semibold"
+            onClick={handleForgeNew}
+            disabled={isPoolFull}
+            className="bg-amber-600 hover:bg-amber-500 text-black font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid="characters-list-create-btn"
+            title={isPoolFull ? `Pool full (${characters.length}/${CHARACTER_POOL_LIMIT}) — delete a hero first.` : undefined}
           >
             <PlusCircle className="h-4 w-4 mr-2" />
             Forge new hero
+            <span className="ml-2 text-xs opacity-80" data-testid="characters-pool-count">
+              {characters.length}/{CHARACTER_POOL_LIMIT}
+            </span>
           </Button>
         </div>
 
@@ -90,7 +103,7 @@ const CharactersList = () => {
               <User className="h-10 w-10 mx-auto text-slate-500" />
               <p className="text-slate-300">No heroes yet. Forge your first one.</p>
               <Button
-                onClick={() => navigate("/character-v2")}
+                onClick={handleForgeNew}
                 className="bg-amber-600 hover:bg-amber-500 text-black font-semibold"
                 data-testid="characters-list-empty-create-btn"
               >

@@ -56,6 +56,13 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (character pool capacity guard)
+- **Feature: Prevent new-character creation when the saved pool is full** (limit = **10 heroes**), with a clear toast guiding the user to delete one first.
+  - **New `/app/frontend/src/utils/characterPool.js`** — single source of truth: `CHARACTER_POOL_LIMIT = 10`, `fetchCharacterCount()` (fail-open: returns `-1` on network error so a transient backend hiccup never bricks the wizard), and `canCreateCharacter()` which fires `window.showToast(...)` and returns `false` when at capacity.
+  - **MainMenu.jsx**: `handleNewCampaign` and `handleConfirmNewCampaign` both `await canCreateCharacter()` before navigating to `/character-v2`. If full → red toast top-right ("Character pool full (50/10). Delete one of your existing heroes to forge a new one."), URL stays put.
+  - **CharactersList.jsx**: "Forge new hero" button is **disabled** when `characters.length >= 10`, gets `disabled:opacity-50 disabled:cursor-not-allowed`, shows a `{count}/{LIMIT}` badge inside the button (e.g. `50/10`), and a hover-`title` tooltip ("Pool full — delete a hero first."). Both the header button and the empty-state CTA route through `handleForgeNew()`, which also calls `canCreateCharacter()` as a final guard.
+  - Verified live with the current 50-character pool: red toast appears on "New Campaign" click and the "Forge new hero" button is disabled with the `50/10` badge visible on `/characters`.
+
 ### 2026-04-29 (collapsible Quest Log)
 - **Feature: Quest Log now folds to a single header bar by default** (matching the existing collapsible Realm panel), so the DM narration sits near the top of the screen.
   - `QuestLogPanel.jsx`: header is now a `<button>` (`data-testid="quest-log-toggle-btn"`, `aria-expanded`) that flips a single `isPanelOpen` state. When closed, only the row "📜 Quest Log · {N} Active · ▼" shows; when open, the active quests, completed-toggle, and inner cards render below. Defaults to **collapsed**.

@@ -6,6 +6,7 @@ import { Badge } from "./ui/badge";
 import { Sword, Play, PlusCircle, Trash2, User, Crown, Database, Users } from "lucide-react";
 import apiClient, { isSuccess, getErrorMessage } from "../lib/apiClient";
 import { useSessionCore } from "../store/useSessionCore";
+import { canCreateCharacter } from "../utils/characterPool";
 
 const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => {
   const navigate = useNavigate();
@@ -33,7 +34,11 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
     }
   }, []);
 
-  const handleNewCampaign = () => {
+  const handleNewCampaign = async () => {
+    // Block at the entry point if the character pool is full — toast guides
+    // the user to delete one of their existing heroes first.
+    if (!(await canCreateCharacter())) return;
+
     if (hasSavedCampaign) {
       setShowConfirmDelete(true);
     } else {
@@ -45,7 +50,14 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
     }
   };
 
-  const handleConfirmNewCampaign = () => {
+  const handleConfirmNewCampaign = async () => {
+    // Re-check the pool — a tab open in the background may have created a
+    // character between the modal opening and the confirm click.
+    if (!(await canCreateCharacter())) {
+      setShowConfirmDelete(false);
+      return;
+    }
+
     // Clear all campaign data
     localStorage.removeItem('rpg-campaign-character');
     localStorage.removeItem('rpg-campaign-gamestate');

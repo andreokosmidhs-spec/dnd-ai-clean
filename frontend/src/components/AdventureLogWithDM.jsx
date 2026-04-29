@@ -67,6 +67,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   
   const scrollRef = useRef();
   const introStartedRef = useRef(false);
+  const worldBriefAutoPlayedRef = useRef(false);
   
   // Notify parent of loading state changes
   useEffect(() => {
@@ -74,6 +75,47 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
       onLoadingChange(isLoading);
     }
   }, [isLoading, onLoadingChange]);
+
+  // Auto-play the macro chronicler ("World Brief") narration the first time
+  // a session opens, so every campaign starts with a Mercer-style cold open.
+  // Gated by:
+  //   - `isTTSEnabled` (respects the user's global TTS preference)
+  //   - per-session localStorage flag (`dm-world-brief-played-{sessionId}`)
+  //     so reopening the same adventure doesn't replay it
+  //   - per-mount ref so React StrictMode / re-renders don't double-fire
+  useEffect(() => {
+    if (!sessionId || !isTTSEnabled || !generateSpeech) return;
+    if (worldBriefAutoPlayedRef.current) return;
+    if (!messages || messages.length === 0) return;
+
+    const briefIdx = messages.findIndex(
+      (m) => m && m.type === 'dm' && m.isWorldBrief && (m.text || m.message)
+    );
+    if (briefIdx === -1) return;
+
+    const playedKey = `dm-world-brief-played-${sessionId}`;
+    if (localStorage.getItem(playedKey) === '1') return;
+
+    const brief = messages[briefIdx];
+    if (brief.audioUrl) return;
+
+    worldBriefAutoPlayedRef.current = true;
+    localStorage.setItem(playedKey, '1');
+
+    const text = brief.text || brief.message || '';
+    (async () => {
+      try {
+        const audioUrl = await generateSpeech(text, 'onyx', true);
+        if (audioUrl) {
+          setMessages((prev) =>
+            prev.map((m, i) => (i === briefIdx ? { ...m, audioUrl } : m))
+          );
+        }
+      } catch (err) {
+        console.warn('World-brief auto-narration failed:', err);
+      }
+    })();
+  }, [sessionId, isTTSEnabled, generateSpeech, messages]);
 
   // Lean DM: campaign-scoped endpoint built on campaigns.py + knowledge cards.
   // Falls back to the legacy dungeon_forge endpoint if no campaignId is in scope.

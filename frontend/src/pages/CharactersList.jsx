@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { PlusCircle, ChevronLeft, User, Loader2 } from "lucide-react";
+import { PlusCircle, ChevronLeft, User, Loader2, Trash2 } from "lucide-react";
 import { canCreateCharacter, CHARACTER_POOL_LIMIT } from "../utils/characterPool";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
@@ -18,12 +18,34 @@ const CharactersList = () => {
   const [characters, setCharacters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const isPoolFull = characters.length >= CHARACTER_POOL_LIMIT;
 
   const handleForgeNew = async () => {
     if (!(await canCreateCharacter())) return;
     navigate("/character-v2");
+  };
+
+  const handleDeleteAll = async () => {
+    setDeletingAll(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/characters/v2/`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCharacters([]);
+      setConfirmDeleteAll(false);
+      if (typeof window !== "undefined" && window.showToast) {
+        window.showToast(`Deleted ${data.deleted ?? 0} character${data.deleted === 1 ? "" : "s"}.`, "success");
+      }
+    } catch (e) {
+      if (typeof window !== "undefined" && window.showToast) {
+        window.showToast(`Delete all failed: ${e.message}`, "error");
+      }
+    } finally {
+      setDeletingAll(false);
+    }
   };
 
   useEffect(() => {
@@ -65,20 +87,77 @@ const CharactersList = () => {
           >
             <ChevronLeft className="h-4 w-4 mr-1" /> Back to menu
           </Button>
-          <Button
-            onClick={handleForgeNew}
-            disabled={isPoolFull}
-            className="bg-amber-600 hover:bg-amber-500 text-black font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-            data-testid="characters-list-create-btn"
-            title={isPoolFull ? `Pool full (${characters.length}/${CHARACTER_POOL_LIMIT}) — delete a hero first.` : undefined}
-          >
-            <PlusCircle className="h-4 w-4 mr-2" />
-            Forge new hero
-            <span className="ml-2 text-xs opacity-80" data-testid="characters-pool-count">
-              {characters.length}/{CHARACTER_POOL_LIMIT}
-            </span>
-          </Button>
+          <div className="flex items-center gap-2">
+            {characters.length > 0 && (
+              <Button
+                onClick={() => setConfirmDeleteAll(true)}
+                variant="outline"
+                className="border-red-600/60 text-red-300 hover:bg-red-600/20 hover:text-red-200"
+                data-testid="characters-list-delete-all-btn"
+                title="Permanently delete every hero in your pool"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete All
+              </Button>
+            )}
+            <Button
+              onClick={handleForgeNew}
+              disabled={isPoolFull}
+              className="bg-amber-600 hover:bg-amber-500 text-black font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              data-testid="characters-list-create-btn"
+              title={isPoolFull ? `Pool full (${characters.length}/${CHARACTER_POOL_LIMIT}) — delete a hero first.` : undefined}
+            >
+              <PlusCircle className="h-4 w-4 mr-2" />
+              Forge new hero
+              <span className="ml-2 text-xs opacity-80" data-testid="characters-pool-count">
+                {characters.length}/{CHARACTER_POOL_LIMIT}
+              </span>
+            </Button>
+          </div>
         </div>
+
+        {confirmDeleteAll && (
+          <Card
+            className="mb-6 bg-red-950/40 border-red-700/60"
+            data-testid="characters-list-delete-all-confirm"
+          >
+            <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="text-red-200">
+                <div className="font-semibold">Delete all {characters.length} characters?</div>
+                <div className="text-sm text-red-300/80">
+                  This cannot be undone. Campaigns referencing these heroes will keep their snapshots, but the character records will be gone forever.
+                </div>
+              </div>
+              <div className="flex gap-2 flex-shrink-0">
+                <Button
+                  onClick={() => setConfirmDeleteAll(false)}
+                  variant="ghost"
+                  className="text-slate-300 hover:text-slate-100"
+                  disabled={deletingAll}
+                  data-testid="characters-list-delete-all-cancel"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleDeleteAll}
+                  className="bg-red-600 hover:bg-red-500 text-white font-semibold"
+                  disabled={deletingAll}
+                  data-testid="characters-list-delete-all-confirm-btn"
+                >
+                  {deletingAll ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" /> Yes, delete all
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="mb-6 text-center">
           <h1 className="text-3xl font-bold text-amber-400">Your Heroes</h1>

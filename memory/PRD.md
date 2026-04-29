@@ -56,6 +56,12 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (bulk delete all characters)
+- **Feature: "Delete All" button on `/characters`** to mass-wipe the hero pool in one confirmed action. Useful for pruning the pool down under the 10-character limit.
+  - **Backend `DELETE /api/characters/v2/`** (bulk) added in `character_v2_routes.py` — registered BEFORE the `{character_id}` route so it doesn't get shadowed. Uses `collection.delete_many({})`; returns `{"deleted": N}`. Works for both Mongo and in-memory fallback.
+  - **Frontend `CharactersList.jsx`**: red outlined "Delete All" button appears in the header (only when `characters.length > 0`) next to "Forge new hero". Clicking opens a destructive confirm card at the top: *"Delete all {N} characters? This cannot be undone."* with Cancel and "Yes, delete all" actions. On success → list refreshes to empty state + green toast "Deleted N characters."
+  - Verified live with 2 seeded Fighters: button appears, confirm card slides in, backend returns `{"deleted": 2}`, list clears, toast fires, pool badge resets to `0/10`, Forge button re-enables. Single-delete on a missing id still returns 404 (route ordering correct).
+
 ### 2026-04-29 (papyrus/calligraphy theme for Adventure Log)
 - **Feature: Full visual redesign of the Adventure Log screen** — the former black/amber/violet dark theme is now a handmade **parchment + black-ink calligraphy manuscript**.
   - **New `/app/frontend/src/styles/adventurePapyrus.css`** — a scoped theme applied via the `adventure-papyrus` class on the root `<Card>` of `AdventureLogWithDM.jsx`:

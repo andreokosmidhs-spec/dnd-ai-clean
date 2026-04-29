@@ -183,6 +183,24 @@ async def patch_character_v2(character_id: str, character: CharacterV2Update):
         return updated
 
 
+@router.delete("/", status_code=200)
+async def delete_all_characters_v2():
+    """Delete **every** V2 character document. Irreversible.
+
+    Returns the count of deleted documents so the client can confirm the
+    sweep succeeded and refresh its UI.
+    """
+    deleted_count = 0
+    if is_db_available():
+        collection = get_collection()
+        result = await collection.delete_many({})
+        deleted_count = result.deleted_count
+    else:
+        deleted_count = len(_in_memory_store)
+        _in_memory_store.clear()
+    return {"deleted": deleted_count}
+
+
 @router.delete("/{character_id}", status_code=204)
 async def delete_character_v2(character_id: str):
     """Delete a character document by id."""

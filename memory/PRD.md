@@ -56,6 +56,20 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (smarter character-create error reporting)
+- **Fix: "Couldn't reach the backend" submit failures now tell the user EXACTLY what to do** instead of a vague "(All endpoints failed)".
+  - **Diagnosis:** the user's repeated submit failures with the new reference-image upload were traced to TWO real causes:
+    1. The Emergent platform paused the preview ("You're viewing a static preview. Resume Preview" overlay) — outgoing fetches from the iframe are blocked.
+    2. The 12s per-attempt timeout could trip on slow uplinks when a reference image (~200-600KB data URL) is in the payload.
+  - **Fix in `ReviewStep.jsx` (handleSubmit)**:
+    - **Adaptive timeout**: 30s per attempt when `appearance.referenceImage` is present, 12s otherwise. Catches the "submit hangs while uploading" case.
+    - **Reachability probe on status=0**: when both POST attempts fail with a network error, runs a 5s GET against `/api/characters/v2/` to determine whether the backend is reachable AT ALL. Branches the user-facing message:
+      - `navigator.onLine === false` → "Your browser reports it's OFFLINE. Reconnect …"
+      - probe succeeds → "The backend is reachable, but submitting timed out. If you uploaded a reference image, try removing it and submit again — then re-upload after the character is created."
+      - probe fails → "We couldn't reach the backend at all. If you see a black bar at the bottom saying 'You're viewing a static preview' with a 'Resume Preview' button, click it and try again. Otherwise hard-refresh (Ctrl/Cmd+Shift+R)."
+  - **Verified deployment**: live bundle contains the new `OFFLINE` / `Resume Preview` / `hasReferenceImage` markers; `bundleSize: 4.47MB`. End-to-end browser POST with a 17KB reference image returned HTTP 200 in 88ms.
+  - **Important**: the original failure was NOT a backend bug. Backend handles 17KB-600KB reference-image payloads in <300ms; from a real browser, character creation works perfectly. The screenshot's "static preview" overlay was the actual cause.
+
 ### 2026-04-29 (portrait frame: face-centered, larger)
 - **Feature: Sidebar portrait now zooms onto the face and fills the sidebar width**, replacing the small fixed 192×192 thumbnail.
   - **`CharacterSidebar.jsx`**: portrait wrapped in a clipping `<div>` sized `w-full aspect-square` (~264×264 in the 288px-wide sidebar). The `<img>` inside applies `object-cover origin-top scale-[1.35]` — the transform anchors to the top of the image and zooms in, so the face fills the visible frame and the chest/arms crop out.

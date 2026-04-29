@@ -132,10 +132,14 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
     };
 
     // Try a single endpoint with a short timeout. Returns either the success
-    // Response or {status, detail} on failure.
+    // Response or {status, detail} on failure. Larger payloads (e.g. a
+    // reference image) get a more generous timeout so slow uplinks don't
+    // surface as "All endpoints failed".
+    const hasReferenceImage = !!payload?.appearance?.referenceImage;
+    const perAttemptTimeoutMs = hasReferenceImage ? 30000 : 12000;
     const tryOnce = async (url) => {
       const ctrl = new AbortController();
-      const timeoutId = setTimeout(() => ctrl.abort(), 12000);
+      const timeoutId = setTimeout(() => ctrl.abort(), perAttemptTimeoutMs);
       try {
         const attempt = await fetch(url, {
           method: "POST",
@@ -184,6 +188,41 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
       if (!outcome.res) {
         const lastStatus = outcome.fail?.status ?? 0;
         const lastError = outcome.fail?.detail || "";
+
+        // For status=0 (network failure), do a lightweight reachability
+        // probe so we can tell the user WHY the submit failed:
+        //   - browser offline?
+        //   - preview iframe paused (Emergent "static preview" overlay)?
+        //   - real backend outage?
+        let reachabilityHint = "";
+        if (lastStatus === 0) {
+          if (typeof navigator !== "undefined" && navigator.onLine === false) {
+            reachabilityHint = "Your browser reports it's OFFLINE. Reconnect to the internet and click Retry.";
+          } else {
+            const ctrl = new AbortController();
+            const timeoutId = setTimeout(() => ctrl.abort(), 5000);
+            let probeOk = false;
+            try {
+              const probe = await fetch(`${backendUrl}/api/characters/v2/`, {
+                method: "GET",
+                signal: ctrl.signal,
+              });
+              probeOk = probe.ok;
+            } catch (_e) {
+              probeOk = false;
+            } finally {
+              clearTimeout(timeoutId);
+            }
+            reachabilityHint = probeOk
+              // Backend reachable, but the heavy POST failed — most likely a
+              // large reference image timed out (slow uplink) or the WAF
+              // rejected it. Suggest the precise next step.
+              ? "The backend is reachable, but submitting the character timed out. If you uploaded a reference image, try removing it and submit again — then re-upload after the character is created."
+              // Backend totally unreachable — paused preview or real outage.
+              : "We couldn't reach the backend at all. If you see a black bar at the bottom saying \"You're viewing a static preview\" with a \"Resume Preview\" button, click it and try again. Otherwise hard-refresh the page (Ctrl/Cmd+Shift+R).";
+          }
+        }
+
         const friendly =
           lastStatus === 404
             ? `The character-creation endpoint wasn't reachable (404), even after a retry. Try a hard refresh (Ctrl/Cmd+Shift+R). If it persists, the backend may be restarting — wait 10s and click Retry. Tried: ${triedUrls.join(" , ")}`
@@ -192,7 +231,7 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
               : lastStatus >= 500
                 ? `The server hit an error (${lastStatus}) and the retry also failed. Please wait a few seconds and click Retry.${lastError ? ` Detail: ${lastError}` : ""}`
                 : lastStatus === 0
-                  ? `Couldn't reach the backend from your browser. Check your connection or hard-refresh.${lastError ? ` (${lastError})` : ""}`
+                  ? `Couldn't create character. ${reachabilityHint}`
                   : `Failed to create character (HTTP ${lastStatus}).${lastError ? ` ${lastError}` : ""}`;
         throw new Error(friendly);
       }

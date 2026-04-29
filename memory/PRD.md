@@ -56,6 +56,12 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (portrait frame: face-centered, larger)
+- **Feature: Sidebar portrait now zooms onto the face and fills the sidebar width**, replacing the small fixed 192×192 thumbnail.
+  - **`CharacterSidebar.jsx`**: portrait wrapped in a clipping `<div>` sized `w-full aspect-square` (~264×264 in the 288px-wide sidebar). The `<img>` inside applies `object-cover origin-top scale-[1.35]` — the transform anchors to the top of the image and zooms in, so the face fills the visible frame and the chest/arms crop out.
+  - Border + amber glow preserved (`border-2 border-amber-500/60 shadow-[0_0_24px_rgba(245,158,11,0.4)]`). Placeholder state matched in size with bigger icon for parity.
+  - Verified live on the loaded "avon" Cleric — face/hair/beard fill the frame, no awkward chest/arm space.
+
 ### 2026-04-29 (portrait reference image upload)
 - **Feature: Players can upload a reference image** (face / artwork / mood board) in Step 6 (Appearance) and Nano Banana uses it as visual inspiration alongside the written description when generating the portrait.
   - **Frontend (`AppearanceStep.jsx`)**: Amber-bordered "Portrait Reference (optional)" card with an `Upload reference image` button. After upload: 240px-wide preview + `Replace` and `Remove` buttons. Errors surface inline. `data-testid` on every interactive control.

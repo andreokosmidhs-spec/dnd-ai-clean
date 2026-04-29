@@ -127,21 +127,29 @@ const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
 
         {/* Character Info */}
         <div className="p-3 space-y-4 flex-1 overflow-y-auto">
-          {/* Portrait */}
+          {/* Portrait — face-centered crop with zoom for emphasis. The
+              source images are head-and-shoulders, but the face sits in the
+              upper third; we anchor the transform to top and scale so the
+              face fills the visible frame and the chest/arms crop out. */}
           <div className="flex justify-center">
             {character.portrait ? (
-              <img
-                src={character.portrait}
-                alt={`${character.name || 'Character'} portrait`}
-                data-testid="character-portrait-img"
-                className="w-48 h-48 rounded-lg object-cover border-2 border-amber-500/60 shadow-[0_0_24px_rgba(245,158,11,0.4)]"
-              />
+              <div
+                className="w-full aspect-square rounded-lg border-2 border-amber-500/60 shadow-[0_0_24px_rgba(245,158,11,0.4)] overflow-hidden bg-gray-900/60"
+                data-testid="character-portrait-frame"
+              >
+                <img
+                  src={character.portrait}
+                  alt={`${character.name || 'Character'} portrait`}
+                  data-testid="character-portrait-img"
+                  className="w-full h-full object-cover origin-top scale-[1.35]"
+                />
+              </div>
             ) : (
               <div
                 data-testid="character-portrait-placeholder"
-                className="w-48 h-48 rounded-lg border-2 border-dashed border-amber-500/40 bg-gray-900/60 flex flex-col items-center justify-center text-amber-300/80"
+                className="w-full aspect-square rounded-lg border-2 border-dashed border-amber-500/40 bg-gray-900/60 flex flex-col items-center justify-center text-amber-300/80"
               >
-                <User className="h-10 w-10 mb-1" />
+                <User className="h-12 w-12 mb-2" />
                 <span className="text-xs uppercase tracking-wide">Portrait</span>
                 <span className="text-[10px] text-amber-300/60">generating...</span>
               </div>

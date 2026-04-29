@@ -22,6 +22,14 @@ class CampaignDraftResponse(BaseModel):
     status: Literal["draft"]
 
 
+class StartingScene(BaseModel):
+    seed: str
+    introText: Optional[str] = None
+    # Macro chronicler preface displayed as a SEPARATE adventure-log entry
+    # before the personal arrival scene.
+    worldBrief: Optional[str] = None
+
+
 class WorldBlueprint(BaseModel):
     summary: str
     tags: List[str] = Field(default_factory=list)
@@ -31,11 +39,12 @@ class WorldBlueprint(BaseModel):
     # Legacy-compatible aliases consumed by the frontend WorldInfoPanel.
     world_core: Optional[dict] = None
     starting_town: Optional[dict] = None
-
-
-class StartingScene(BaseModel):
-    seed: str
-    introText: Optional[str] = None
+    # Rich setting (era, factions, recent_events, current_tension) used by both
+    # the intro and the Lean DM.
+    setting: Optional[dict] = None
+    # Macro chronicler preface persisted alongside setting so it loads on
+    # campaign reopen.
+    world_brief: Optional[str] = None
 
 
 class GenerateWorldResponse(BaseModel):

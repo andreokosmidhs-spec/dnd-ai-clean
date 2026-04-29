@@ -56,6 +56,15 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (macro/micro intro split)
+- **Major: Campaign opens with TWO distinct narration messages — macro chronicle, then micro arrival.**
+  - **Macro Chronicle** (`generate_world_brief_with_ai`) — third-person omniscient chronicler's preface (130-180 words) covering, in order: GEOGRAPHY (where the realm sits, terrain, neighbors), RECENT HISTORY (compressed cause-and-effect from the setting's recent_events), POLITICAL CLIMATE (powers and balance, with factions named), CULTURE (one specific custom or texture). Ends with a single transitional sentence tilting the camera toward the starting location ("And it is to Gate of Emberfall, on this evening, that our story turns").
+  - **Micro Arrival** (`build_starting_scene_with_ai` refocused) — Mercer-style two-beat opening but now beat ONE is character-specific: WHY this hero is in this place, derived from BACKGROUND, RACE, and PERSONALITY HOOKS (a soldier summoned by whispers; an entertainer touring; an outlander drawn by a market rumor). Beat TWO is the static scene + the active opening lead.
+  - Backend: `world.world_brief` persisted on the campaign + `starting_scene.worldBrief` returned alongside `introText` from `/generate-world`.
+  - Frontend: `RPGGame.jsx` bridge seeds TWO Adventure Log entries on intro — chronicler first (with `isWorldBrief: true`, `chronicleTitle: "A Chronicle of {realm}"`), personal arrival second (`isCinematic: true`).
+  - `AdventureLogWithDM` renders the chronicler card distinctively: amber/stone gradient background with double border, BookOpen icon, italic serif body text (vs. the violet cinematic styling of the personal arrival).
+  - **Verified live (Vael Brynn the Soldier Paladin in Political-Intrigue Emberfall):** macro covered the civil war, Ironstead/Dorrin Vale geography, three named factions, curfew + crimson banners; micro opened with *"Vael Brynn the Steady stands at the edge of a narrow alley behind the Iron Fist inn, summoned by whispers of a councilor gone missing"* — soldier-summoned arrival, lead planted, three observable things at end.
+
 ### 2026-04-29 (review submit auto-retry)
 - **Fix: Transient 404 / 5xx during character-creation submit no longer surfaces as a hard error.**
   - Submit handler now runs a full failover pass (primary endpoint → alias) and, if BOTH fail with 404 / 5xx / network, **automatically waits 1.2s and runs the entire pass again** before showing an error. Catches backend-restart windows, brief proxy hiccups, transient network glitches.

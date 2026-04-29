@@ -313,6 +313,110 @@ def build_starting_scene(campaign_id: str, world: Dict) -> Dict:
     }
 
 
+async def generate_world_brief_with_ai(
+    intent: CampaignIntent,
+    world: Dict,
+    character: Optional[Dict],
+    setting: Optional[Dict] = None,
+) -> str:
+    """Macro-zoom narration: geography, history, political climate, cultures,
+    powers at play. Read like a chronicler's preface — the lay of the land
+    BEFORE the camera zooms onto the hero. Falls back to a coherent template.
+    """
+    realm_name = (world.get("world_core", {}) or {}).get("name", "the realm")
+    location_name = (world.get("startingLocation", {}) or {}).get("name", "a town")
+
+    setting = setting or {}
+    era = (setting.get("era") or "").strip()
+    factions = setting.get("factions") or []
+    events = setting.get("recent_events") or []
+    tension = (setting.get("current_tension") or "").strip()
+
+    fallback = (
+        f"The {realm_name} sits at a crossroads of trade and trouble. "
+        f"{era or 'The age is one of unsteady alliances and uneasy peace.'} "
+        f"Power is divided: {', '.join(f.get('name', '') for f in factions[:3] if f.get('name')) or 'rival factions'} "
+        "hold sway in different quarters, each pulling the realm in their own direction. "
+        f"{(events[0].get('summary') if events and events[0].get('summary') else 'Recent troubles have left the common folk wary.')} "
+        f"{tension or 'The streets feel watched; small loyalties matter more than grand titles right now.'} "
+        f"And it is to {location_name} that our story turns."
+    )
+
+    try:
+        import os
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+        api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return fallback
+
+        faction_lines = "\n".join(
+            f"- {f.get('name','')}: {f.get('domain','')}; {f.get('stance','')}"
+            for f in factions[:3] if f.get("name")
+        ) or "(none provided — invent two plausible powers)"
+        event_lines = "\n".join(
+            f"- {e.get('title','')}: {e.get('summary','')}"
+            for e in events[:2] if e.get("title")
+        ) or "(none provided)"
+
+        prompt = (
+            "Write a CHRONICLER'S PREFACE for the start of a Dungeons & Dragons 5e campaign. "
+            "This is the MACRO view — the lay of the land BEFORE the camera zooms onto the hero. "
+            "It will be displayed as a separate opening text, then a second narration zooms into "
+            "the hero's specific arrival.\n\n"
+            "=== REALM ===\n"
+            f"Name: {realm_name}\n"
+            f"Tone: {intent.tone} | Focus: {intent.focus} | Scope: {intent.scope}\n"
+            f"Era: {era or '(unspecified — establish one)'}\n\n"
+            "=== POWERS AT PLAY ===\n"
+            f"{faction_lines}\n\n"
+            "=== RECENT EVENTS ===\n"
+            f"{event_lines}\n\n"
+            "=== CURRENT TENSION ===\n"
+            f"{tension or '(unspecified)'}\n\n"
+            f"=== THE STORY TURNS TO === \n{location_name}\n\n"
+            "=== STYLE ===\n"
+            "- 130-180 words, ONE paragraph, third-person omniscient (a chronicler's voice).\n"
+            "- Cover four things briefly, in order: (1) GEOGRAPHY — where this realm sits, its terrain, "
+            "key neighbors; (2) RECENT HISTORY — the recent events compressed into one sentence of cause "
+            "and effect; (3) POLITICAL CLIMATE — who holds power, who opposes them, the current balance; "
+            "(4) CULTURE — one specific custom or texture of daily life that distinguishes this realm.\n"
+            "- ONE concrete sensory detail allowed (a banner color, a dialect phrase, the sound of a "
+            "particular bell). One simile maximum. No purple prose.\n"
+            f"- Match the campaign tone ({intent.tone}). Gritty = scarcity, tired institutions, "
+            "wariness; Heroic = banners returning, hopeful but uncertain; Mystery = secrets, secretive "
+            "guilds, things unsaid in public.\n"
+            "- Do NOT mention or address the hero. The hero does not yet enter the scene.\n"
+            f"- End with EXACTLY ONE short transitional sentence that tilts the camera toward {location_name}, "
+            f"e.g., \"And it is to {location_name}, on this evening, that our story turns.\" Do not invent a "
+            "new transitional location.\n"
+            "- HARD-BAN PHRASES: \"once upon a time\", \"in a land far away\", \"legends speak\", "
+            "\"ancient prophecy\", \"chosen one\", \"dark lord\", \"destiny\", \"in a world\".\n"
+            "- No headings, no quotes around the passage, no OOC. Output ONLY the chronicle paragraph."
+        )
+
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"world-brief-{uuid4()}",
+            system_message=(
+                "You are a chronicler of fantasy realms in the tradition of Tolkien's prologues "
+                "and Critical Role's opening world primers — concise, grounded, specific. "
+                "You compress history, geography, politics, and culture into a single tight paragraph."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+
+        response = await chat.send_message(UserMessage(text=prompt))
+        text = (response or "").strip()
+        if text.startswith('"') and text.endswith('"') and len(text) > 2:
+            text = text[1:-1].strip()
+        return text or fallback
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"World brief generation failed, using template: {exc}")
+        return fallback
+
+
+
 async def build_starting_scene_with_ai(
     campaign_id: str,
     world: Dict,
@@ -467,19 +571,22 @@ async def build_starting_scene_with_ai(
             "=== WORLD SETTING (ground truth — the player must feel they're in this specific world, not generic fantasy) ===\n"
             f"{setting_block}\n\n"
             "=== MERCER STYLE — STRICT ===\n"
-            "0) STRUCTURE (Mercer's classic opening, two beats):\n"
-            "   • BEAT ONE (1-2 sentences): GROUND THE PLAYER IN THE WORLD'S SITUATION. "
-            "Reference at least ONE concrete element from the WORLD SETTING above — name a "
-            "faction, name a recent event, or evoke the current tension as a felt fact on the "
-            "streets. Example: \"Three poor harvests have hardened {realm}; the bread queues "
-            "outside the Crown's grain hall stretch past the chapel now.\" This beat establishes "
-            "WHERE and WHEN the hero stands in history.\n"
-            "   • BEAT TWO (3-4 sentences): ZOOM INTO THE SCENE. Now describe the immediate "
-            "place around the still hero — weather, light, time of day, sound, smell, texture. "
-            "Plant the active opening lead as an observable fact in this specific moment.\n"
-            "1) STATIC SCENE. The hero is still — standing, sitting, arriving, watching. "
-            "The scene HAPPENS AROUND them. Show the place: weather, light, time of day, "
-            "a sound, a smell, one specific texture. Make it feel like a real moment in a real place.\n"
+            "0) STRUCTURE (Mercer's character-arrival opening, two beats):\n"
+            "   • BEAT ONE — ARRIVAL CONTEXT (1-2 sentences): explain WHY this specific hero is in "
+            "this specific place RIGHT NOW. Anchor it in the hero's BACKGROUND (a soldier mustered out "
+            "with last pay; an entertainer on a circuit between towns; an outlander drawn by a market "
+            "rumor; an acolyte sent on an errand by their order; a criminal lying low after a job), "
+            "their RACE (an elf far from the deep woods, a dwarf among humans, a halfling slipping "
+            "between knees) and their PERSONALITY HOOKS if any (the bond pulls them here, the flaw "
+            "got them here). One concrete who-or-what brought them — a writ, a coin, a letter, a "
+            "rumor, a debt, a pilgrimage — keep it specific. Reference the hero by name once.\n"
+            "   • BEAT TWO — STATIC SCENE (3-4 sentences): now describe the immediate place around "
+            "the still hero — weather, light, time of day, sound, smell, texture. Plant the active "
+            "opening lead as an observable fact in this specific moment. Do NOT repeat material from "
+            "the world brief.\n"
+            "1) STATIC SCENE. The hero is still — arrived, standing, sitting, watching. "
+            "The scene HAPPENS AROUND them after the arrival is established. Show the place: weather, "
+            "light, time of day, a sound, a smell, one specific texture.\n"
             "2) NEVER narrate what the hero DOES. Forbidden patterns: \"you scan\", \"you step\", "
             "\"you reach\", \"you decide\", \"you wonder\", \"you feel\" (followed by an emotion), "
             "\"your eyes\" (eyes are a perception verb in disguise), \"your hand moves\", "

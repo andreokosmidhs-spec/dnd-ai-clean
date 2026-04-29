@@ -18,6 +18,7 @@ from services.campaign_service import (
     build_world_blueprint,
     generate_initial_cards,
     generate_opening_quest_card_with_ai,
+    generate_world_brief_with_ai,
     generate_world_setting_with_ai,
     setting_knowledge_cards,
 )
@@ -218,6 +219,13 @@ async def generate_world(campaignId: str):
     setting = await generate_world_setting_with_ai(intent, world, character)
     world["setting"] = setting
 
+    # Generate the macro WORLD BRIEF (chronicler's preface — geography,
+    # history, political climate, cultures, powers at play). This becomes
+    # a SEPARATE message in the adventure log, displayed before the personal
+    # arrival scene.
+    world_brief = await generate_world_brief_with_ai(intent, world, character, setting)
+    world["world_brief"] = world_brief
+
     # Generate the AI opening-quest card FIRST so it can be planted in the intro.
     opening_quest = await generate_opening_quest_card_with_ai(intent, world, character)
 
@@ -229,6 +237,10 @@ async def generate_world(campaignId: str):
         active_quest=opening_quest.model_dump(),
         setting=setting,
     )
+    # Surface the world brief on the starting_scene response so the frontend
+    # can seed two distinct adventure-log messages from one payload.
+    if isinstance(starting_scene, dict):
+        starting_scene["worldBrief"] = world_brief
 
     campaign.update({
         "world": world,

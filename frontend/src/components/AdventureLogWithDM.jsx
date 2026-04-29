@@ -1104,18 +1104,30 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                 {/* DM Message */}
                 {entry.type === 'dm' && (
                   <div className={`p-4 rounded-lg ${
-                    entry.isCinematic 
-                      ? 'bg-gradient-to-r from-violet-600/30 to-purple-600/30 border-2 border-violet-400/50' 
-                      : 'bg-violet-600/20 border-l-4 border-violet-400'
-                  } animate-in slide-in-from-left-5 duration-300`}>
+                    entry.isWorldBrief
+                      ? 'bg-gradient-to-br from-amber-900/30 via-stone-800/40 to-amber-950/30 border-2 border-amber-600/50 shadow-inner shadow-amber-900/40'
+                      : entry.isCinematic
+                        ? 'bg-gradient-to-r from-violet-600/30 to-purple-600/30 border-2 border-violet-400/50'
+                        : 'bg-violet-600/20 border-l-4 border-violet-400'
+                  } animate-in slide-in-from-left-5 duration-300`}
+                  data-testid={entry.isWorldBrief ? 'world-brief-message' : undefined}
+                  >
                     <div className="flex items-start gap-3">
-                      <Dice6 className="h-5 w-5 text-violet-400 flex-shrink-0 mt-0.5" />
+                      {entry.isWorldBrief ? (
+                        <BookOpen className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                      ) : (
+                        <Dice6 className="h-5 w-5 text-violet-400 flex-shrink-0 mt-0.5" />
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="text-violet-400 font-semibold text-sm">
-                            {entry.isCinematic ? '🎭 The Adventure Begins' : 'Dungeon Master'}
+                          <span className={`font-semibold text-sm ${entry.isWorldBrief ? 'text-amber-300 italic' : 'text-violet-400'}`}>
+                            {entry.isWorldBrief
+                              ? `📜 ${entry.chronicleTitle || 'A Chronicle of the Realm'}`
+                              : entry.isCinematic
+                                ? '🎭 The Adventure Begins'
+                                : 'Dungeon Master'}
                           </span>
-                          {entry.isCinematic && (
+                          {entry.isCinematic && !entry.isWorldBrief && (
                             <Sparkles className="h-3 w-3 text-violet-400 animate-pulse" />
                           )}
                           {/* TTS Audio Player - Available for ALL DM messages including cinematic */}
@@ -1208,7 +1220,9 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                             )}
                           </div>
                         </div>
-                        <div className="text-violet-50 text-sm leading-relaxed">
+                        <div className={`text-sm leading-relaxed ${
+                          entry.isWorldBrief ? 'text-amber-50/90 italic font-serif tracking-wide' : 'text-violet-50'
+                        }`}>
                           {/* Entity Links: Parse entity markup and make clickable */}
                           {entry.entity_mentions && entry.entity_mentions.length > 0 ? (
                             <EntityNarrationParser

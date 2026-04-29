@@ -56,6 +56,20 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (AC mechanical accuracy + chronicler auto-narration scaffold)
+- **Feature: Armor Class is now derived per D&D 5e rules** instead of being hardcoded to `10 + DEX mod`.
+  - **New `/app/frontend/src/utils/ac.js`** with `computeArmorClass(character)`:
+    - Maps the V2 character's chosen starting equipment pack (`class.equipment.pack` → `CLASS_EQUIPMENT[class].packA|B`) to actual armor pieces.
+    - Applies armor table (Padded/Leather = 11+full DEX, Studded = 12+full DEX, Hide/Chain Shirt/Scale/Breastplate = +DEX cap 2, Half Plate = 15+DEX cap 2, Ring/Chain Mail/Splint/Plate = heavy no DEX).
+    - Adds `+2` for shields (`Shield` and `Wooden Shield`).
+    - Honors **class Unarmored Defense**: Barbarian = `10 + DEX + CON` (shield allowed), Monk = `10 + DEX + WIS` (no armor, no shield).
+    - Returns `{ ac, breakdown }` so the UI can show a tooltip ("Chain Mail + shield").
+  - Wired into `RPGGame.jsx` bridge — sets `character.armorClass` + `character.acBreakdown` once on character load.
+  - `CharacterSidebar.jsx` reads `character.armorClass` first and falls back to `computeArmorClass()` when absent.
+  - `CharacterPreview.jsx` now also renders an AC line (with breakdown) next to Max HP.
+  - Verified live: Fighter (Chain Mail + Shield) shows **AC 18** (was incorrectly 12). 7-case unit test (`/app/frontend/src/utils/__tests__/ac.test.js`) passes for Fighter, Cleric, Wizard, Barbarian, Monk, Druid pack combinations.
+- **Scaffold: World-Brief auto-narration** — added a per-session, per-mount auto-trigger in `AdventureLogWithDM.jsx` that calls `generateSpeech(text, 'onyx', true)` on the chronicler card the first time a campaign opens, gated by `isTTSEnabled` and a `dm-world-brief-played-{sessionId}` flag. **Currently dormant** because the backend's `/api/tts/generate` endpoint requires `OPENAI_TTS_KEY` (the Emergent universal key doesn't cover OpenAI TTS). When the user supplies a key the chronicler will narrate itself on every campaign open.
+
 ### 2026-04-29 (legacy campaign backfill — P0 blocker fix)
 - **Fix: Loading older V2 campaigns generated before the macro/micro intro split crashed/looked broken** (Unknown Realm/Town panel, missing chronicler card, missing or generic intro).
   - DB audit revealed three tiers of legacy docs: 100 missing `world.world_brief`, 58 missing `world_core` + `starting_town`, 4 missing the entire `world` block (very-old V1 schema with `world_blueprint`).

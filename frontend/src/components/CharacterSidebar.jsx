@@ -14,6 +14,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { mockData } from '../data/mockData';
+import { computeArmorClass } from '../utils/ac';
 
 const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
   const [showMore, setShowMore] = useState({});
@@ -186,8 +187,10 @@ const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
               <Progress value={100} className="h-2 bg-gray-700" />
               <div className="flex justify-between text-xs">
                 <span className="text-gray-400">AC</span>
-                <span className="text-white">
-                  {10 + getStatModifier(character.stats?.dexterity || 10)}
+                <span className="text-white" data-testid="character-ac" title={(character.acBreakdown ? `${character.acBreakdown}` : undefined)}>
+                  {character.armorClass != null
+                    ? character.armorClass
+                    : computeArmorClass(character).ac}
                 </span>
               </div>
             </div>

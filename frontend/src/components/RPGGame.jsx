@@ -17,6 +17,7 @@ import { useSessionCore } from '../store/useSessionCore';
 import { raceData as RACE_DATA } from '../data/raceData';
 import { BACKGROUNDS_BY_KEY } from '../data/backgroundData';
 import { computeMaxHp } from '../utils/hp';
+import { computeArmorClass } from '../utils/ac';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -187,6 +188,12 @@ const RPGGame = () => {
           const conForHp = abilities.con ?? abilities.CON ?? abilities.constitution ?? 10;
           const computedMaxHp =
             computeMaxHp(classData.key, conForHp, classData.level || 1) ?? 10;
+          // Compute AC from class starting equipment (armor + shield) +
+          // ability scores + Unarmored Defense (Barbarian/Monk).
+          const acResult = computeArmorClass({
+            abilityScores: abilities,
+            class: classData,
+          });
           const baseCharacter = {
             ...characterData,
             id: activeCharacterId,
@@ -200,6 +207,9 @@ const RPGGame = () => {
             // Legacy sidebars/sheets read character.hitPoints directly (flat int).
             // Keep this in sync with computedMaxHp so the Health panel is never blank.
             hitPoints: computedMaxHp,
+            // Mechanical AC (10 + DEX + armor + shield + class features).
+            armorClass: acResult.ac,
+            acBreakdown: acResult.breakdown,
             stats: (() => {
               const str = abilities.str ?? abilities.STR ?? abilities.strength ?? 10;
               const dex = abilities.dex ?? abilities.DEX ?? abilities.dexterity ?? 10;
@@ -857,7 +867,9 @@ const RPGGame = () => {
         max: newCharacter.hitPoints, 
         temp: 0 
       },
-      ac: 10 + Math.floor((newCharacter.stats.dexterity - 10) / 2), // Base AC + DEX modifier
+      ac: newCharacter.armorClass != null
+        ? newCharacter.armorClass
+        : computeArmorClass(newCharacter).ac, // Base AC + DEX + armor + shield + class features
       speed: 30,
       spell_slots: newCharacter.spellSlots ? { 1: newCharacter.spellSlots.length } : {},
       prepared_spells: newCharacter.spells || [],

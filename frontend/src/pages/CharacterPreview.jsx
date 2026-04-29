@@ -3,9 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { ChevronLeft, Play, Pencil, Trash2, Loader2, User, Heart } from "lucide-react";
+import { ChevronLeft, Play, Pencil, Trash2, Loader2, User, Heart, Shield } from "lucide-react";
 import { useSessionCore } from "../store/useSessionCore";
 import { computeMaxHp } from "../utils/hp";
+import { computeArmorClass } from "../utils/ac";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
 
@@ -179,19 +180,34 @@ const CharacterPreview = () => {
               </div>
               {(() => {
                 const maxHp = computeMaxHp(klass.key, abilities.con, klass.level || 1);
-                if (maxHp == null) return null;
+                const acRes = computeArmorClass(character);
                 return (
-                  <div
-                    className="mt-3 flex items-center gap-2 text-sm text-rose-300"
-                    data-testid="preview-max-hp"
-                  >
-                    <Heart className="h-4 w-4" />
-                    <span>
-                      Max HP: <span className="font-semibold text-rose-200">{maxHp}</span>
-                      <span className="text-slate-500 ml-2 text-xs">
-                        (hit die + CON modifier)
+                  <div className="mt-3 space-y-1">
+                    {maxHp != null && (
+                      <div
+                        className="flex items-center gap-2 text-sm text-rose-300"
+                        data-testid="preview-max-hp"
+                      >
+                        <Heart className="h-4 w-4" />
+                        <span>
+                          Max HP: <span className="font-semibold text-rose-200">{maxHp}</span>
+                          <span className="text-slate-500 ml-2 text-xs">
+                            (hit die + CON modifier)
+                          </span>
+                        </span>
+                      </div>
+                    )}
+                    <div
+                      className="flex items-center gap-2 text-sm text-sky-300"
+                      data-testid="preview-ac"
+                      title={acRes.breakdown}
+                    >
+                      <Shield className="h-4 w-4" />
+                      <span>
+                        AC: <span className="font-semibold text-sky-200">{acRes.ac}</span>
+                        <span className="text-slate-500 ml-2 text-xs">({acRes.breakdown})</span>
                       </span>
-                    </span>
+                    </div>
                   </div>
                 );
               })()}

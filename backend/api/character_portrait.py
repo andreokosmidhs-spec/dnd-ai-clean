@@ -40,7 +40,24 @@ def _build_portrait_prompt(character: dict) -> str:
     parts.append(
         f"Fantasy D&D character portrait of {name}, a {descriptor}."
     )
-    body = ", ".join(filter(None, [f"{build} build" if build else "", skin and f"{skin} skin", hair and f"{hair} hair", eyes and f"{eyes} eyes"]))
+    hair_style = appearance.get("hairStyle") or ""
+    facial_hair = appearance.get("facialHair") or ""
+    # Compose a single hair phrase: "long auburn hair (braided)" / "short black hair"
+    hair_phrase = ""
+    if hair or hair_style:
+        hair_phrase = " ".join(filter(None, [hair_style, hair])).strip() + " hair"
+    body = ", ".join(
+        filter(
+            None,
+            [
+                f"{build} build" if build else "",
+                skin and f"{skin} skin",
+                hair_phrase,
+                eyes and f"{eyes} eyes",
+                facial_hair and f"facial hair: {facial_hair}",
+            ],
+        )
+    )
     if body:
         parts.append(body + ".")
     if features:

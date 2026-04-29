@@ -56,6 +56,15 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (facial hair + hair style fields)
+- **Feature: Players can now describe Hair Style and Facial Hair separately from Hair Color** in Step 6 (Appearance), and the values flow through to the portrait artist (Nano Banana) and the DM prompts.
+  - **Frontend (`AppearanceStep.jsx`)**: Two new free-text inputs with `<datalist>` autocomplete suggestions (HAIR_STYLE_SUGGESTIONS: Buzz cut → Bald, 15 entries; FACIAL_HAIR_SUGGESTIONS: Clean-shaven → Forked beard, 12 entries). Players can pick a preset or type anything (e.g. "Topknot with shaved sides", "Forked beard with iron rings"). Help text under each input. `data-testid` on both for testing.
+  - **Wizard plumbing**: `useWizardState.js` initial state, `payload.js` build, `CharacterPreview.jsx` summary block all carry `hairStyle` + `facialHair`.
+  - **Backend**: `AppearanceInfo` Pydantic model adds `hairStyle: Optional[str]` and `facialHair: Optional[str]` (no migration needed — pre-existing chars just get None).
+  - **Portrait prompt** (`character_portrait.py`): builds a single hair phrase ("long braided auburn hair") and appends a separate `"facial hair: …"` clause to the Nano Banana prompt body. Portraits now render the requested style and beard.
+  - **DM prompts** (`lean_dm.py` + `campaign_service.py`): appearance bits include the merged hair phrase AND a dedicated facial-hair line, so cinematic narration can reference them naturally without leaking outside-perspective ("you").
+  - Verified live: Round-tripped a Dwarf Fighter "BeardMaster" with `Long braided` + `Forked beard with iron rings` through `POST /api/characters/v2/create` → MongoDB → `GET /api/characters/v2/{id}` → CharacterPreview screen renders both fields cleanly.
+
 ### 2026-04-29 (AC mechanical accuracy + chronicler auto-narration scaffold)
 - **Feature: Armor Class is now derived per D&D 5e rules** instead of being hardcoded to `10 + DEX mod`.
   - **New `/app/frontend/src/utils/ac.js`** with `computeArmorClass(character)`:

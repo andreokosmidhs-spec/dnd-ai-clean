@@ -4,6 +4,37 @@ import { validateAppearance } from "./utils/validation";
 
 const AGE_CATEGORIES = ["Young", "Adult", "Veteran", "Elder"];
 const BUILDS = ["Slim", "Average", "Athletic", "Muscular", "Heavy"];
+const HAIR_STYLE_SUGGESTIONS = [
+  "Buzz cut",
+  "Short cropped",
+  "Shoulder-length",
+  "Long flowing",
+  "Topknot",
+  "Ponytail",
+  "Braided",
+  "Twin braids",
+  "Dreadlocks",
+  "Wavy",
+  "Curly",
+  "Mohawk",
+  "Undercut",
+  "Shaved",
+  "Bald",
+];
+const FACIAL_HAIR_SUGGESTIONS = [
+  "Clean-shaven",
+  "Stubble",
+  "Light goatee",
+  "Goatee",
+  "Mustache",
+  "Short beard",
+  "Full beard",
+  "Long beard",
+  "Braided beard",
+  "Mutton chops",
+  "Van Dyke",
+  "Forked beard",
+];
 
 const AppearanceStep = ({ wizardState, updateSection, onNext, onBack, steps, goToStep }) => {
   const appearance = wizardState.appearance || {
@@ -12,6 +43,8 @@ const AppearanceStep = ({ wizardState, updateSection, onNext, onBack, steps, goT
     build: null,
     skinTone: "",
     hairColor: "",
+    hairStyle: "",
+    facialHair: "",
     eyeColor: "",
     notableFeatures: [],
   };
@@ -134,6 +167,48 @@ const AppearanceStep = ({ wizardState, updateSection, onNext, onBack, steps, goT
               />
             </div>
           </div>
+
+          <div>
+            <label className="block text-sm text-slate-300 mb-1">Hair Style</label>
+            <input
+              type="text"
+              list="hair-style-suggestions"
+              value={appearance.hairStyle || ""}
+              onChange={(e) => updateAppearance({ hairStyle: e.target.value })}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              placeholder="e.g. Long braided, Topknot, Shaved"
+              data-testid="appearance-hair-style-input"
+            />
+            <datalist id="hair-style-suggestions">
+              {HAIR_STYLE_SUGGESTIONS.map((opt) => (
+                <option key={opt} value={opt} />
+              ))}
+            </datalist>
+            <p className="text-xs text-slate-500 mt-1">
+              Used by the portrait artist and DM. Pick a suggestion or write your own.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm text-slate-300 mb-1">Facial Hair</label>
+            <input
+              type="text"
+              list="facial-hair-suggestions"
+              value={appearance.facialHair || ""}
+              onChange={(e) => updateAppearance({ facialHair: e.target.value })}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              placeholder="e.g. Full beard, Stubble, Clean-shaven"
+              data-testid="appearance-facial-hair-input"
+            />
+            <datalist id="facial-hair-suggestions">
+              {FACIAL_HAIR_SUGGESTIONS.map((opt) => (
+                <option key={opt} value={opt} />
+              ))}
+            </datalist>
+            <p className="text-xs text-slate-500 mt-1">
+              Leave blank for clean-shaven. Free-text for things like "auburn moustache, neatly trimmed".
+            </p>
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -192,7 +267,10 @@ const AppearanceStep = ({ wizardState, updateSection, onNext, onBack, steps, goT
               <span className="text-slate-400">Skin Tone:</span> {appearance.skinTone || "—"}
             </p>
             <p>
-              <span className="text-slate-400">Hair:</span> {appearance.hairColor || "—"}
+              <span className="text-slate-400">Hair:</span> {[appearance.hairStyle, appearance.hairColor].filter(Boolean).join(" ") || "—"}
+            </p>
+            <p>
+              <span className="text-slate-400">Facial Hair:</span> {appearance.facialHair || "—"}
             </p>
             <p>
               <span className="text-slate-400">Eyes:</span> {appearance.eyeColor || "—"}

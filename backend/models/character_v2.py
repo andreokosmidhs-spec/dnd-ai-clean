@@ -58,6 +58,8 @@ class AppearanceInfo(BaseModel):
     build: str
     skinTone: Optional[str] = None
     hairColor: Optional[str] = None
+    hairStyle: Optional[str] = None
+    facialHair: Optional[str] = None
     eyeColor: Optional[str] = None
     notableFeatures: List[str] = Field(default_factory=list)
 

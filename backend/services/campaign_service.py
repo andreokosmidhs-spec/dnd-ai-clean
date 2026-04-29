@@ -475,12 +475,17 @@ async def build_starting_scene_with_ai(
             age_category = appearance.get("ageCategory") or ""
             build = appearance.get("build") or ""
             hair = appearance.get("hairColor") or ""
+            hair_style = appearance.get("hairStyle") or ""
+            facial_hair = appearance.get("facialHair") or ""
             eyes = appearance.get("eyeColor") or ""
             notable = appearance.get("notableFeatures") or []
             if build:
                 appearance_bits.append(f"{build} build")
-            if hair:
-                appearance_bits.append(f"{hair} hair")
+            hair_phrase = " ".join(filter(None, [hair_style, hair])).strip()
+            if hair_phrase:
+                appearance_bits.append(f"{hair_phrase} hair")
+            if facial_hair:
+                appearance_bits.append(f"{facial_hair} facial hair")
             if eyes:
                 appearance_bits.append(f"{eyes} eyes")
             if notable:

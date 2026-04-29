@@ -54,6 +54,8 @@ export const initialWizardState = {
     build: "",
     skinTone: "",
     hairColor: "",
+    hairStyle: "",
+    facialHair: "",
     eyeColor: "",
     notableFeatures: [],
   },

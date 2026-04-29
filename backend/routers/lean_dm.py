@@ -104,8 +104,14 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
     appearance_bits: List[str] = []
     if appearance.get("build"):
         appearance_bits.append(f"{appearance['build']} build")
-    if appearance.get("hairColor"):
-        appearance_bits.append(f"{appearance['hairColor']} hair")
+    if appearance.get("hairColor") or appearance.get("hairStyle"):
+        hair_phrase = " ".join(
+            filter(None, [appearance.get("hairStyle"), appearance.get("hairColor")])
+        ).strip()
+        if hair_phrase:
+            appearance_bits.append(f"{hair_phrase} hair")
+    if appearance.get("facialHair"):
+        appearance_bits.append(f"{appearance['facialHair']} facial hair")
     if appearance.get("eyeColor"):
         appearance_bits.append(f"{appearance['eyeColor']} eyes")
     notable = appearance.get("notableFeatures") or []

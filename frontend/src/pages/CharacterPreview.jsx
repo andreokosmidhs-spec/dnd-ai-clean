@@ -214,14 +214,19 @@ const CharacterPreview = () => {
             </div>
 
             {/* Appearance */}
-            {(appearance.build || appearance.hairColor || appearance.eyeColor || appearance.notableFeatures?.length) && (
+            {(appearance.build || appearance.hairColor || appearance.eyeColor || appearance.hairStyle || appearance.facialHair || appearance.notableFeatures?.length) && (
               <div className="mb-6">
                 <div className="text-xs uppercase tracking-wide text-slate-400 mb-2">Appearance</div>
                 <div className="text-sm text-slate-300 space-y-1">
                   {appearance.ageCategory && <div>Age: {appearance.ageCategory}</div>}
                   {appearance.heightCm && <div>Height: {appearance.heightCm} cm</div>}
                   {appearance.build && <div>Build: {appearance.build}</div>}
-                  {appearance.hairColor && <div>Hair: {appearance.hairColor}</div>}
+                  {(appearance.hairStyle || appearance.hairColor) && (
+                    <div>
+                      Hair: {[appearance.hairStyle, appearance.hairColor].filter(Boolean).join(" ")}
+                    </div>
+                  )}
+                  {appearance.facialHair && <div>Facial Hair: {appearance.facialHair}</div>}
                   {appearance.eyeColor && <div>Eyes: {appearance.eyeColor}</div>}
                   {appearance.notableFeatures?.length > 0 && (
                     <div>Notable: {appearance.notableFeatures.join(", ")}</div>

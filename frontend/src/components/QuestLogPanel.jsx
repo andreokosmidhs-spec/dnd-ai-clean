@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Scroll, ChevronDown, ChevronRight, Check, X, Circle } from 'lucide-react';
+import { Scroll, ChevronDown, ChevronRight, ChevronUp, Check, X, Circle } from 'lucide-react';
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -7,6 +7,9 @@ import { Badge } from './ui/badge';
 const QuestLogPanel = ({ quests = [], onUpdateStatus }) => {
   const [expandedQuests, setExpandedQuests] = useState({});
   const [showCompleted, setShowCompleted] = useState(false);
+  // Whole panel collapses to a single header bar so the narration can sit
+  // at the top of the screen. Defaults to collapsed (matches WorldInfoPanel).
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   const toggleQuest = (questId) => {
     setExpandedQuests(prev => ({
@@ -160,52 +163,69 @@ const QuestLogPanel = ({ quests = [], onUpdateStatus }) => {
   return (
     <Card className="bg-black/90 border-amber-600/30 backdrop-blur-sm">
       <CardContent className="p-3">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-3 pb-2 border-b border-amber-600/20">
+        {/* Header — click anywhere to fold/unfold the entire panel. */}
+        <button
+          type="button"
+          onClick={() => setIsPanelOpen((v) => !v)}
+          className={`w-full flex items-center justify-between ${isPanelOpen ? 'mb-3 pb-2 border-b border-amber-600/20' : ''}`}
+          data-testid="quest-log-toggle-btn"
+          aria-expanded={isPanelOpen}
+        >
           <div className="flex items-center gap-2">
             <Scroll className="h-4 w-4 text-amber-400" />
             <h3 className="text-amber-400 font-semibold text-sm">Quest Log</h3>
           </div>
-          <Badge variant="outline" className="text-xs border-amber-400/50 text-amber-300">
-            {activeQuests.length} Active
-          </Badge>
-        </div>
-
-        {/* Active Quests */}
-        {activeQuests.length > 0 ? (
-          <div className="space-y-2 mb-3">
-            {activeQuests.map(quest => (
-              <QuestCard key={quest.quest_id} quest={quest} />
-            ))}
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs border-amber-400/50 text-amber-300">
+              {activeQuests.length} Active
+            </Badge>
+            {isPanelOpen ? (
+              <ChevronUp className="h-4 w-4 text-amber-400/70" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-amber-400/70" />
+            )}
           </div>
-        ) : (
-          <div className="text-gray-400 text-xs italic text-center py-4">
-            No active quests. Explore and talk to NPCs to find new adventures!
-          </div>
-        )}
+        </button>
 
-        {/* Completed/Failed Quests Toggle */}
-        {(completedQuests.length > 0 || failedQuests.length > 0) && (
-          <div className="mt-3 pt-3 border-t border-gray-700">
-            <Button
-              onClick={() => setShowCompleted(!showCompleted)}
-              variant="ghost"
-              size="sm"
-              className="w-full h-7 text-xs text-gray-400 hover:text-gray-200"
-            >
-              {showCompleted ? 'Hide' : 'Show'} Completed Quests ({completedQuests.length + failedQuests.length})
-            </Button>
-            {showCompleted && (
-              <div className="mt-2 space-y-2">
-                {completedQuests.map(quest => (
-                  <QuestCard key={quest.quest_id} quest={quest} />
-                ))}
-                {failedQuests.map(quest => (
+        {isPanelOpen && (
+          <>
+            {/* Active Quests */}
+            {activeQuests.length > 0 ? (
+              <div className="space-y-2 mb-3">
+                {activeQuests.map(quest => (
                   <QuestCard key={quest.quest_id} quest={quest} />
                 ))}
               </div>
+            ) : (
+              <div className="text-gray-400 text-xs italic text-center py-4">
+                No active quests. Explore and talk to NPCs to find new adventures!
+              </div>
             )}
-          </div>
+
+            {/* Completed/Failed Quests Toggle */}
+            {(completedQuests.length > 0 || failedQuests.length > 0) && (
+              <div className="mt-3 pt-3 border-t border-gray-700">
+                <Button
+                  onClick={() => setShowCompleted(!showCompleted)}
+                  variant="ghost"
+                  size="sm"
+                  className="w-full h-7 text-xs text-gray-400 hover:text-gray-200"
+                >
+                  {showCompleted ? 'Hide' : 'Show'} Completed Quests ({completedQuests.length + failedQuests.length})
+                </Button>
+                {showCompleted && (
+                  <div className="mt-2 space-y-2">
+                    {completedQuests.map(quest => (
+                      <QuestCard key={quest.quest_id} quest={quest} />
+                    ))}
+                    {failedQuests.map(quest => (
+                      <QuestCard key={quest.quest_id} quest={quest} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

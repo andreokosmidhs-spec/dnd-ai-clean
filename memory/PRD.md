@@ -56,6 +56,12 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (collapsible Quest Log)
+- **Feature: Quest Log now folds to a single header bar by default** (matching the existing collapsible Realm panel), so the DM narration sits near the top of the screen.
+  - `QuestLogPanel.jsx`: header is now a `<button>` (`data-testid="quest-log-toggle-btn"`, `aria-expanded`) that flips a single `isPanelOpen` state. When closed, only the row "📜 Quest Log · {N} Active · ▼" shows; when open, the active quests, completed-toggle, and inner cards render below. Defaults to **collapsed**.
+  - `Chevron(Up|Down)` icons mirror state, identical to the WorldInfoPanel UX.
+  - Verified live (avon Cleric, "The Frayed Rope" active quest): `aria-expanded` cycles `false → true → false` on click; default load lands collapsed; the Chronicle bubble now starts ~270px higher on the screen.
+
 ### 2026-04-29 (smarter character-create error reporting)
 - **Fix: "Couldn't reach the backend" submit failures now tell the user EXACTLY what to do** instead of a vague "(All endpoints failed)".
   - **Diagnosis:** the user's repeated submit failures with the new reference-image upload were traced to TWO real causes:

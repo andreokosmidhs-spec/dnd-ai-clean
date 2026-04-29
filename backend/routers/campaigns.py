@@ -14,6 +14,8 @@ from models.campaign_models import (
     KnowledgeCard,
 )
 from services.campaign_service import (
+    _template_world_setting,
+    build_starting_scene,
     build_starting_scene_with_ai,
     build_world_blueprint,
     generate_initial_cards,
@@ -22,6 +24,10 @@ from services.campaign_service import (
     generate_world_setting_with_ai,
     setting_knowledge_cards,
 )
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
@@ -264,11 +270,114 @@ async def generate_world(campaignId: str):
     )
 
 
+async def _backfill_legacy_campaign(campaign: Dict) -> Dict:
+    """Upgrade older V2 campaign documents that pre-date the macro/micro
+    intro split so the frontend (and the Lean DM) always have a coherent
+    world to render.
+
+    Fills in (and persists once):
+      - `world` (migrating legacy `world_blueprint` if present)
+      - `world.world_core`, `world.starting_town` (frontend WorldInfoPanel)
+      - `world.setting` (era / factions / recent_events / current_tension)
+      - `world.world_brief` (chronicler preface — uses the AI generator,
+        which has its own deterministic fallback)
+      - `starting_scene.introText` and `starting_scene.worldBrief`
+    """
+    if not campaign:
+        return campaign
+
+    needs_save = False
+
+    # 1) Resolve intent (defaults if a very old campaign has intent=None)
+    intent_dict = campaign.get("intent") or {}
+    try:
+        intent = CampaignIntent(
+            tone=intent_dict.get("tone") or "Balanced",
+            focus=intent_dict.get("focus") or "Story",
+            scope=intent_dict.get("scope") or "Mixed",
+            danger=intent_dict.get("danger") or "Medium",
+        )
+    except Exception:
+        intent = CampaignIntent(tone="Balanced", focus="Story", scope="Mixed", danger="Medium")
+    if not campaign.get("intent"):
+        campaign["intent"] = intent.model_dump()
+        needs_save = True
+
+    # 2) Migrate very-old `world_blueprint` -> `world` if needed
+    world = campaign.get("world") or {}
+    if not world and isinstance(campaign.get("world_blueprint"), dict):
+        world = dict(campaign["world_blueprint"])
+        campaign["world"] = world
+        needs_save = True
+
+    # 3) Backfill core blueprint fields if missing
+    character: Optional[Dict] = None
+    if not world or not world.get("world_core") or not world.get("starting_town") \
+            or not world.get("startingLocation"):
+        try:
+            character = await _fetch_character(campaign.get("character_id"))
+        except Exception:
+            character = None
+        base = build_world_blueprint(intent, character)
+        for k, v in base.items():
+            if not world.get(k):
+                world[k] = v
+        campaign["world"] = world
+        needs_save = True
+
+    # 4) Backfill setting (era/factions/recent_events/current_tension)
+    if not world.get("setting"):
+        world["setting"] = _template_world_setting(intent, world)
+        needs_save = True
+
+    # 5) Backfill world_brief (chronicler preface) — AI when available,
+    # otherwise the function's own deterministic template.
+    if not world.get("world_brief"):
+        if character is None:
+            try:
+                character = await _fetch_character(campaign.get("character_id"))
+            except Exception:
+                character = None
+        try:
+            world["world_brief"] = await generate_world_brief_with_ai(
+                intent, world, character, world.get("setting")
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"world_brief backfill failed: {exc}")
+            world["world_brief"] = ""
+        needs_save = True
+
+    # 6) Backfill starting_scene
+    starting_scene = campaign.get("starting_scene") or {}
+    if not starting_scene or not starting_scene.get("introText"):
+        starting_scene = build_starting_scene(campaign.get("campaign_id", ""), world)
+        starting_scene["worldBrief"] = world.get("world_brief", "")
+        campaign["starting_scene"] = starting_scene
+        needs_save = True
+    elif not starting_scene.get("worldBrief") and world.get("world_brief"):
+        starting_scene["worldBrief"] = world["world_brief"]
+        campaign["starting_scene"] = starting_scene
+        needs_save = True
+
+    if needs_save:
+        campaign["updated_at"] = datetime.utcnow()
+        try:
+            await _save_campaign_doc(campaign)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Failed to persist legacy backfill: {exc}")
+
+    return campaign
+
+
 @router.get("/{campaignId}")
 async def get_campaign(campaignId: str):
     campaign = await _get_campaign(campaignId)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.pop("_id", None)
+    # Transparently upgrade legacy docs missing world_brief / world_core /
+    # starting_town / starting_scene so the adventure UI loads cleanly.
+    campaign = await _backfill_legacy_campaign(campaign)
     campaign.pop("_id", None)
     return campaign
 

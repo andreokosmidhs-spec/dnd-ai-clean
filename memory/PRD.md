@@ -56,6 +56,19 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (legacy campaign backfill — P0 blocker fix)
+- **Fix: Loading older V2 campaigns generated before the macro/micro intro split crashed/looked broken** (Unknown Realm/Town panel, missing chronicler card, missing or generic intro).
+  - DB audit revealed three tiers of legacy docs: 100 missing `world.world_brief`, 58 missing `world_core` + `starting_town`, 4 missing the entire `world` block (very-old V1 schema with `world_blueprint`).
+  - **New: `_backfill_legacy_campaign(campaign)` in `routers/campaigns.py`** runs transparently on every `GET /api/campaigns/{campaignId}`:
+    1. Resolves a usable `intent` (defaults to Balanced/Story/Mixed/Medium for very-old docs with `intent: None`).
+    2. Migrates legacy `world_blueprint` → `world` if `world` is missing entirely.
+    3. Backfills missing `world_core` / `starting_town` / `startingLocation` via `build_world_blueprint(intent, character)`.
+    4. Backfills missing `world.setting` via the deterministic `_template_world_setting` helper (factions / events / current tension).
+    5. Backfills missing `world.world_brief` via `generate_world_brief_with_ai` (which has its own template fallback if the LLM is unavailable). Runs only once — result is persisted.
+    6. Backfills missing `starting_scene` via `build_starting_scene` and propagates `worldBrief` onto it.
+  - **Persists upgrades** via `_save_campaign_doc` so subsequent loads are instant (no LLM re-call).
+  - Verified end-to-end: a legacy `040ae069…` campaign now loads in 0.2s on re-fetch and renders "Realm of Story / Town Square" + AI-generated chronicler preface ("Nestled between the jagged peaks of the Craggestone Mountains and the fertile expanse of the Larkfield Valley…") + personal arrival + abilities/HP/AC/personality. Three tiers (no-world, partial-world, missing-brief) all upgrade cleanly.
+
 ### 2026-04-29 (macro/micro intro split)
 - **Major: Campaign opens with TWO distinct narration messages — macro chronicle, then micro arrival.**
   - **Macro Chronicle** (`generate_world_brief_with_ai`) — third-person omniscient chronicler's preface (130-180 words) covering, in order: GEOGRAPHY (where the realm sits, terrain, neighbors), RECENT HISTORY (compressed cause-and-effect from the setting's recent_events), POLITICAL CLIMATE (powers and balance, with factions named), CULTURE (one specific custom or texture). Ends with a single transitional sentence tilting the camera toward the starting location ("And it is to Gate of Emberfall, on this evening, that our story turns").

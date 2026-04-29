@@ -131,53 +131,73 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
       }
     };
 
-    try {
-      let res = null;
-      let lastError = "";
-      let lastStatus = 0;
-      let triedUrls = [];
+    // Try a single endpoint with a short timeout. Returns either the success
+    // Response or {status, detail} on failure.
+    const tryOnce = async (url) => {
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 12000);
+      try {
+        const attempt = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: ctrl.signal,
+        });
+        if (attempt.ok) return { ok: true, res: attempt };
+        return { ok: false, status: attempt.status, detail: await parseErrorBody(attempt) };
+      } catch (netErr) {
+        return { ok: false, status: 0, detail: netErr?.message || "Network error" };
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
 
+    // Run the full submit pass: try each endpoint in order, stop on success
+    // or on a non-404 / non-network error (those won't change with retry).
+    const runPass = async () => {
       for (const url of endpoints) {
-        triedUrls.push(url);
-        try {
-          const attempt = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          if (attempt.ok) {
-            res = attempt;
-            break;
-          }
-          lastStatus = attempt.status;
-          lastError = await parseErrorBody(attempt);
-          // Only worth trying the alias on 404; any other error is likely a
-          // real server/validation problem that the alias won't fix.
-          if (attempt.status !== 404) {
-            res = attempt;
-            break;
-          }
-        } catch (netErr) {
-          lastError = netErr?.message || "Network error";
-          lastStatus = 0;
+        const result = await tryOnce(url);
+        if (result.ok) return { res: result.res };
+        // 5xx, 502, 503 + transient network are worth retrying after a beat
+        if (result.status === 0 || result.status === 404 || result.status >= 500) {
+          // Continue to next endpoint; the FOR loop will exhaust and we'll retry
+          continue;
         }
+        // 400 / 422 — real validation problem, do NOT retry
+        return { fail: result };
+      }
+      return { fail: { status: 0, detail: "All endpoints failed" } };
+    };
+
+    try {
+      let triedUrls = [...endpoints];
+      let outcome = await runPass();
+
+      // If the first pass failed on transient causes (404/5xx/network), wait
+      // 1.2s and try ONCE more before giving up. Catches backend restarts
+      // and brief proxy hiccups without surfacing a misleading 404.
+      if (!outcome.res) {
+        await new Promise((r) => setTimeout(r, 1200));
+        outcome = await runPass();
       }
 
-      if (!res || !res.ok) {
+      if (!outcome.res) {
+        const lastStatus = outcome.fail?.status ?? 0;
+        const lastError = outcome.fail?.detail || "";
         const friendly =
           lastStatus === 404
-            ? `The character-creation endpoint wasn't reachable (404). This usually means a stale preview URL or an ad-blocker. Try a hard refresh (Ctrl/Cmd+Shift+R). Tried: ${triedUrls.join(" , ")}`
+            ? `The character-creation endpoint wasn't reachable (404), even after a retry. Try a hard refresh (Ctrl/Cmd+Shift+R). If it persists, the backend may be restarting — wait 10s and click Retry. Tried: ${triedUrls.join(" , ")}`
             : lastStatus === 422 || lastStatus === 400
               ? `We couldn't validate your character (${lastStatus}). ${lastError || "Please re-check the wizard steps."}`
               : lastStatus >= 500
-                ? `The server hit an error (${lastStatus}). Please try again in a moment.${lastError ? ` Detail: ${lastError}` : ""}`
+                ? `The server hit an error (${lastStatus}) and the retry also failed. Please wait a few seconds and click Retry.${lastError ? ` Detail: ${lastError}` : ""}`
                 : lastStatus === 0
-                  ? `Couldn't reach the backend from your browser. Please check your internet connection or try a hard refresh.${lastError ? ` (${lastError})` : ""}`
+                  ? `Couldn't reach the backend from your browser. Check your connection or hard-refresh.${lastError ? ` (${lastError})` : ""}`
                   : `Failed to create character (HTTP ${lastStatus}).${lastError ? ` ${lastError}` : ""}`;
         throw new Error(friendly);
       }
 
-      const data = await res.json();
+      const data = await outcome.res.json();
       console.log("Character V2 created", data);
 
       if (!data?.id) {

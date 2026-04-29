@@ -56,6 +56,14 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (review submit auto-retry)
+- **Fix: Transient 404 / 5xx during character-creation submit no longer surfaces as a hard error.**
+  - Submit handler now runs a full failover pass (primary endpoint → alias) and, if BOTH fail with 404 / 5xx / network, **automatically waits 1.2s and runs the entire pass again** before showing an error. Catches backend-restart windows, brief proxy hiccups, transient network glitches.
+  - Per-request 12-second timeout via `AbortController` so a hung request can't block the UX.
+  - 400 / 422 (real validation errors) still skip retry — retrying won't change them.
+  - Updated friendly message to mention the retry happened ("...even after a retry. Wait 10s and click Retry.") so users know it wasn't a fluke.
+- Verified both endpoints are 200 OK in production. Most likely cause of the user's original error was hitting the submit during a backend supervisor restart from the previous turn.
+
 ### 2026-04-27 (world setting)
 - **Major: Real world-setting context now generated and threaded through the entire narrative pipeline.**
   - **New service**: `generate_world_setting_with_ai(intent, world, character)` produces a structured setting bible per campaign — `era`, 3 named **factions** (with `domain` + `stance` and in active conflict), 2 **recent events** (with `title` + `summary`), and a concrete `current_tension` describing what the streets actually feel like right now. Tone-adapted: Gritty → post-war scarcity / corruption; Heroic → rising orders / bandit threats; Mystery → secret guilds. Has a coherent template fallback if the LLM is unavailable.

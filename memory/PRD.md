@@ -56,6 +56,20 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (auto-seeding knowledge cards from DM narration)
+- **Feature: Every DM turn now auto-creates `campaign_cards` entries for brand-new NPCs / locations / factions** the AI invents mid-scene. Subsequent mentions become clickable entities *in the same response* — no one-turn lag.
+  - **New `/app/backend/services/auto_cards.py`**:
+    - **Regex extractor `_extract_candidates`** finds sequences of 1-4 capitalized words (allowing "of/the/and" connectors). Strips trailing connectors and trailing possessive `'s`. Skips single-word matches at sentence starts (filters "Dawn breaks…", "Ahead…"). Blocklist of 80+ D&D terms, pronouns, days, months, titles, common verbs.
+    - **LLM micro-classifier `_classify_candidates`** (gpt-4o-mini, temperature 0, JSON-only response) tags each unknown as `npc | location | faction | none`. Strips markdown fences defensively, handles JSON parse failures gracefully. Caps at 12 candidates per call to bound cost.
+    - **`auto_seed_cards_from_narration`** orchestrates: builds known-names set from the entity index (including possessive forms), filters candidates, calls classifier ONLY when ≥1 unknowns, inserts minimal `{id, title, type, content: <grounding-sentence-snippet>, status: "introduced", auto_seeded: true, source: "dm_narration", createdAt, updatedAt}` into `campaign_cards`. Race-safe (checks DB before insert).
+  - **`routers/lean_dm.py`**: calls the seeder AFTER the narration is generated, then re-builds the entity index with the new cards merged in, so mentions returned to the frontend already include the just-seeded entities. Same-turn clickability.
+  - **`services/campaign_service.py`**: `build_v2_entity_index` widened to recognize both new-schema card types (`location`, `faction`, `npc`, `item`) AND legacy-schema types (`place`, `landmark`, `city`, `region`, `guild`, `organization`, `character`, `artifact`) so pre-existing cards prevent duplicate seeding.
+  - **Cost control**: the classifier runs only when there ARE unknown candidates. A turn with zero new entities = zero LLM calls for this feature.
+  - **Verified end-to-end** on legacy "avon" campaign (Half-Orc Rogue):
+    - Turn 1 ("I ask for help from a passing merchant. What is his name and the bandit leader's name?") → DM invents "Zarek" + "Caldera" → 2 auto-cards created → 2 mentions in the same response.
+    - Turn 2 ("I ask Zarek about Caldera. Where does she hide?") → Zarek + Caldera recognized from cards → DM also invents "Garren" + "Great Hollow Ruins" → both auto-seeded AND clickable in the same response.
+    - Total auto-seeded after 2 turns: 4 clean cards, no duplicates, no possessive forms, content snippets faithfully grounded in the introducing dialogue.
+
 ### 2026-04-29 (entity highlighting now active for V2 campaigns)
 - **Fix: Locations / factions / NPCs are now hyperlinked in the chronicle and arrival narration** for every V2 campaign (new + legacy backfilled). Previously only the legacy `dungeon_forge` flow extracted entity mentions; the V2 Lean DM path returned `entity_mentions: []`, so nothing was clickable.
   - **Backend**:

@@ -1,0 +1,324 @@
+"""Auto-Card seeder — detects brand-new NPCs / locations / factions that the
+DM invents mid-scene and auto-creates `campaign_cards` entries so subsequent
+mentions become clickable entities.
+
+Design (hybrid — regex candidates → LLM classifier):
+  1. Regex-extract proper-noun candidates from the narration (sequences of
+     1–4 capitalized words, excluding sentence-starters and a D&D/English
+     blocklist).
+  2. Filter out names we already know (`known_names` from the entity index,
+     case-insensitive).
+  3. If ≥1 unknown candidates remain, call a small LLM micro-classifier
+     (gpt-4o-mini, structured JSON response) that tags each candidate as
+     `npc`, `location`, `faction`, or `none`.
+  4. Create minimal `KnowledgeCard` entries (status="introduced") in the
+     `campaign_cards` collection for each classified candidate.
+
+Cost: ~300 tokens in / ~100 tokens out per turn that introduces new names
+(fractions of a cent). Zero calls when narration only uses existing names.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+import uuid
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Set
+
+from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+logger = logging.getLogger(__name__)
+
+# Words that sometimes appear capitalized mid-sentence but are NOT entities.
+# Mostly D&D / game terminology + common pronouns + days / months / titles.
+_BLOCKLIST: Set[str] = {
+    # Game terms
+    "strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma",
+    "str", "dex", "con", "int", "wis", "cha",
+    "ac", "hp", "dc", "cr", "xp", "dm", "gm", "pc", "npc", "d4", "d6", "d8",
+    "d10", "d12", "d20", "d100",
+    "fighter", "wizard", "cleric", "rogue", "ranger", "paladin", "barbarian",
+    "monk", "bard", "druid", "sorcerer", "warlock", "artificer",
+    "human", "elf", "dwarf", "halfling", "gnome", "tiefling", "dragonborn",
+    "orc", "half-elf", "half-orc",
+    "attack", "action", "bonus", "reaction", "movement", "perception",
+    "check", "save", "roll", "advantage", "disadvantage", "critical",
+    "initiative", "surprise", "concentration", "proficiency",
+    # Common English
+    "the", "a", "an", "and", "or", "but", "if", "then", "so", "as", "at",
+    "on", "in", "to", "of", "for", "with", "by", "from", "up", "down",
+    "out", "off", "over", "under", "again", "yet", "still",
+    "you", "your", "yours", "he", "she", "they", "it", "we", "us", "i",
+    "me", "my", "mine", "who", "what", "where", "when", "why", "how",
+    # Days / months
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december",
+    # Misc titles / verbs that often get capitalized
+    "sir", "lady", "lord", "captain", "master", "mister", "mrs", "ms",
+    "yes", "no", "okay", "alright",
+}
+
+
+def _strip_prefix_articles(phrase: str) -> str:
+    """Strip leading 'The/A/An ' (case-insensitive) so 'The Guild of Scribes'
+    and 'Guild of Scribes' match known entries."""
+    words = phrase.split()
+    while words and words[0].lower() in {"the", "a", "an"}:
+        words = words[1:]
+    return " ".join(words)
+
+
+# Matches a sequence of 1–4 capitalized words (optionally lowercase connectors
+# like "of", "the", "and" allowed in the middle). Examples:
+#   "Black Market Syndicate", "Wardens of Emberfall", "Lord Argus",
+#   "River of Tears", "Old Greywater Road"
+_CANDIDATE_RE = re.compile(
+    r"\b([A-Z][a-zA-Z'\-]+(?:\s+(?:of|the|and|de|von|du|von|[A-Z][a-zA-Z'\-]+)){0,3})\b"
+)
+
+
+def _extract_candidates(text: str) -> List[str]:
+    """Return distinct proper-noun candidate phrases from the narration.
+
+    Filters out sentence-starting capitalization (the first word after '.?!'
+    is ambiguous — we keep it only if it's multi-word so "Dawn breaks" is
+    skipped but "Black Market Syndicate" is kept)."""
+    if not text:
+        return []
+    candidates: List[str] = []
+    seen: Set[str] = set()
+
+    # Find every boundary that a sentence can start at (index+1)
+    sentence_starts: Set[int] = {0}
+    for m in re.finditer(r"[.!?]\s+", text):
+        sentence_starts.add(m.end())
+
+    for m in _CANDIDATE_RE.finditer(text):
+        phrase = m.group(1).strip()
+        # Strip any trailing connector word (of / the / and / de / von / du)
+        # — the regex permits them mid-phrase but they shouldn't terminate it.
+        parts = phrase.split()
+        while len(parts) > 1 and parts[-1].lower() in {"of", "the", "and", "de", "von", "du"}:
+            parts.pop()
+        phrase = " ".join(parts)
+        word_count = len(parts)
+
+        # Skip single-word matches at sentence starts — too noisy (Dawn, The,
+        # Ahead, etc. all get capitalized but are rarely entities).
+        if word_count == 1 and m.start() in sentence_starts:
+            continue
+
+        lower = phrase.lower()
+        if lower in _BLOCKLIST:
+            continue
+        # Tiny single-word entries that are in the blocklist or too short
+        if word_count == 1 and (len(phrase) < 4 or lower in _BLOCKLIST):
+            continue
+
+        # Drop prefix article for de-dup
+        canon = _strip_prefix_articles(phrase)
+        if not canon or len(canon) < 3:
+            continue
+        key = canon.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(phrase)
+
+    return candidates
+
+
+async def _classify_candidates(
+    narration: str,
+    candidates: List[str],
+) -> Dict[str, str]:
+    """Ask a small LLM to classify each candidate as npc / location /
+    faction / none. Returns a dict of `{name_lowercase: entity_type}`.
+
+    Returns an empty dict on any failure — the caller simply skips auto-
+    seeding and the scene still works (just no new clickable entities).
+    """
+    if not candidates:
+        return {}
+
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return {}
+
+    # Build the prompt — keep it short and strictly structured
+    candidates_json = json.dumps(candidates)
+    snippet = narration[:1200]  # context is enough — no need to send the whole scene
+    prompt = (
+        "You are classifying fantasy RPG proper nouns found in a narrative "
+        "passage. For each candidate, decide if it is:\n"
+        "  - \"npc\": a named character (person or creature).\n"
+        "  - \"location\": a specific place, landmark, city, region, building.\n"
+        "  - \"faction\": a named group, guild, order, or organization.\n"
+        "  - \"none\": anything else (greetings, game terms, generic phrases, "
+        "      misfires of the regex, names that are not truly proper entities).\n\n"
+        f"Narration excerpt:\n'''{snippet}'''\n\n"
+        f"Candidates to classify:\n{candidates_json}\n\n"
+        "Respond with ONLY valid JSON in this shape (no extra commentary):\n"
+        '{"results": [{"name": "...", "type": "npc|location|faction|none"}, ...]}'
+    )
+
+    try:
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"auto-cards-{uuid.uuid4().hex[:8]}",
+            system_message=(
+                "You classify fantasy proper nouns. "
+                "Output STRICT JSON only — no prose, no code fence."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.0)
+        response = await chat.send_message(UserMessage(text=prompt))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[auto-cards] classifier call failed: {exc}")
+        return {}
+
+    # The LLM sometimes wraps JSON in markdown fences; strip them defensively.
+    text = (response or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        # After stripping backticks we may still have a "json\n" language tag
+        if text.lower().startswith("json"):
+            text = text[4:].lstrip()
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        logger.warning(f"[auto-cards] non-JSON classifier output: {text[:200]!r}")
+        return {}
+
+    results: Dict[str, str] = {}
+    for item in parsed.get("results", []) or []:
+        name = (item.get("name") or "").strip()
+        etype = (item.get("type") or "").strip().lower()
+        if not name:
+            continue
+        if etype in {"npc", "location", "faction"}:
+            results[name.lower()] = etype
+    return results
+
+
+def _card_description(name: str, entity_type: str, narration: str) -> str:
+    """Snip the sentence(s) around the first mention of `name` as the
+    card's content. Keeps the auto-card grounded in how the entity was
+    actually introduced."""
+    if not narration:
+        return f"{name} — recently introduced in the narrative."
+    idx = narration.lower().find(name.lower())
+    if idx == -1:
+        return f"{name} — recently introduced in the narrative."
+    # Grab the sentence boundary on each side
+    start = max(0, narration.rfind(".", 0, idx) + 1)
+    end = narration.find(".", idx + len(name))
+    if end == -1:
+        end = min(len(narration), idx + len(name) + 200)
+    snippet = narration[start:end].strip()
+    return snippet or f"{name} — recently introduced in the narrative."
+
+
+async def auto_seed_cards_from_narration(
+    *,
+    campaign_id: str,
+    narration: str,
+    entity_index: List[Dict],
+    cards_collection,
+) -> List[Dict]:
+    """Main entry point.
+
+    Returns a list of the new cards that were inserted (empty on no-op).
+    Safe to call with `cards_collection is None` — it will just no-op.
+    """
+    if not narration or not campaign_id or cards_collection is None:
+        return []
+
+    # Build a set of known names (case-insensitive) from the current index
+    known: Set[str] = set()
+    for entry in entity_index or []:
+        name = entry.get("name")
+        if not name:
+            continue
+        known.add(name.lower())
+        known.add(_strip_prefix_articles(name).lower())
+        # Also include the possessive form so "Emberfall" in the index
+        # prevents "Emberfall's" from being re-seeded.
+        known.add(f"{name.lower()}'s")
+        known.add(f"{_strip_prefix_articles(name).lower()}'s")
+
+    # Candidates
+    candidates = _extract_candidates(narration)
+    # Strip trailing possessive apostrophe-s ("Emberfall's" -> "Emberfall")
+    # so we don't create duplicate cards for grammatical variants.
+    normalized: List[str] = []
+    seen_norm: Set[str] = set()
+    for c in candidates:
+        clean = c.rstrip(".,;:!?")
+        if clean.endswith("'s") or clean.endswith("\u2019s"):
+            clean = clean[:-2].strip()
+        if not clean or len(clean) < 3:
+            continue
+        key = clean.lower()
+        if key in seen_norm:
+            continue
+        seen_norm.add(key)
+        normalized.append(clean)
+    unknowns = [c for c in normalized if _strip_prefix_articles(c).lower() not in known]
+    if not unknowns:
+        return []
+
+    # Cap so a runaway regex never balloons LLM cost
+    unknowns = unknowns[:12]
+
+    classifications = await _classify_candidates(narration, unknowns)
+    if not classifications:
+        return []
+
+    now = datetime.now(timezone.utc)
+    new_cards: List[Dict] = []
+    for phrase in unknowns:
+        canon = _strip_prefix_articles(phrase)
+        etype = classifications.get(phrase.lower()) or classifications.get(canon.lower())
+        if not etype or etype == "none":
+            continue
+
+        # Double-check against DB (race-safe if multiple turns overlap)
+        existing = await cards_collection.find_one(
+            {"campaign_id": campaign_id, "title": canon, "type": etype}
+        )
+        if existing:
+            continue
+
+        card = {
+            "id": str(uuid.uuid4()),
+            "campaign_id": campaign_id,
+            "title": canon,
+            "type": etype,
+            "content": _card_description(canon, etype, narration),
+            "status": "introduced",
+            "auto_seeded": True,
+            "source": "dm_narration",
+            "pinned": False,
+            # Use camelCase timestamp keys to match the legacy card schema
+            # so the lean_dm `updatedAt`-sorted query picks these up.
+            "createdAt": now.isoformat(),
+            "updatedAt": now.isoformat(),
+        }
+        try:
+            await cards_collection.insert_one(card)
+            new_cards.append(card)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[auto-cards] insert failed for {canon!r}: {exc}")
+
+    if new_cards:
+        logger.info(
+            f"[auto-cards] seeded {len(new_cards)} new card(s) for campaign {campaign_id}: "
+            f"{[(c['type'], c['title']) for c in new_cards]}"
+        )
+    return new_cards

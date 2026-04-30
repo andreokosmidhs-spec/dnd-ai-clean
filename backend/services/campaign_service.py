@@ -71,13 +71,15 @@ def build_v2_entity_index(world: Dict, cards: Optional[List[Dict]] = None) -> Li
         title = card.get("title") or card.get("name") or ""
         if not title:
             continue
-        if card_type == "npc":
+        # Map both new-schema ("location") and legacy-schema ("place")
+        # type tags onto the unified entity types.
+        if card_type in {"npc", "character"}:
             add("npc", title, "npc")
-        elif card_type == "location":
+        elif card_type in {"location", "place", "landmark", "city", "region"}:
             add("location", title, "loc")
-        elif card_type == "faction":
+        elif card_type in {"faction", "guild", "organization"}:
             add("faction", title, "faction")
-        elif card_type == "item":
+        elif card_type in {"item", "artifact"}:
             add("item", title, "item")
 
     # Sort by descending name length so longer names win over shorter ones

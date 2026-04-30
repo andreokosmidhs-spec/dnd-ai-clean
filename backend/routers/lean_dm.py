@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from services.campaign_service import build_v2_entity_index
+from services.auto_cards import auto_seed_cards_from_narration
 from utils.entity_mentions import extract_entity_mentions
 
 logger = logging.getLogger(__name__)
@@ -364,7 +365,23 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         logger.warning(f"Failed to persist messages (non-fatal): {exc}")
 
     # Return a response shape that's compatible with AdventureLogWithDM
-    entity_index = build_v2_entity_index(campaign.get("world") or {}, cards=cards)
+    world_dict = campaign.get("world") or {}
+    entity_index = build_v2_entity_index(world_dict, cards=cards)
+
+    # Auto-card seeding: detect brand-new NPCs / locations / factions that
+    # the DM just introduced and auto-create knowledge cards for them.
+    # Runs in the same turn BEFORE mention extraction, so the new cards
+    # become clickable entities in this very response — no "it only works
+    # on the next turn" lag.
+    new_cards = await auto_seed_cards_from_narration(
+        campaign_id=campaign_id,
+        narration=narration,
+        entity_index=entity_index,
+        cards_collection=db.campaign_cards,
+    )
+    if new_cards:
+        entity_index = build_v2_entity_index(world_dict, cards=cards + new_cards)
+
     mentions = extract_entity_mentions(narration, entity_index)
     return {
         "success": True,

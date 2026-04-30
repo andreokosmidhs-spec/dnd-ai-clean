@@ -36,6 +36,18 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 ### 🔄 In Progress
 - None currently
 
+### ✅ Recent Additions (Feb 2026)
+
+#### Node-Graph Campaign Map with Regional Event Decks
+- **Backend**: `services/world_graph.py` generates 5-7 biome-themed regions per campaign with normalized x/y coords and edges. Starter region is fully hydrated with 5 LLM-generated event hooks; neighbor regions ship with rumor hints and lazily hydrate on first visit (`hydrate_region`).
+- **Endpoints** (all under `/api/campaigns/{id}/world/*`):
+  - `GET /graph` — returns regions, edges, current_region_id (auto-backfills legacy campaigns)
+  - `POST /regions/{rid}/visit` — hydrates hints into 5 full events, marks visited, updates current_region_id
+  - `POST /events/{eid}/accept` — converts an event into an active quest KnowledgeCard (tagged with biome + difficulty) and marks event `accepted`
+  - `POST /events/{eid}/dismiss` — removes event from the deck
+- **Frontend**: `components/WorldMapGraph.jsx` — pure-SVG node graph with biome-colored nodes, pulsing "you are here" marker, dashed edges, event-count pips, a right-side RegionPanel showing rumors (unvisited) or the hydrated event deck with Accept / Dismiss / Travel buttons. Integrated into `RPGGame.jsx` World Map tab (falls back to legacy WorldMap when no campaignId).
+- **Tests**: `/app/backend/tests/test_world_graph.py` (11/11 passing) covering graph structure, visit/hydration, accept → quest wiring, dismiss, and /quests integration.
+
 ### 📋 Backlog (Future Tasks)
 - P1: Character Portrait upload/selection (AppearanceStep)
 - P2: Load/Edit Character functionality

@@ -52,15 +52,14 @@ const WorldMapGraph = ({ campaignId, onQuestAccepted }) => {
       if (!res.ok) throw new Error('Failed to load map');
       const data = await res.json();
       setGraph(data.graph || { regions: [], edges: [], current_region_id: null });
-      if (!selectedId && data.graph?.current_region_id) {
-        setSelectedId(data.graph.current_region_id);
-      }
+      // Pre-select the current region on first load only (if nothing is selected yet)
+      setSelectedId((prev) => prev || data.graph?.current_region_id || null);
     } catch (e) {
       toast.error('Could not load the campaign map.');
     } finally {
       setLoading(false);
     }
-  }, [campaignId, selectedId]);
+  }, [campaignId]);
 
   useEffect(() => { fetchGraph(); /* initial load */ }, [fetchGraph]);
 

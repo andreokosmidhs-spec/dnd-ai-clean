@@ -127,21 +127,23 @@ const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
 
         {/* Character Info */}
         <div className="p-3 space-y-4 flex-1 overflow-y-auto">
-          {/* Portrait — face-centered crop with zoom for emphasis. The
-              source images are head-and-shoulders, but the face sits in the
-              upper third; we anchor the transform to top and scale so the
-              face fills the visible frame and the chest/arms crop out. */}
+          {/* Portrait — show the full painted portrait uncropped.
+              Earlier we zoomed (`scale-[1.35] origin-top`) to fill the frame
+              with the face, but that clipped the top of the head on most
+              images. Switched to `object-contain` so the entire portrait is
+              always visible; the frame letterboxes gracefully when the
+              source isn't a perfect square. */}
           <div className="flex justify-center">
             {character.portrait ? (
               <div
-                className="w-full aspect-square rounded-lg border-2 border-amber-500/60 shadow-[0_0_24px_rgba(245,158,11,0.4)] overflow-hidden bg-gray-900/60"
+                className="w-full aspect-square rounded-lg border-2 border-amber-500/60 shadow-[0_0_24px_rgba(245,158,11,0.4)] overflow-hidden bg-gray-900/80 flex items-center justify-center"
                 data-testid="character-portrait-frame"
               >
                 <img
                   src={character.portrait}
                   alt={`${character.name || 'Character'} portrait`}
                   data-testid="character-portrait-img"
-                  className="w-full h-full object-cover origin-top scale-[1.35]"
+                  className="w-full h-full object-contain"
                 />
               </div>
             ) : (

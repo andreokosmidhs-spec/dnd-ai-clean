@@ -56,6 +56,9 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (full portrait visibility — no head clipping)
+- **Fix: Sidebar portrait was clipping the top of the head** when resuming a campaign because of the prior `object-cover origin-top scale-[1.35]` zoom. Switched to `object-contain` so the entire painted portrait is always visible inside the amber frame; the gray-900 frame background letterboxes gracefully when the source isn't a perfect square. Verified live on the avon Rogue — head, hair, shoulders, and chest all visible end-to-end.
+
 ### 2026-04-29 (bulk delete all characters)
 - **Feature: "Delete All" button on `/characters`** to mass-wipe the hero pool in one confirmed action. Useful for pruning the pool down under the 10-character limit.
   - **Backend `DELETE /api/characters/v2/`** (bulk) added in `character_v2_routes.py` — registered BEFORE the `{character_id}` route so it doesn't get shadowed. Uses `collection.delete_many({})`; returns `{"deleted": N}`. Works for both Mongo and in-memory fallback.

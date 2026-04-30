@@ -56,6 +56,25 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (player feedback channel via Resend)
+- **Feature: Floating "Send Feedback" button** appears top-right on every screen except the in-game adventure (where it would clash with the input row). Players can submit Bug / Feature / Other reports that land directly in `andreo.kosmidhs@gmail.com`.
+  - **Backend `POST /api/feedback/`** in new `routers/feedback.py`:
+    - Pydantic `FeedbackRequest` model (type/title/description/optional fromEmail/optional context snapshot).
+    - Renders an inline-styled HTML email with a colored type badge, the title/description/from fields, and a debug-context table (campaign ID, character ID, current URL, user-agent — auto-attached by the frontend).
+    - Sends via **Resend** (`resend>=2.0.0` added to `requirements.txt`) using `asyncio.to_thread` to keep FastAPI non-blocking.
+    - `from = onboarding@resend.dev` (Resend sandbox sender, no domain verification needed for sending to the account owner's inbox).
+    - `reply_to = payload.fromEmail` when provided, so a single click in Gmail replies to the player.
+    - Subject formatted as `[RPG Forge · BUG|FEATURE|OTHER] {title}` for easy mailbox filtering.
+  - **Frontend `FeedbackButton.jsx`**:
+    - Floating amber pill in the top-right (responsive: icon-only on mobile, "Feedback" label on `sm+`).
+    - Shadcn dialog with Bug/Feature/Other chip selector, title input, multi-line description with `{n}/4000` counter, optional email (cached in localStorage between sessions).
+    - Auto-attaches `campaignId` (from `useSessionCore.activeCampaignId` or URL params), `characterId`, `currentUrl`, `userAgent`.
+    - Toasts "✅ Feedback sent — thank you!" on success; surfaces inline error on failure.
+    - Hidden on `/game/*` so it doesn't sit on top of the in-game UI.
+    - Mounted globally inside `<BrowserRouter>` in `App.js`.
+  - **Env**: added `RESEND_API_KEY`, `FEEDBACK_RECIPIENT_EMAIL`, `RESEND_SENDER_EMAIL` to `/app/backend/.env`.
+  - **Verified end-to-end**: curl POST returned `{"ok": true, "email_id": "a2e0a3ac-…"}`; Playwright UI submit returned HTTP 200; both emails delivered via Resend with the inline-HTML template (badge + description + context table).
+
 ### 2026-04-29 (full portrait visibility — no head clipping)
 - **Fix: Sidebar portrait was clipping the top of the head** when resuming a campaign because of the prior `object-cover origin-top scale-[1.35]` zoom. Switched to `object-contain` so the entire painted portrait is always visible inside the amber frame; the gray-900 frame background letterboxes gracefully when the source isn't a perfect square. Verified live on the avon Rogue — head, hair, shoulders, and chest all visible end-to-end.
 

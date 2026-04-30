@@ -11,6 +11,7 @@ import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import axios from "axios";
 import RPGGame from "./components/RPGGame";
 import Toast from "./components/Toast";
+import FeedbackButton from "./components/FeedbackButton";
 import { GameStateProvider } from "./contexts/GameStateContext";
 import { useDungeonStore } from "./store/useDungeonStore";
 import { useSessionCore } from "./store/useSessionCore";
@@ -136,6 +137,7 @@ function App() {
             {/* TODO: Remove before production release */}
             <Route path="/dev/campaign-log" element={<DevCampaignLogPreview />} />
           </Routes>
+          <FeedbackButton />
         </BrowserRouter>
         <Toast />
       </GameStateProvider>

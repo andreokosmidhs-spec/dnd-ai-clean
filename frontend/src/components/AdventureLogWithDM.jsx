@@ -118,6 +118,57 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
     })();
   }, [sessionId, isTTSEnabled, generateSpeech, messages]);
 
+  // One-time backfill: legacy localStorage caches stored chronicle / intro
+  // messages with empty `entity_mentions: []`. When this component mounts
+  // with a campaignId, fetch the latest backend snapshot and patch in
+  // mentions so locations / factions / NPCs become clickable in older
+  // sessions too. Idempotent — only runs when at least one chronicle/intro
+  // entry is missing mentions.
+  const entityBackfillRan = useRef(false);
+  useEffect(() => {
+    if (!campaignId) return;
+    if (entityBackfillRan.current) return;
+    if (!messages || messages.length === 0) return;
+
+    const needsBackfill = messages.some((m) =>
+      m && m.type === 'dm'
+      && (m.isWorldBrief || m.source === 'intro')
+      && (!m.entity_mentions || m.entity_mentions.length === 0)
+    );
+    if (!needsBackfill) {
+      entityBackfillRan.current = true;
+      return;
+    }
+
+    entityBackfillRan.current = true;
+    (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/campaigns/${campaignId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const ss = data?.starting_scene || {};
+        const briefMentions = ss.world_brief_entity_mentions || [];
+        const introMentions = ss.entity_mentions || [];
+        if (briefMentions.length === 0 && introMentions.length === 0) return;
+
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (!m || m.type !== 'dm') return m;
+            if (m.isWorldBrief && (!m.entity_mentions || m.entity_mentions.length === 0)) {
+              return { ...m, entity_mentions: briefMentions };
+            }
+            if (m.source === 'intro' && (!m.entity_mentions || m.entity_mentions.length === 0)) {
+              return { ...m, entity_mentions: introMentions };
+            }
+            return m;
+          })
+        );
+      } catch (err) {
+        console.warn('Entity-mention backfill failed (non-fatal):', err);
+      }
+    })();
+  }, [campaignId, messages]);
+
   // Lean DM: campaign-scoped endpoint built on campaigns.py + knowledge cards.
   // Falls back to the legacy dungeon_forge endpoint if no campaignId is in scope.
   const apiEndpoint = campaignId

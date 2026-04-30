@@ -17,6 +17,7 @@ from services.campaign_service import (
     _template_world_setting,
     build_starting_scene,
     build_starting_scene_with_ai,
+    build_v2_entity_index,
     build_world_blueprint,
     generate_initial_cards,
     generate_opening_quest_card_with_ai,
@@ -24,6 +25,7 @@ from services.campaign_service import (
     generate_world_setting_with_ai,
     setting_knowledge_cards,
 )
+from utils.entity_mentions import extract_entity_mentions
 
 import logging
 
@@ -248,6 +250,21 @@ async def generate_world(campaignId: str):
     if isinstance(starting_scene, dict):
         starting_scene["worldBrief"] = world_brief
 
+    # Extract entity mentions so the frontend can render clickable links
+    # for locations / factions / NPCs in both the chronicle and the opening
+    # arrival scene. Index is built from the world + the opening quest card
+    # (which may name characters the intro references).
+    entity_index = build_v2_entity_index(
+        world,
+        cards=[opening_quest.model_dump()] if opening_quest else None,
+    )
+    world["world_brief_entity_mentions"] = extract_entity_mentions(world_brief, entity_index)
+    if isinstance(starting_scene, dict) and starting_scene.get("introText"):
+        starting_scene["entity_mentions"] = extract_entity_mentions(
+            starting_scene["introText"], entity_index
+        )
+        starting_scene["world_brief_entity_mentions"] = world["world_brief_entity_mentions"]
+
     campaign.update({
         "world": world,
         "starting_scene": starting_scene,
@@ -356,6 +373,31 @@ async def _backfill_legacy_campaign(campaign: Dict) -> Dict:
         needs_save = True
     elif not starting_scene.get("worldBrief") and world.get("world_brief"):
         starting_scene["worldBrief"] = world["world_brief"]
+        campaign["starting_scene"] = starting_scene
+        needs_save = True
+
+    # 7) Backfill entity_mentions for chronicle + starting_scene so legacy
+    # campaigns also get clickable location/faction/NPC highlighting. Pull
+    # existing knowledge cards so pinned entities enrich the index.
+    if starting_scene.get("introText") and (
+        "entity_mentions" not in starting_scene
+        or "world_brief_entity_mentions" not in starting_scene
+    ):
+        try:
+            cards_cursor = get_cards_collection().find(
+                {"campaign_id": campaign.get("campaign_id")}, {"_id": 0}
+            )
+            cards = [c async for c in cards_cursor]
+        except Exception:
+            cards = []
+        entity_index = build_v2_entity_index(world, cards=cards)
+        if world.get("world_brief"):
+            starting_scene["world_brief_entity_mentions"] = extract_entity_mentions(
+                world["world_brief"], entity_index
+            )
+        starting_scene["entity_mentions"] = extract_entity_mentions(
+            starting_scene["introText"], entity_index
+        )
         campaign["starting_scene"] = starting_scene
         needs_save = True
 

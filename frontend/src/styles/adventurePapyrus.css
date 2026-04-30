@@ -151,6 +151,25 @@
   color: #2b1810 !important;
 }
 
+/* Entity highlights inside the parchment — keep the warm orange/amber
+ * "underlined ink" feel but force them to override the global ink color
+ * so locations / factions / NPCs remain visually distinct from prose.
+ * The base utility (.text-orange-400) is already overridden to ink by
+ * the wildcard text-color block above, so we re-state ink-friendly
+ * highlight tones here with `!important` placed AFTER the override. */
+.adventure-papyrus span[class*="text-orange"] {
+  color: #9a3412 !important;            /* burnt-amber ink */
+  border-bottom: 2px solid rgba(154, 52, 18, 0.55) !important;
+  border-radius: 3px;
+  padding: 0 2px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.adventure-papyrus span[class*="text-orange"]:hover {
+  background-color: rgba(154, 52, 18, 0.12) !important;
+  color: #7c2d12 !important;
+}
+
 /* Scrollbar — warm ink on parchment */
 .adventure-papyrus ::-webkit-scrollbar-thumb {
   background-color: rgba(110, 70, 30, 0.4) !important;

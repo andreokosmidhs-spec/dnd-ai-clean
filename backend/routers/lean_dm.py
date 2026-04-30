@@ -16,6 +16,9 @@ from bson import ObjectId
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from services.campaign_service import build_v2_entity_index
+from utils.entity_mentions import extract_entity_mentions
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/campaigns", tags=["lean_dm"])
@@ -361,11 +364,13 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         logger.warning(f"Failed to persist messages (non-fatal): {exc}")
 
     # Return a response shape that's compatible with AdventureLogWithDM
+    entity_index = build_v2_entity_index(campaign.get("world") or {}, cards=cards)
+    mentions = extract_entity_mentions(narration, entity_index)
     return {
         "success": True,
         "data": {
             "narration": narration,
-            "entity_mentions": [],
+            "entity_mentions": mentions,
             "world_state_update": {},
             "player_updates": {},
             "options": [],

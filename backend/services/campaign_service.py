@@ -4,8 +4,86 @@ from uuid import uuid4
 import logging
 
 from models.campaign_models import CampaignIntent, KnowledgeCard
+from utils.entity_mentions import extract_entity_mentions
 
 logger = logging.getLogger(__name__)
+
+
+def build_v2_entity_index(world: Dict, cards: Optional[List[Dict]] = None) -> List[Dict]:
+    """Build an entity index from a V2 `world` dict + optional knowledge cards.
+
+    The V2 shape differs from the legacy `world_blueprint` (single
+    starting_town as a string name, factions nested under `setting`), so we
+    can't use `build_entity_index_from_world_blueprint` directly.
+
+    Output shape matches what `extract_entity_mentions` expects:
+    `[{entity_type, entity_id, name}, ...]`.
+    """
+    index: List[Dict] = []
+    seen: set = set()  # lowercase-name de-dupe
+
+    def add(entity_type: str, name: str, entity_id_prefix: str):
+        if not name:
+            return
+        key = (entity_type, name.lower())
+        if key in seen:
+            return
+        seen.add(key)
+        slug = name.lower().replace(" ", "_").replace("'", "")
+        index.append({
+            "entity_type": entity_type,
+            "entity_id": f"{entity_id_prefix}_{slug}",
+            "name": name,
+        })
+
+    world = world or {}
+    # Realm
+    realm = (world.get("world_core") or {}).get("name")
+    if realm and realm.lower() != "unknown realm":
+        add("location", realm, "loc")
+    # Starting town
+    town = (world.get("starting_town") or {}).get("name")
+    if town and town.lower() != "unknown town":
+        add("location", town, "loc")
+    # Starting location (legacy shape carried through `build_world_blueprint`)
+    start_loc = world.get("startingLocation") or {}
+    if isinstance(start_loc, dict) and start_loc.get("name"):
+        add("location", start_loc["name"], "loc")
+    # Points of interest
+    for poi in world.get("points_of_interest", []) or []:
+        if isinstance(poi, dict) and poi.get("name"):
+            add("location", poi["name"], "loc")
+        elif isinstance(poi, str):
+            add("location", poi, "loc")
+    # Factions (setting.factions preferred, legacy factions fallback)
+    factions = (world.get("setting") or {}).get("factions") or world.get("factions") or []
+    for f in factions:
+        if isinstance(f, dict) and f.get("name"):
+            add("faction", f["name"], "faction")
+    # Key NPCs (legacy / future-seeded)
+    for npc in world.get("key_npcs", []) or world.get("npcs", []) or []:
+        if isinstance(npc, dict) and npc.get("name"):
+            add("npc", npc["name"], "npc")
+    # Knowledge cards: pull named entity cards so pinned NPCs/locations stay
+    # linkable in subsequent turns even if they were invented during play.
+    for card in cards or []:
+        card_type = (card.get("type") or "").lower()
+        title = card.get("title") or card.get("name") or ""
+        if not title:
+            continue
+        if card_type == "npc":
+            add("npc", title, "npc")
+        elif card_type == "location":
+            add("location", title, "loc")
+        elif card_type == "faction":
+            add("faction", title, "faction")
+        elif card_type == "item":
+            add("item", title, "item")
+
+    # Sort by descending name length so longer names win over shorter ones
+    # (e.g., "Black Market Syndicate" before "Black Market").
+    index.sort(key=lambda e: len(e["name"]), reverse=True)
+    return index
 
 
 def _format_title(text: str) -> str:

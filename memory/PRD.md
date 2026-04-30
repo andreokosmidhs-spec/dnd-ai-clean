@@ -56,6 +56,20 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (entity highlighting now active for V2 campaigns)
+- **Fix: Locations / factions / NPCs are now hyperlinked in the chronicle and arrival narration** for every V2 campaign (new + legacy backfilled). Previously only the legacy `dungeon_forge` flow extracted entity mentions; the V2 Lean DM path returned `entity_mentions: []`, so nothing was clickable.
+  - **Backend**:
+    - **New `build_v2_entity_index(world, cards)`** in `services/campaign_service.py` — adapter that reads the V2 world shape (realm name, starting town, points of interest, `setting.factions`, knowledge cards) and emits the index format `extract_entity_mentions` expects. De-dupes by `(type, lowercase-name)`, sorts by descending name length so "Black Market Syndicate" wins over "Black Market".
+    - **`routers/campaigns.py`**:
+      - Generation path: extracts mentions for both `world.world_brief` and `starting_scene.introText`, surfaces them on the response as `world_brief_entity_mentions` and `entity_mentions`.
+      - Backfill path: same extraction runs when a legacy campaign is opened; pulls existing `campaign_cards` so pinned entities also become linkable. Persists once.
+    - **`routers/lean_dm.py`**: every DM turn now passes `narration` through `extract_entity_mentions` against `build_v2_entity_index(world, cards)` so the response's `entity_mentions` field is populated. Frontend already renders these via `EntityNarrationParser`.
+  - **Frontend**:
+    - **`RPGGame.jsx`**: campaign-fetch on game-start now reads `entity_mentions` + `world_brief_entity_mentions` from the API and seeds them onto the chronicle / arrival messages instead of always-empty arrays.
+    - **`AdventureLogWithDM.jsx`**: idempotent backfill effect — when the component mounts with a `campaignId` and finds chronicle/intro entries with empty `entity_mentions`, it fetches the campaign once and patches mentions in. Saves stale localStorage caches without forcing a session reset.
+    - **`adventurePapyrus.css`**: retinted entity highlights for parchment — `text-orange-*` spans (used by `EntityLink`) now render as burnt-sepia `#9a3412` with a 2px underline of the same hue at 55% opacity, hover fills with `rgba(154,52,18,0.12)`. Stays clickable, blends into the manuscript aesthetic.
+  - **Verified live** on legacy "avon" campaign: the chronicle bubble now hyperlinks **5 entities** (Realm of Story · Guild of Scribes · Black Market Syndicate · Wardens of Emberfall · Gate of Emberfall) and the arrival scene hyperlinks **1** (Black Market Syndicate). Computed color of the first entity: `rgb(154, 52, 18)` ✓. Total of 6 amber-underlined entity spans visible in the manuscript.
+
 ### 2026-04-29 (player feedback channel via Resend)
 - **Feature: Floating "Send Feedback" button** appears top-right on every screen except the in-game adventure (where it would clash with the input row). Players can submit Bug / Feature / Other reports that land directly in `andreo.kosmidhs@gmail.com`.
   - **Backend `POST /api/feedback/`** in new `routers/feedback.py`:

@@ -311,6 +311,8 @@ const RPGGame = () => {
         // and use it as the opening narration. Falls back to a generic welcome.
         let introMessage = `Welcome, ${characterForRPG.name}! As a ${characterForRPG.race} ${characterForRPG.class}, your adventure in this realm begins now. The world awaits your exploration...`;
         let worldBriefMessage = '';
+        let introMentions = [];
+        let worldBriefMentions = [];
         let campaignWorld = null;
         try {
           const campRes = await fetch(`${BACKEND_URL}/api/campaigns/${activeCampaignId}`);
@@ -329,6 +331,17 @@ const RPGGame = () => {
               campData?.startingScene?.worldBrief ||
               campData?.world?.world_brief ||
               '';
+            // Entity highlights — backend extracts these so locations, factions,
+            // and NPCs are clickable in the chronicle and arrival scenes.
+            introMentions =
+              campData?.starting_scene?.entity_mentions ||
+              campData?.startingScene?.entity_mentions ||
+              [];
+            worldBriefMentions =
+              campData?.starting_scene?.world_brief_entity_mentions ||
+              campData?.startingScene?.world_brief_entity_mentions ||
+              campData?.world?.world_brief_entity_mentions ||
+              [];
             campaignWorld = campData?.world || null;
           }
         } catch (err) {
@@ -350,7 +363,7 @@ const RPGGame = () => {
             isWorldBrief: true,
             chronicleTitle: `A Chronicle of ${realmName}`,
             source: 'world-brief',
-            entity_mentions: [],
+            entity_mentions: worldBriefMentions,
           });
         }
         seedEntries.push({
@@ -360,7 +373,7 @@ const RPGGame = () => {
           timestamp: Date.now() + 1,
           isCinematic: true,
           source: 'intro',
-          entity_mentions: [],
+          entity_mentions: introMentions,
         });
         setGameLog(seedEntries);
 

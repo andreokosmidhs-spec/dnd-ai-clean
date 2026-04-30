@@ -1,18 +1,28 @@
 import React from 'react';
 
 /**
- * EntityLink - Clickable entity name in narration
- * All entities use ORANGE color as per user requirement
+ * EntityLink - Clickable entity name in narration.
+ *
+ * Carries `data-entity-type` so the parchment theme can recolor by type:
+ *   npc      → blue (Island/Mind, MTG)
+ *   location → emerald (Forest/Land)
+ *   faction  → purple (Multicolor Guild)
+ *   item     → orange (Artifact)
+ *
+ * The base utility classes still use `text-orange-400` so that the
+ * non-parchment dark theme keeps its existing look. Parchment overrides
+ * happen via `data-entity-type` selectors in `adventurePapyrus.css`.
  */
-export const EntityLink = ({ 
-  entityType, 
-  entityId, 
-  name, 
+export const EntityLink = ({
+  entityType,
+  entityId,
+  name,
   onClick,
-  children 
+  children
 }) => {
   return (
     <span
+      data-entity-type={entityType || 'other'}
       className="
         text-orange-400
         border-b-2 border-orange-400/50

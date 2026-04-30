@@ -88,6 +88,77 @@ export const CARD_TYPE_CONFIG = {
 };
 
 /**
+ * Normalize any legacy / singular / alternate card-type tag onto the
+ * MTG palette keys (plural forms). Backend data currently uses a mix:
+ *   - Auto-seeded cards: "location" / "npc" / "faction" / "item"
+ *   - Legacy seeds:     "place" / "character" / "guild" / "landmark" / ...
+ *   - Palette keys:     "locations" / "npcs" / "factions" / "items" / ...
+ *
+ * All UI components should route the raw card `type` field through this
+ * before indexing into CARD_TYPE_CONFIG.
+ */
+const TYPE_ALIASES = {
+  // Locations
+  location: 'locations',
+  place: 'locations',
+  places: 'locations',
+  landmark: 'locations',
+  landmarks: 'locations',
+  city: 'locations',
+  cities: 'locations',
+  region: 'locations',
+  regions: 'locations',
+  area: 'locations',
+  dungeon: 'locations',
+  dungeons: 'locations',
+  // NPCs
+  npc: 'npcs',
+  character: 'npcs',
+  characters: 'npcs',
+  person: 'npcs',
+  creature: 'npcs',
+  // Quests
+  quest: 'quests',
+  objective: 'quests',
+  mission: 'quests',
+  // Leads
+  lead: 'leads',
+  clue: 'leads',
+  clues: 'leads',
+  // Factions
+  faction: 'factions',
+  guild: 'factions',
+  guilds: 'factions',
+  organization: 'factions',
+  organizations: 'factions',
+  order: 'factions',
+  // Rumors
+  rumor: 'rumors',
+  belief: 'rumors',
+  beliefs: 'rumors',
+  gossip: 'rumors',
+  // Items
+  item: 'items',
+  artifact: 'items',
+  artifacts: 'items',
+  equipment: 'items',
+  treasure: 'items',
+  loot: 'items',
+  // Decisions
+  decision: 'decisions',
+  choice: 'decisions',
+  event: 'decisions',
+  events: 'decisions',
+};
+
+export const normalizeCardType = (type) => {
+  if (!type) return 'locations';
+  const lower = String(type).toLowerCase();
+  if (CARD_TYPE_CONFIG[lower]) return lower;
+  return TYPE_ALIASES[lower] || 'locations';
+};
+
+/**
  * Helper functions to extract card data
  */
 export const getCardTitle = (data, type) => {

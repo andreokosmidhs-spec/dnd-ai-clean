@@ -2,13 +2,13 @@ import React from 'react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Star, Sparkles } from 'lucide-react';
-import { CARD_TYPE_CONFIG, getCardTitle, getCardDescription, getCardTags } from './cardTypeConfig';
+import { CARD_TYPE_CONFIG, getCardTitle, getCardDescription, getCardTags, normalizeCardType } from './cardTypeConfig';
 
 /**
  * Knowledge Card Component - MTG-style card design
  */
 export const KnowledgeCard = ({ data, type, onSelect, isSelected, isPinned }) => {
-  const config = CARD_TYPE_CONFIG[type] || CARD_TYPE_CONFIG.locations;
+  const config = CARD_TYPE_CONFIG[normalizeCardType(type)] || CARD_TYPE_CONFIG.locations;
   const Icon = config.icon;
   const title = getCardTitle(data, type);
   const description = getCardDescription(data, type);

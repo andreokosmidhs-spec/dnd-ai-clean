@@ -26,7 +26,7 @@ import { useOpenLeads, useUpdateLeadStatus } from '../hooks/useLeads';
 import { KnowledgeCard } from './campaignLog/KnowledgeCard';
 import { CardDetailsDrawer } from './campaignLog/CardDetailsDrawer';
 import { usePinnedCards } from './campaignLog/usePinnedCards';
-import { CARD_TYPE_CONFIG } from './campaignLog/cardTypeConfig';
+import { CARD_TYPE_CONFIG, normalizeCardType } from './campaignLog/cardTypeConfig';
 
 /**
  * Loading Skeleton Card Component
@@ -52,7 +52,7 @@ const SkeletonCard = () => (
  * Empty State Component
  */
 const EmptyState = ({ type }) => {
-  const config = CARD_TYPE_CONFIG[type] || CARD_TYPE_CONFIG.locations;
+  const config = CARD_TYPE_CONFIG[normalizeCardType(type)] || CARD_TYPE_CONFIG.locations;
   const Icon = config.icon;
   
   const messages = {

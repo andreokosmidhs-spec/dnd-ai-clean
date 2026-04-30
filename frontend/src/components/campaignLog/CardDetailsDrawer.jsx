@@ -9,7 +9,7 @@ import {
   SheetDescription,
 } from '../ui/sheet';
 import { Star, Calendar, Hash, Info } from 'lucide-react';
-import { CARD_TYPE_CONFIG, getCardFullTitle, getCardTags, getCardFullDetails } from './cardTypeConfig';
+import { CARD_TYPE_CONFIG, getCardFullTitle, getCardTags, getCardFullDetails, normalizeCardType } from './cardTypeConfig';
 
 /**
  * Card Details Drawer Component
@@ -17,7 +17,7 @@ import { CARD_TYPE_CONFIG, getCardFullTitle, getCardTags, getCardFullDetails } f
 export const CardDetailsDrawer = ({ card, type, isOpen, onClose, isPinned, onTogglePin }) => {
   if (!card || !type) return null;
   
-  const config = CARD_TYPE_CONFIG[type] || CARD_TYPE_CONFIG.locations;
+  const config = CARD_TYPE_CONFIG[normalizeCardType(type)] || CARD_TYPE_CONFIG.locations;
   const Icon = config.icon;
   const title = getCardFullTitle(card, type);
   const tags = getCardTags(card, type);

@@ -56,6 +56,23 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (MTG color coding extended end-to-end)
+- **Feature: All knowledge cards AND inline entity hyperlinks now use the MTG palette** consistently — single visual language across the Campaign Log deck and the Adventure Log narration.
+  - **Card type normalizer (`campaignLog/cardTypeConfig.js`)**: new `normalizeCardType(type)` maps the wild variety of backend card types onto the 8 MTG palette keys:
+    - `location | place | landmark | city | region | dungeon` → `locations` (emerald)
+    - `npc | character | person | creature` → `npcs` (blue)
+    - `quest | objective | mission` → `quests` (amber)
+    - `lead | clue` → `leads` (cyan)
+    - `faction | guild | organization | order` → `factions` (purple)
+    - `rumor | belief | gossip` → `rumors` (pink)
+    - `item | artifact | equipment | treasure | loot` → `items` (orange)
+    - `decision | choice | event` → `decisions` (indigo)
+    - **Wired into all 3 consumers**: `CampaignLogPanel.jsx`, `KnowledgeCard.jsx`, `CardDetailsDrawer.jsx`. Auto-seeded cards (singular `location`/`npc`/`faction`) and legacy seeds (`place`/`belief`/`event`) now color-code identically to the new schema.
+  - **Inline entity hyperlinks** (`EntityLink.jsx` + `adventurePapyrus.css`):
+    - Added `data-entity-type="{npc|location|faction|item|other}"` attribute on every `EntityLink` span.
+    - Parchment CSS retinted per-type with sepia-friendly hues: `npc → blue #1e40af` / `location → emerald #047857` / `faction → purple #6b21a8` / `item → burnt-orange #c2410c` / other → burnt-amber `#9a3412`. Each gets a matching hover wash.
+  - **Verified live** on the avon campaign: chronicle and arrival render Realm of Story + Gate of Emberfall in green (`rgb(4,120,87)`), Guild of Scribes + Black Market Syndicate + Wardens of Emberfall in purple (`rgb(107,33,168)`) — colors propagate to clickable inline text and to deck cards seamlessly.
+
 ### 2026-04-29 (auto-seeding knowledge cards from DM narration)
 - **Feature: Every DM turn now auto-creates `campaign_cards` entries for brand-new NPCs / locations / factions** the AI invents mid-scene. Subsequent mentions become clickable entities *in the same response* — no one-turn lag.
   - **New `/app/backend/services/auto_cards.py`**:

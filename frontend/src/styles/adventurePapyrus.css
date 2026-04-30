@@ -151,21 +151,60 @@
   color: #2b1810 !important;
 }
 
-/* Entity highlights inside the parchment — keep the warm orange/amber
- * "underlined ink" feel but force them to override the global ink color
- * so locations / factions / NPCs remain visually distinct from prose.
+/* Entity highlights inside the parchment.
+ *
+ * Match the MTG palette used by the Campaign Log knowledge cards so the
+ * inline text and the deck-card share a single visual language:
+ *   npc      → blue   (Island / Mind)
+ *   location → green  (Forest / Land)
+ *   faction  → purple (Multicolor Guild)
+ *   item     → orange (Artifact)
+ *   other    → burnt-amber default
+ *
  * The base utility (.text-orange-400) is already overridden to ink by
- * the wildcard text-color block above, so we re-state ink-friendly
- * highlight tones here with `!important` placed AFTER the override. */
-.adventure-papyrus span[class*="text-orange"] {
-  color: #9a3412 !important;            /* burnt-amber ink */
-  border-bottom: 2px solid rgba(154, 52, 18, 0.55) !important;
+ * the wildcard text-color block above; we re-state ink-friendly
+ * highlight tones here per type with `!important` placed AFTER the
+ * override. We use `data-entity-type` so the rule wins regardless of
+ * Tailwind class order. */
+.adventure-papyrus span[data-entity-type] {
+  border-bottom: 2px solid currentColor !important;
   border-radius: 3px;
   padding: 0 2px;
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
-.adventure-papyrus span[class*="text-orange"]:hover {
+.adventure-papyrus span[data-entity-type="npc"] {
+  color: #1e40af !important;            /* blue ink */
+}
+.adventure-papyrus span[data-entity-type="npc"]:hover {
+  background-color: rgba(30, 64, 175, 0.12) !important;
+  color: #1e3a8a !important;
+}
+.adventure-papyrus span[data-entity-type="location"] {
+  color: #047857 !important;            /* emerald ink */
+}
+.adventure-papyrus span[data-entity-type="location"]:hover {
+  background-color: rgba(4, 120, 87, 0.12) !important;
+  color: #065f46 !important;
+}
+.adventure-papyrus span[data-entity-type="faction"] {
+  color: #6b21a8 !important;            /* purple ink */
+}
+.adventure-papyrus span[data-entity-type="faction"]:hover {
+  background-color: rgba(107, 33, 168, 0.12) !important;
+  color: #581c87 !important;
+}
+.adventure-papyrus span[data-entity-type="item"] {
+  color: #c2410c !important;            /* burnt-orange ink */
+}
+.adventure-papyrus span[data-entity-type="item"]:hover {
+  background-color: rgba(194, 65, 12, 0.12) !important;
+  color: #9a3412 !important;
+}
+.adventure-papyrus span[data-entity-type]:not([data-entity-type="npc"]):not([data-entity-type="location"]):not([data-entity-type="faction"]):not([data-entity-type="item"]) {
+  color: #9a3412 !important;            /* default burnt-amber */
+}
+.adventure-papyrus span[data-entity-type]:not([data-entity-type="npc"]):not([data-entity-type="location"]):not([data-entity-type="faction"]):not([data-entity-type="item"]):hover {
   background-color: rgba(154, 52, 18, 0.12) !important;
   color: #7c2d12 !important;
 }

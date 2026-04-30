@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import MainMenu from './MainMenu';
 import FocusedRPG from './FocusedRPG';
 import WorldMap from './WorldMap';
+import WorldMapGraph from './WorldMapGraph';
 import Inventory from './Inventory';
 import LevelUpScreen from './LevelUpScreen';
 import XPBar from './XPBar';
@@ -1137,11 +1138,15 @@ const RPGGame = () => {
         
         {activeTab === 'world' && (
           <div className="h-full p-4">
-            <WorldMap 
-              worldData={worldData}
-              currentLocation={currentLocation}
-              onLocationSelect={changeLocation}
-            />
+            {campaignId ? (
+              <WorldMapGraph campaignId={campaignId} />
+            ) : (
+              <WorldMap 
+                worldData={worldData}
+                currentLocation={currentLocation}
+                onLocationSelect={changeLocation}
+              />
+            )}
           </div>
         )}
         

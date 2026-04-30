@@ -25,6 +25,7 @@ from services.campaign_service import (
     generate_world_setting_with_ai,
     setting_knowledge_cards,
 )
+from services.world_graph import generate_world_graph, hydrate_region
 from utils.entity_mentions import extract_entity_mentions
 
 import logging
@@ -234,6 +235,14 @@ async def generate_world(campaignId: str):
     world_brief = await generate_world_brief_with_ai(intent, world, character, setting)
     world["world_brief"] = world_brief
 
+    # Generate the campaign MAP GRAPH: 5-7 biome-themed regions, the starter
+    # fully hydrated with 5 event cards (quest hooks); neighbors ship with
+    # 2-3 rumor hints that expand on first visit.
+    try:
+        world["graph"] = await generate_world_graph(intent, world, character)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"world_graph generation failed: {exc}")
+
     # Generate the AI opening-quest card FIRST so it can be planted in the intro.
     opening_quest = await generate_opening_quest_card_with_ai(intent, world, character)
 
@@ -418,6 +427,183 @@ async def list_biomes():
     paint location cards by biome and to surface what's available where."""
     from data.biomes import BIOMES_PUBLIC
     return {"biomes": BIOMES_PUBLIC}
+
+
+# ==================== World Graph (Node-graph map) ==========================
+
+async def _ensure_graph(campaign: Dict) -> Dict:
+    """Lazily backfill a `world.graph` on legacy / pre-graph campaigns."""
+    world = campaign.get("world") or {}
+    if isinstance(world.get("graph"), dict) and world["graph"].get("regions"):
+        return campaign
+    try:
+        intent = CampaignIntent(**(campaign.get("intent") or {
+            "tone": "Balanced", "focus": "Story", "scope": "Mixed", "danger": "Medium",
+        }))
+    except Exception:
+        intent = CampaignIntent(tone="Balanced", focus="Story", scope="Mixed", danger="Medium")
+    try:
+        character = await _fetch_character(campaign.get("character_id"))
+    except Exception:
+        character = None
+    try:
+        world["graph"] = await generate_world_graph(intent, world, character)
+        campaign["world"] = world
+        campaign["updated_at"] = datetime.utcnow()
+        await _save_campaign_doc(campaign)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"graph backfill failed: {exc}")
+    return campaign
+
+
+@router.get("/{campaignId}/world/graph")
+async def get_world_graph(campaignId: str):
+    """Return the campaign's map graph (regions + edges + current location)."""
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.pop("_id", None)
+    campaign = await _ensure_graph(campaign)
+    world = campaign.get("world") or {}
+    graph = world.get("graph") or {"regions": [], "edges": [], "current_region_id": None}
+    return {"campaignId": campaignId, "graph": graph}
+
+
+@router.post("/{campaignId}/world/regions/{regionId}/visit")
+async def visit_region(campaignId: str, regionId: str):
+    """Mark a region as visited and hydrate its event deck (LLM-driven) if it
+    was only shipping hints. Sets the region as `current_region_id`.
+    """
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.pop("_id", None)
+    campaign = await _ensure_graph(campaign)
+
+    world = campaign.get("world") or {}
+    graph = world.get("graph") or {}
+    regions = graph.get("regions") or []
+    idx = next((i for i, r in enumerate(regions) if r.get("id") == regionId), -1)
+    if idx == -1:
+        raise HTTPException(status_code=404, detail="Region not found")
+
+    try:
+        intent = CampaignIntent(**(campaign.get("intent") or {
+            "tone": "Balanced", "focus": "Story", "scope": "Mixed", "danger": "Medium",
+        }))
+    except Exception:
+        intent = CampaignIntent(tone="Balanced", focus="Story", scope="Mixed", danger="Medium")
+
+    if not regions[idx].get("hydrated"):
+        regions[idx] = await hydrate_region(intent, world, regions[idx])
+    else:
+        regions[idx] = {**regions[idx], "visited": True}
+
+    graph["regions"] = regions
+    graph["current_region_id"] = regionId
+    world["graph"] = graph
+    campaign["world"] = world
+    campaign["updated_at"] = datetime.utcnow()
+    await _save_campaign_doc(campaign)
+    return {"ok": True, "region": regions[idx], "current_region_id": regionId}
+
+
+@router.post("/{campaignId}/world/events/{eventId}/accept")
+async def accept_event(campaignId: str, eventId: str):
+    """Convert an event card into an active quest knowledge card.
+    Marks the event as `accepted` in the region deck.
+    """
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.pop("_id", None)
+    campaign = await _ensure_graph(campaign)
+
+    world = campaign.get("world") or {}
+    graph = world.get("graph") or {}
+    regions = graph.get("regions") or []
+
+    target_event = None
+    target_region = None
+    for r in regions:
+        for ev in r.get("events", []):
+            if ev.get("id") == eventId:
+                target_event = ev
+                target_region = r
+                break
+        if target_event:
+            break
+    if not target_event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if target_event.get("status") == "accepted":
+        raise HTTPException(status_code=400, detail="Event already accepted")
+
+    # Build quest card
+    now = datetime.utcnow()
+    quest = KnowledgeCard(
+        id=str(uuid4()),
+        type="quest",
+        title=target_event.get("title") or "Regional Lead",
+        description=(
+            f"{target_event.get('description','').strip()} "
+            f"(From {target_region.get('name')}, {target_region.get('biome')} biome.)"
+        ),
+        source="world-map",
+        confidence="high",
+        tags=[
+            "quest",
+            "active",
+            "map-event",
+            target_region.get("biome") or "region",
+            str(target_event.get("difficulty") or "medium").lower(),
+        ],
+        status="active",
+        updatedAt=now,
+    )
+    await _upsert_cards(campaignId, [quest], [])
+
+    target_event["status"] = "accepted"
+    target_event["quest_id"] = quest.id
+    world["graph"] = graph
+    campaign["world"] = world
+    campaign["updated_at"] = now
+    await _save_campaign_doc(campaign)
+    return {
+        "ok": True,
+        "event": target_event,
+        "quest": _quest_card_to_ui(quest.model_dump()),
+    }
+
+
+@router.post("/{campaignId}/world/events/{eventId}/dismiss")
+async def dismiss_event(campaignId: str, eventId: str):
+    """Dismiss an event from a region's deck so it stops cluttering the map."""
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.pop("_id", None)
+    campaign = await _ensure_graph(campaign)
+
+    world = campaign.get("world") or {}
+    graph = world.get("graph") or {}
+    regions = graph.get("regions") or []
+    found = False
+    for r in regions:
+        for ev in r.get("events", []):
+            if ev.get("id") == eventId:
+                ev["status"] = "dismissed"
+                found = True
+                break
+        if found:
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    world["graph"] = graph
+    campaign["world"] = world
+    campaign["updated_at"] = datetime.utcnow()
+    await _save_campaign_doc(campaign)
+    return {"ok": True}
 
 
 @router.get("/{campaignId}")

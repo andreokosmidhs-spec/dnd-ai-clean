@@ -56,6 +56,17 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (3 new card types: Spells, Favors, Curses + location origin)
+- **Feature: DM now auto-generates 7 distinct card types** (was 4: NPCs, Locations, Factions, Items). Each gets its own MTG color and lucide icon.
+  - **New types added to `cardTypeConfig.js`**:
+    - 🟣 **Spells** (`spells`) — `Sparkles` icon, violet→fuchsia gradient (mystic). Aliases: `spell, ability, cantrip, ritual, prayer`.
+    - 🟡 **Favors** (`favors`) — `HeartHandshake` icon, yellow→amber gradient. Aliases: `favor, boon, blessing, pact, debt`.
+    - 🔴 **Curses** (`curses`) — `Skull` icon, red→rose gradient (visceral warning). Aliases: `curse, hex, affliction, malediction`.
+  - **Backend `services/auto_cards.py`** got a SECOND LLM pass (`_detect_narrative_events`) that scans each DM turn for narrative happenings — items the player ACQUIRED, spells LEARNED, favors OWED, curses RECEIVED. Strict JSON output, capped at 6 events/turn, runs in addition to the existing proper-noun classifier. Items / spells / favors / curses get status `acquired` or `active`; npc/loc/faction stay `introduced`.
+  - **Location-origin tagging**: every auto-seeded card now carries `location_origin` (the campaign's current `starting_town` or `world_core.name`). Threaded through `auto_seed_cards_from_narration()` and rendered as a small `📍 from {Origin}  [auto]` badge under the card title in `KnowledgeCard.jsx`.
+  - **`CampaignLogPanel.jsx`** now also pulls the flat `campaign_cards` collection (`/api/campaigns/{cid}/log/cards`) so the new types surface alongside the structured-log content. De-duped on (title, type). Live counts replace the static `counts` object → filter pills "Spells", "Favors", "Curses" appear automatically when ≥1 card of that type exists.
+  - **End-to-end verified on the avon campaign**: a single player turn ("I help the wizard, he teaches me Fire Bolt, gifts me a Silver Ring of Warding, owes me a favor, and curses me with Hex of Wyrmsbane") produced **all 4 event-type cards in one shot** plus the location card "Emberfall" — origins all tagged `Gate of Emberfall`. Knowledge Deck now shows 20 cards with proper MTG headers (green PLACE, blue NPC, purple FACTION, pink RUMOR, amber QUEST, indigo DECISION) + new filter pills for Spells/Favors/Curses.
+
 ### 2026-04-29 (MTG color coding extended end-to-end)
 - **Feature: All knowledge cards AND inline entity hyperlinks now use the MTG palette** consistently — single visual language across the Campaign Log deck and the Adventure Log narration.
   - **Card type normalizer (`campaignLog/cardTypeConfig.js`)**: new `normalizeCardType(type)` maps the wild variety of backend card types onto the 8 MTG palette keys:

@@ -224,12 +224,93 @@ def _card_description(name: str, entity_type: str, narration: str) -> str:
     return snippet or f"{name} — recently introduced in the narrative."
 
 
+async def _detect_narrative_events(narration: str) -> List[Dict[str, str]]:
+    """Second LLM pass — detects narrative events that should become cards
+    but aren't always proper-noun candidates:
+       - items the player just acquired
+       - spells/abilities the player learned
+       - favors/boons/debts owed to or by the player
+       - curses/hexes afflicting the player
+
+    Returns a list of `{title, type, content}` dicts. Empty list on
+    failure or when nothing eventful happened (most turns).
+    """
+    if not narration:
+        return []
+
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return []
+
+    snippet = narration[:1500]
+    prompt = (
+        "You are reviewing a fantasy RPG scene to extract MEMORABLE EVENTS "
+        "that should become permanent campaign cards. Only emit events that "
+        "REALLY happened in this scene — do NOT invent.\n\n"
+        "Card types to extract:\n"
+        '  - "item": the player physically acquired or was given an item '
+        "(weapon, gear, scroll, key, potion, jewelry, document, gold pouch). "
+        "Skip items the player merely sees but doesn't take.\n"
+        '  - "spell": the player learned a new spell, ritual, prayer, or '
+        "magical ability. Skip spells they merely cast that they already knew.\n"
+        '  - "favor": someone explicitly OWES the player a favor / debt / '
+        "boon, OR the player owes someone. Mutual implies two cards.\n"
+        '  - "curse": the player was cursed, hexed, or afflicted with a '
+        "magical malady. Skip mundane wounds.\n\n"
+        f"Scene:\n'''{snippet}'''\n\n"
+        "Output STRICT JSON only:\n"
+        '{"events": [{"title": "Short Name", "type": "item|spell|favor|curse", '
+        '"content": "1-2 sentence summary grounded in the scene"}]}\n\n'
+        "If nothing eventful happened, return: {\"events\": []}"
+    )
+
+    try:
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"auto-events-{uuid.uuid4().hex[:8]}",
+            system_message=(
+                "You extract memorable RPG events. "
+                "Output STRICT JSON only — no prose, no code fence."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.0)
+        response = await chat.send_message(UserMessage(text=prompt))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[auto-cards/events] call failed: {exc}")
+        return []
+
+    text = (response or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:].lstrip()
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        logger.warning(f"[auto-cards/events] non-JSON: {text[:200]!r}")
+        return []
+
+    valid: List[Dict[str, str]] = []
+    for ev in parsed.get("events", []) or []:
+        title = (ev.get("title") or "").strip()
+        etype = (ev.get("type") or "").strip().lower()
+        content = (ev.get("content") or "").strip()
+        if not title or len(title) < 2:
+            continue
+        if etype in {"item", "spell", "favor", "curse"} and content:
+            valid.append({"title": title, "type": etype, "content": content})
+    # Cap so a runaway scene doesn't generate 20 cards in one turn
+    return valid[:6]
+
+
 async def auto_seed_cards_from_narration(
     *,
     campaign_id: str,
     narration: str,
     entity_index: List[Dict],
     cards_collection,
+    location_origin: Optional[str] = None,
 ) -> List[Dict]:
     """Main entry point.
 
@@ -282,6 +363,8 @@ async def auto_seed_cards_from_narration(
 
     now = datetime.now(timezone.utc)
     new_cards: List[Dict] = []
+
+    # Pass 1 — proper-noun entities (NPCs / locations / factions)
     for phrase in unknowns:
         canon = _strip_prefix_articles(phrase)
         etype = classifications.get(phrase.lower()) or classifications.get(canon.lower())
@@ -305,8 +388,7 @@ async def auto_seed_cards_from_narration(
             "auto_seeded": True,
             "source": "dm_narration",
             "pinned": False,
-            # Use camelCase timestamp keys to match the legacy card schema
-            # so the lean_dm `updatedAt`-sorted query picks these up.
+            "location_origin": location_origin or None,
             "createdAt": now.isoformat(),
             "updatedAt": now.isoformat(),
         }
@@ -315,6 +397,39 @@ async def auto_seed_cards_from_narration(
             new_cards.append(card)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[auto-cards] insert failed for {canon!r}: {exc}")
+
+    # Pass 2 — narrative events (items / spells / favors / curses).
+    # These are NOT always proper nouns, so a separate LLM pass scans the
+    # scene for event-shaped happenings the player should remember.
+    events = await _detect_narrative_events(narration)
+    for ev in events:
+        title = ev["title"]
+        etype = ev["type"]
+        # De-dupe within campaign on (title, type)
+        existing = await cards_collection.find_one(
+            {"campaign_id": campaign_id, "title": title, "type": etype}
+        )
+        if existing:
+            continue
+        card = {
+            "id": str(uuid.uuid4()),
+            "campaign_id": campaign_id,
+            "title": title,
+            "type": etype,
+            "content": ev["content"],
+            "status": "active" if etype in {"favor", "curse"} else "acquired",
+            "auto_seeded": True,
+            "source": "dm_event",
+            "pinned": False,
+            "location_origin": location_origin or None,
+            "createdAt": now.isoformat(),
+            "updatedAt": now.isoformat(),
+        }
+        try:
+            await cards_collection.insert_one(card)
+            new_cards.append(card)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[auto-cards/event] insert failed for {title!r}: {exc}")
 
     if new_cards:
         logger.info(

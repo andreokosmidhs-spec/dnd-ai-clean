@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { Star, Sparkles } from 'lucide-react';
+import { Star, Sparkles, MapPin } from 'lucide-react';
 import { CARD_TYPE_CONFIG, getCardTitle, getCardDescription, getCardTags, normalizeCardType } from './cardTypeConfig';
 
 /**
@@ -13,6 +13,10 @@ export const KnowledgeCard = ({ data, type, onSelect, isSelected, isPinned }) =>
   const title = getCardTitle(data, type);
   const description = getCardDescription(data, type);
   const tags = getCardTags(data, type);
+  // Location-origin badge — shown on auto-seeded cards so the player can
+  // tell at a glance where each entity / item / spell came from.
+  const origin = data?.location_origin || data?.locationOrigin || null;
+  const isAutoSeeded = !!data?.auto_seeded;
 
   return (
     <Card 
@@ -44,7 +48,23 @@ export const KnowledgeCard = ({ data, type, onSelect, isSelected, isPinned }) =>
         <h3 className="font-semibold text-white text-base leading-tight line-clamp-2">
           {title}
         </h3>
-        
+
+        {origin && (
+          <div
+            className="flex items-center gap-1 text-[11px] text-slate-400"
+            data-testid="card-location-origin"
+            title="Location where this card was added"
+          >
+            <MapPin className="w-3 h-3" />
+            <span>from <span className="text-slate-300 italic">{origin}</span></span>
+            {isAutoSeeded && (
+              <Badge variant="outline" className="ml-1 px-1 py-0 h-4 text-[9px] border-slate-700 text-slate-400">
+                auto
+              </Badge>
+            )}
+          </div>
+        )}
+
         {description && (
           <p className="text-gray-400 text-sm line-clamp-3 leading-relaxed">
             {description}

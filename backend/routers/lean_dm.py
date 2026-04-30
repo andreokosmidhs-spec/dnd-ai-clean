@@ -373,11 +373,15 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     # Runs in the same turn BEFORE mention extraction, so the new cards
     # become clickable entities in this very response — no "it only works
     # on the next turn" lag.
+    starting_town = (world_dict.get("starting_town") or {}).get("name") or ""
+    realm_name = (world_dict.get("world_core") or {}).get("name") or ""
+    location_origin = starting_town or realm_name or None
     new_cards = await auto_seed_cards_from_narration(
         campaign_id=campaign_id,
         narration=narration,
         entity_index=entity_index,
         cards_collection=db.campaign_cards,
+        location_origin=location_origin,
     )
     if new_cards:
         entity_index = build_v2_entity_index(world_dict, cards=cards + new_cards)

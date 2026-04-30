@@ -254,7 +254,30 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
           combined.push({ ...item, _type: cat });
         });
       });
-      
+
+      // ALSO pull the flat `campaign_cards` collection (auto-seeded cards
+      // from DM narration + manually-pinned "Remember this" cards). These
+      // include the new `spell` / `favor` / `curse` types that the
+      // structured /api/campaign/log/* endpoints don't expose.
+      try {
+        const cardsRes = await apiClient.get(`/api/campaigns/${campaignId}/log/cards`);
+        const flatCards = Array.isArray(cardsRes) ? cardsRes : (cardsRes?.cards || []);
+        flatCards.forEach((card) => {
+          const normalized = normalizeCardType(card.type);
+          // De-dupe vs. the structured-log results on (title, type) so we
+          // don't double-list cards that exist in both systems.
+          const dupe = combined.find(
+            (c) =>
+              (c.name || c.title) === (card.title || card.name) &&
+              c._type === normalized
+          );
+          if (dupe) return;
+          combined.push({ ...card, _type: normalized });
+        });
+      } catch (err) {
+        console.warn('Failed to fetch campaign_cards (flat):', err);
+      }
+
       setAllCards(combined);
     } catch (err) {
       console.error('Failed to load campaign log:', err);
@@ -320,21 +343,44 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
   }, []);
   
   // Calculate total counts
-  const totalCount = Object.values(counts).reduce((a, b) => a + b, 0) + (leads?.length || 0);
+  const totalCount = allCardsWithLeads.length;
   const pinnedCount = pinnedIds.filter(id => allCardsWithLeads.some(c => c.id === id)).length;
-  
-  // Filter options
+
+  // Live counts per normalized type so the new auto-seeded categories
+  // (spells / favors / curses) get accurate badge numbers without
+  // needing a backend summary endpoint update.
+  const liveCounts = {};
+  allCardsWithLeads.forEach((c) => {
+    const t = c._type || normalizeCardType(c.type);
+    liveCounts[t] = (liveCounts[t] || 0) + 1;
+  });
+
+  // Filter options — include the 3 new MTG-palette types (spells/favors/
+  // curses) when at least one card of that kind exists, so the filter row
+  // doesn't bloat for campaigns that haven't accumulated them yet.
   const filterOptions = [
     { key: 'all', label: 'All', icon: Sparkles, count: totalCount },
     { key: 'pinned', label: 'Pinned', icon: Star, count: pinnedCount },
-    { key: 'locations', label: 'Places', icon: MapPin, count: counts.locations || 0 },
-    { key: 'npcs', label: 'NPCs', icon: Users, count: counts.npcs || 0 },
-    { key: 'quests', label: 'Quests', icon: Scroll, count: counts.quests || 0 },
+    { key: 'locations', label: 'Places', icon: MapPin, count: liveCounts.locations || 0 },
+    { key: 'npcs', label: 'NPCs', icon: Users, count: liveCounts.npcs || 0 },
+    { key: 'quests', label: 'Quests', icon: Scroll, count: liveCounts.quests || 0 },
     { key: 'leads', label: 'Leads', icon: Compass, count: leads?.length || 0 },
-    { key: 'factions', label: 'Factions', icon: Shield, count: counts.factions || 0 },
-    { key: 'rumors', label: 'Rumors', icon: MessageCircle, count: counts.rumors || 0 },
-    { key: 'items', label: 'Items', icon: Package, count: counts.items || 0 },
-    { key: 'decisions', label: 'Decisions', icon: GitBranch, count: counts.decisions || 0 },
+    { key: 'factions', label: 'Factions', icon: Shield, count: liveCounts.factions || 0 },
+    { key: 'rumors', label: 'Rumors', icon: MessageCircle, count: liveCounts.rumors || 0 },
+    { key: 'items', label: 'Items', icon: Package, count: liveCounts.items || 0 },
+    { key: 'decisions', label: 'Decisions', icon: GitBranch, count: liveCounts.decisions || 0 },
+    ...(liveCounts.spells ? [{
+      key: 'spells', label: 'Spells',
+      icon: CARD_TYPE_CONFIG.spells.icon, count: liveCounts.spells,
+    }] : []),
+    ...(liveCounts.favors ? [{
+      key: 'favors', label: 'Favors',
+      icon: CARD_TYPE_CONFIG.favors.icon, count: liveCounts.favors,
+    }] : []),
+    ...(liveCounts.curses ? [{
+      key: 'curses', label: 'Curses',
+      icon: CARD_TYPE_CONFIG.curses.icon, count: liveCounts.curses,
+    }] : []),
   ];
   
   // Guard against undefined campaignId

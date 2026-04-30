@@ -7,6 +7,9 @@ import {
   Package,
   GitBranch,
   Compass,
+  Sparkles,
+  HeartHandshake,
+  Skull,
 } from 'lucide-react';
 
 /**
@@ -85,6 +88,37 @@ export const CARD_TYPE_CONFIG = {
     badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-400/50',
     headerBg: 'bg-gradient-to-r from-indigo-600 to-indigo-800',
   },
+  // Magic spells the player learns (Sparkles icon, mystic violet so it sits
+  // between the cool/cerebral NPCs and the multicolor factions).
+  spells: {
+    label: 'Spell',
+    icon: Sparkles,
+    gradient: 'from-violet-600 to-fuchsia-800',
+    border: 'border-violet-500/40',
+    glow: 'hover:shadow-violet-500/30',
+    badge: 'bg-violet-500/20 text-violet-300 border-violet-400/50',
+    headerBg: 'bg-gradient-to-r from-violet-600 to-fuchsia-800',
+  },
+  // Favors / debts owed to the player by NPCs (HeartHandshake, warm gold).
+  favors: {
+    label: 'Favor',
+    icon: HeartHandshake,
+    gradient: 'from-yellow-500 to-amber-700',
+    border: 'border-yellow-500/40',
+    glow: 'hover:shadow-yellow-500/25',
+    badge: 'bg-yellow-500/20 text-yellow-300 border-yellow-400/50',
+    headerBg: 'bg-gradient-to-r from-yellow-500 to-amber-700',
+  },
+  // Curses afflicting the player (Skull, blood-red — visceral warning tone).
+  curses: {
+    label: 'Curse',
+    icon: Skull,
+    gradient: 'from-red-700 to-rose-900',
+    border: 'border-red-600/50',
+    glow: 'hover:shadow-red-700/30',
+    badge: 'bg-red-700/30 text-red-300 border-red-500/60',
+    headerBg: 'bg-gradient-to-r from-red-700 to-rose-900',
+  },
 };
 
 /**
@@ -149,6 +183,25 @@ const TYPE_ALIASES = {
   choice: 'decisions',
   event: 'decisions',
   events: 'decisions',
+  // Spells
+  spell: 'spells',
+  ability: 'spells',
+  abilities: 'spells',
+  cantrip: 'spells',
+  ritual: 'spells',
+  prayer: 'spells',
+  // Favors
+  favor: 'favors',
+  boon: 'favors',
+  blessing: 'favors',
+  pact: 'favors',
+  debt: 'favors',
+  // Curses
+  curse: 'curses',
+  cursed: 'curses',
+  hex: 'curses',
+  affliction: 'curses',
+  malediction: 'curses',
 };
 
 export const normalizeCardType = (type) => {

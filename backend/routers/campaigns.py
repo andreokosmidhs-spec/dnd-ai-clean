@@ -411,6 +411,15 @@ async def _backfill_legacy_campaign(campaign: Dict) -> Dict:
     return campaign
 
 
+@router.get("/biomes")
+async def list_biomes():
+    """Return the biome catalog (key, label, accent gradient, chip styles,
+    resources/animals/monsters, DC modifiers). The frontend uses this to
+    paint location cards by biome and to surface what's available where."""
+    from data.biomes import BIOMES_PUBLIC
+    return {"biomes": BIOMES_PUBLIC}
+
+
 @router.get("/{campaignId}")
 async def get_campaign(campaignId: str):
     campaign = await _get_campaign(campaignId)

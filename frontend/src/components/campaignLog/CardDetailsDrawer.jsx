@@ -100,6 +100,60 @@ export const CardDetailsDrawer = ({ card, type, isOpen, onClose, isPinned, onTog
             </div>
           ))}
           
+          {/* Biome panel — present only on location cards. Surfaces the
+              survival/nature DC modifiers and the resources/animals/
+              monsters the player can encounter or harvest there, so
+              skill checks and exploration feel grounded. */}
+          {(card.biome || card.biome_label) && (
+            <div className="border-t border-gray-800 pt-4 mt-4 space-y-3">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <Info className="w-3.5 h-3.5" />
+                <span className="uppercase tracking-wider font-medium">
+                  Biome · {card.biome_label || card.biome}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                {typeof card.biome_survival_dc_mod === "number" && (
+                  <div className="bg-slate-900 border border-slate-800 rounded p-2">
+                    <div className="text-slate-500 uppercase text-[10px]">Survival DC</div>
+                    <div className="text-slate-200 font-semibold">
+                      {card.biome_survival_dc_mod >= 0 ? `+${card.biome_survival_dc_mod}` : card.biome_survival_dc_mod}
+                    </div>
+                  </div>
+                )}
+                {typeof card.biome_nature_dc_mod === "number" && (
+                  <div className="bg-slate-900 border border-slate-800 rounded p-2">
+                    <div className="text-slate-500 uppercase text-[10px]">Nature DC</div>
+                    <div className="text-slate-200 font-semibold">
+                      {card.biome_nature_dc_mod >= 0 ? `+${card.biome_nature_dc_mod}` : card.biome_nature_dc_mod}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {[
+                ["Resources", card.biome_resources, "text-emerald-300"],
+                ["Animals", card.biome_animals, "text-sky-300"],
+                ["Monsters", card.biome_monsters, "text-red-300"],
+              ].map(([label, list, klass]) =>
+                Array.isArray(list) && list.length > 0 ? (
+                  <div key={label}>
+                    <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">{label}</div>
+                    <div className="flex flex-wrap gap-1">
+                      {list.map((item) => (
+                        <span
+                          key={item}
+                          className={`text-xs ${klass} bg-slate-900 border border-slate-800 rounded px-2 py-0.5`}
+                        >
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null
+              )}
+            </div>
+          )}
+
           {/* Metadata section */}
           <div className="border-t border-gray-800 pt-4 mt-4 space-y-3">
             <div className="flex items-center gap-2 text-xs text-gray-500">

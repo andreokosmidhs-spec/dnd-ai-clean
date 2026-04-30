@@ -30,6 +30,8 @@ from typing import Dict, List, Optional, Set
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
+from data.biomes import BIOMES, get_biome, list_biome_keys
+
 logger = logging.getLogger(__name__)
 
 # Words that sometimes appear capitalized mid-sentence but are NOT entities.
@@ -304,6 +306,55 @@ async def _detect_narrative_events(narration: str) -> List[Dict[str, str]]:
     return valid[:6]
 
 
+async def _classify_biome(name: str, content: str) -> str:
+    """One-shot LLM call: pick the closest biome key for a location card.
+    Returns a biome key from `data.biomes.BIOMES`. Falls back to 'forest'
+    on any failure."""
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return "forest"
+
+    keys = list_biome_keys()
+    keys_str = ", ".join(keys)
+    prompt = (
+        f"You classify fantasy RPG locations into biome categories.\n"
+        f"Available biomes: {keys_str}\n\n"
+        f"Location name: {name!r}\n"
+        f"Description: {content[:400]!r}\n\n"
+        f"Pick exactly ONE biome key from the list above that best fits "
+        f"this place. If unsure, pick the closest match (e.g., a town in "
+        f"a forested kingdom = 'urban' if the city itself dominates the "
+        f"description, or 'forest' if it's a hamlet in the woods).\n\n"
+        f'Reply with STRICT JSON only: {{"biome": "<key>"}}'
+    )
+
+    try:
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"biome-{uuid.uuid4().hex[:8]}",
+            system_message="You classify locations. Output STRICT JSON only.",
+        )
+        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.0)
+        response = await chat.send_message(UserMessage(text=prompt))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[biome] classifier failed for {name!r}: {exc}")
+        return "forest"
+
+    text = (response or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:].lstrip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return "forest"
+    biome = (parsed.get("biome") or "").lower().strip()
+    if biome in BIOMES:
+        return biome
+    return "forest"
+
+
 async def auto_seed_cards_from_narration(
     *,
     campaign_id: str,
@@ -392,6 +443,21 @@ async def auto_seed_cards_from_narration(
             "createdAt": now.isoformat(),
             "updatedAt": now.isoformat(),
         }
+        # If this is a location card, classify its biome so the UI can
+        # render the right accent color and so future Survival/Nature
+        # checks know what creatures and resources are available.
+        if etype == "location":
+            biome_key = await _classify_biome(canon, card["content"])
+            biome = get_biome(biome_key)
+            card["biome"] = biome_key
+            card["biome_label"] = biome["label"]
+            card["biome_accent"] = biome["accent"]
+            card["biome_chip"] = biome["chip"]
+            card["biome_resources"] = biome["resources"]
+            card["biome_animals"] = biome["animals"]
+            card["biome_monsters"] = biome["monsters"]
+            card["biome_survival_dc_mod"] = biome["survival_dc_mod"]
+            card["biome_nature_dc_mod"] = biome["nature_dc_mod"]
         try:
             await cards_collection.insert_one(card)
             new_cards.append(card)

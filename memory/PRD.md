@@ -56,6 +56,20 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ## Changelog
 
+### 2026-04-29 (biome system: location cards colored by terrain + DC modifiers)
+- **Feature: Location cards now classify into one of 12 biomes**, each with a distinct color, resources / animals / monsters list, and Survival/Nature DC modifiers.
+  - **New `/app/backend/data/biomes.py`** catalog: `forest`, `plains`, `desert`, `mountain`, `swamp`, `coast`, `tundra`, `underdark`, `volcanic`, `urban`, `fey`, `shadow`. Each defines:
+    - `accent` — Tailwind gradient for the card header (e.g., desert = `from-amber-500 to-orange-700`, swamp = `from-teal-700 to-emerald-900`).
+    - `chip` / `icon` — UI styling.
+    - `survival_dc_mod` / `nature_dc_mod` — `+N` harder, `−N` easier (forest forage = −2, underdark = +4).
+    - `resources`, `animals`, `monsters` — lore lists for grounding play.
+  - **New `GET /api/campaigns/biomes`** endpoint serves the public catalog so the frontend can mirror it without duplication.
+  - **`auto_cards.py`** got a third LLM call (`_classify_biome`) — every newly-seeded location card is classified and decorated with the full biome payload (key, label, accent, chip, lists, DC mods).
+  - **`lean_dm.py`** now injects a "CURRENT BIOME" section into the DM system prompt when at least one location card has biome data, with the biome's name, DC mods, and lists. The DM organically tunes check difficulty + scenery to the terrain (no dice talk, just narrative consequences).
+  - **`KnowledgeCard.jsx`** uses the biome's accent gradient for location-type headers (overrides the type-based green) and prints `PLACE · {biome}` so the player sees both the type AND the biome at a glance.
+  - **`CardDetailsDrawer.jsx`** renders a biome panel with the survival/nature DC chips and color-coded chips for Resources (emerald), Animals (sky), Monsters (red).
+  - **End-to-end verified** on the avon campaign: a single DM turn ("travel to the scorching dunes of the Anvil Wastes, then into the foul mires of the Drowning Marshes") produced two new location cards, **Anvil Wastes → desert** (cactus water, sand worms, +3 survival DC) and **Drowning Marshes → swamp** (peat, hags, +2 survival DC). Cards render with sand-orange and dark-teal headers respectively, distinct from emerald forest locations.
+
 ### 2026-04-29 (3 new card types: Spells, Favors, Curses + location origin)
 - **Feature: DM now auto-generates 7 distinct card types** (was 4: NPCs, Locations, Factions, Items). Each gets its own MTG color and lucide icon.
   - **New types added to `cardTypeConfig.js`**:

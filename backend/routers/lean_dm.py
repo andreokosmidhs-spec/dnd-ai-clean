@@ -152,6 +152,28 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
     active_lead_block = "\n".join(active_leads) if active_leads else "(no active opening lead — advance scene naturally)"
     closed_lead_block = "\n".join(closed_leads) if closed_leads else "(none)"
 
+    # Pull the most recently updated location card with biome metadata —
+    # that's effectively "where the player is right now" for grounding
+    # Survival/Nature checks. Falls back to a "no biome" block.
+    current_biome_card = None
+    for c in cards:
+        if (c.get("type") or "").lower() == "location" and c.get("biome"):
+            current_biome_card = c
+            break
+    if current_biome_card:
+        biome_block = (
+            f"Biome: {current_biome_card.get('biome_label') or current_biome_card.get('biome')} "
+            f"({current_biome_card.get('title')})\n"
+            f"Survival DC modifier: {current_biome_card.get('biome_survival_dc_mod', 0):+d} "
+            f"(higher = harder)\n"
+            f"Nature DC modifier: {current_biome_card.get('biome_nature_dc_mod', 0):+d}\n"
+            f"Resources available: {', '.join(current_biome_card.get('biome_resources', [])[:6])}\n"
+            f"Wildlife: {', '.join(current_biome_card.get('biome_animals', [])[:6])}\n"
+            f"Local threats: {', '.join(current_biome_card.get('biome_monsters', [])[:5])}"
+        )
+    else:
+        biome_block = "(no biome data — describe environment naturally)"
+
     # Setting block — era, factions, recent events, current tension.
     setting_lines: List[str] = []
     if setting:
@@ -204,6 +226,8 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
         f"{closed_lead_block}\n\n"
         "=== OTHER KNOWLEDGE CARDS (weave in only when natural) ===\n"
         f"{card_block}\n\n"
+        "=== CURRENT BIOME (use for environment details + naturally adjust check difficulty) ===\n"
+        f"{biome_block}\n\n"
         "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "

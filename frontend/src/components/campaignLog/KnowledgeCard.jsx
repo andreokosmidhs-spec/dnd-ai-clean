@@ -18,6 +18,17 @@ export const KnowledgeCard = ({ data, type, onSelect, isSelected, isPinned }) =>
   const origin = data?.location_origin || data?.locationOrigin || null;
   const isAutoSeeded = !!data?.auto_seeded;
 
+  // Biome metadata (only set on location-type cards). When present we
+  // override the header gradient with the biome's accent so a Forest place
+  // looks distinct from a Desert place at a glance — even though both are
+  // "locations" green-framed under MTG type rules.
+  const biome = data?.biome || null;
+  const biomeLabel = data?.biome_label || data?.biomeLabel || null;
+  const biomeAccent = data?.biome_accent || data?.biomeAccent || null;
+  const headerGradient = (type === 'locations' || normalizeCardType(type) === 'locations') && biomeAccent
+    ? biomeAccent
+    : config.gradient;
+
   return (
     <Card 
       className={`bg-gray-900/80 ${config.border} overflow-hidden transition-all duration-300 hover:shadow-lg ${config.glow} hover:-translate-y-1 cursor-pointer group relative ${
@@ -32,12 +43,13 @@ export const KnowledgeCard = ({ data, type, onSelect, isSelected, isPinned }) =>
         </div>
       )}
       
-      {/* Color-coded header */}
-      <div className={`h-12 bg-gradient-to-r ${config.gradient} flex items-center justify-between px-4`}>
+      {/* Color-coded header — biome accent overrides the type gradient
+          for location cards so each biome reads visually distinct. */}
+      <div className={`h-12 bg-gradient-to-r ${headerGradient} flex items-center justify-between px-4`}>
         <div className="flex items-center gap-2">
           <Icon className="w-4 h-4 text-white/90" />
           <span className="text-xs font-semibold text-white/90 uppercase tracking-wider">
-            {config.label}
+            {biomeLabel ? `${config.label} · ${biomeLabel}` : config.label}
           </span>
         </div>
         <Sparkles className="w-4 h-4 text-white/40 group-hover:text-white/70 transition-colors" />

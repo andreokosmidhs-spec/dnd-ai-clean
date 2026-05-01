@@ -563,3 +563,106 @@ async def hydrate_region(
     new_region["visited"] = True
     new_region["hints"] = []
     return new_region
+
+
+# -------------------- event-arrival narration beat --------------------
+
+
+_ARRIVAL_MESSENGERS = {
+    "forest": ["a ranger", "a woodcutter with an axe across her shoulder", "a trapper"],
+    "plains": ["a mud-splattered rider", "a drover driving his wagon hard", "a courier"],
+    "desert": ["a sand-caked nomad", "a caravan outrunner", "a thirsty traveler"],
+    "mountain": ["a goatherd", "a mountain ranger with rope still coiled at his belt", "a miner in soot"],
+    "swamp": ["a reed-cutter with mud to the knees", "a bog-walker", "a trapper"],
+    "coast": ["a harbor runner", "a fisherman, nets still in hand", "a lighthouse apprentice"],
+    "tundra": ["a trapper wrapped in furs", "a lone skier", "a herder"],
+    "underdark": ["a soot-stained scout", "a cave-walker with a failing lantern", "a miner"],
+    "volcanic": ["an ash-coated surveyor", "a sulfur-prospector", "a caravan guard"],
+    "urban": ["a street runner", "a watchman off-duty", "a guild messenger"],
+    "fey": ["a small figure you almost miss", "a barefoot wanderer", "a child carrying a strange token"],
+    "shadow": ["a pale courier", "a hooded figure who does not give a name", "a gravetender"],
+}
+
+
+def _template_arrival_beat(region: Dict, event: Dict) -> str:
+    biome = (region.get("biome") or "plains").lower()
+    messenger = random.choice(_ARRIVAL_MESSENGERS.get(biome) or _ARRIVAL_MESSENGERS["plains"])
+    title = (event.get("title") or "a matter of concern").strip().rstrip(".")
+    region_name = region.get("name") or "a nearby district"
+    return (
+        f"{messenger.capitalize()} catches your eye as the noise of the room dips. "
+        f"\"{title}.\" The word travels before the rest does — word from {region_name}. "
+        f"The lead is yours to take up."
+    )
+
+
+async def generate_event_arrival_beat(
+    intent: CampaignIntent,
+    world: Dict,
+    character: Optional[Dict],
+    region: Dict,
+    event: Dict,
+) -> str:
+    """Produce a short Mercer-style arrival beat (1-2 sentences, second person)
+    for when the player accepts a map event. Narrates HOW the hook enters
+    the fiction — a rider, a letter, a whisper, a bell — so the quest lands
+    in the Adventure Log as narrative, not just a silent quest card.
+    """
+    fallback = _template_arrival_beat(region, event)
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+        api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return fallback
+
+        hero_name = "the hero"
+        class_key = "adventurer"
+        bg_key = "wanderer"
+        if character:
+            identity = character.get("identity") or {}
+            hero_name = identity.get("name") or hero_name
+            cls = character.get("class") or character.get("class_") or {}
+            class_key = (cls.get("key") or class_key).lower()
+            bg_key = ((character.get("background") or {}).get("key") or bg_key).lower()
+
+        prompt = (
+            "Write the ARRIVAL BEAT for a D&D 5e event the player just accepted on the map. "
+            "This is the MOMENT THE HOOK LANDS — a courier, a rumor, a passing traveler, a bell, "
+            "a letter, a witness. 1-2 sentences. Second person, present tense, Mercer-cinematic, "
+            "restrained. It gets added to the Adventure Log so the player feels the quest enter "
+            "the fiction, not just a card.\n\n"
+            f"=== HERO ===\n{hero_name} ({class_key}, {bg_key} background)\n"
+            f"Campaign tone: {intent.tone} | focus: {intent.focus} | danger: {intent.danger}\n\n"
+            f"=== REGION ===\nName: {region.get('name')}\nBiome: {region.get('biome')}\n"
+            f"Description: {region.get('description','')}\n\n"
+            f"=== EVENT ACCEPTED ===\nTitle: {event.get('title')}\n"
+            f"Hook: {event.get('description')}\n"
+            f"Difficulty: {event.get('difficulty','medium')}\n\n"
+            "=== RULES ===\n"
+            "- 1-2 sentences. 25-55 words.\n"
+            "- Second person ('you hear', 'you feel', 'you notice') — but DON'T narrate what the hero decides.\n"
+            "- Plant ONE concrete sensory detail native to the region's biome (smell of brine, "
+            "crack of a wagon wheel on cobble, wet peat, dry hot stone, candle burning low).\n"
+            "- Name the region ONCE. Do NOT restate the full quest; a single phrase from it is enough.\n"
+            "- NO cliches ('fate', 'destiny', 'the adventure calls', 'a chill runs down your spine').\n"
+            "- No quotation marks around the passage itself. Output only the beat."
+        )
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"arrival-beat-{uuid4()}",
+            system_message=(
+                "You are a senior D&D narrator (Matt-Mercer style): cinematic, grounded, restrained. "
+                "You open quests with one tight, sensory beat, never with fate talk."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        text = raw.strip()
+        if text.startswith('"') and text.endswith('"') and len(text) > 2:
+            text = text[1:-1].strip()
+        return text or fallback
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"arrival-beat generation failed, using template: {exc}")
+        return fallback
+

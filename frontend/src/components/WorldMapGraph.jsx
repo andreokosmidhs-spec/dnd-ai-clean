@@ -112,6 +112,33 @@ const WorldMapGraph = ({ campaignId, onQuestAccepted }) => {
         })),
       }));
       toast.success(`Quest accepted: ${data.quest?.name}`);
+      // Broadcast a DM arrival beat to the Adventure Log so the hook lands as
+      // narrative (a courier / rumor / bell), not just a silent card.
+      // Two delivery paths — the Adventure Log may or may not be mounted:
+      //   1) If mounted (same-tab): the window event appends immediately.
+      //   2) If unmounted (we're on the World Map tab): queue it in localStorage
+      //      keyed by sessionId, and the log will drain the queue on next mount.
+      if (data.arrival_beat) {
+        const beat = {
+          text: data.arrival_beat,
+          quest: data.quest,
+          eventTitle: data.event?.title,
+          source: 'map-event',
+          timestamp: Date.now(),
+        };
+        window.dispatchEvent(new CustomEvent('rpg:dm-beat', { detail: beat }));
+        try {
+          const sid = localStorage.getItem('game-state-session-id');
+          if (sid) {
+            const key = `dm-pending-beats-${sid}`;
+            const queue = JSON.parse(localStorage.getItem(key) || '[]');
+            queue.push(beat);
+            localStorage.setItem(key, JSON.stringify(queue.slice(-20)));
+          }
+        } catch {
+          // ignore storage errors
+        }
+      }
       if (onQuestAccepted) onQuestAccepted(data.quest);
     } catch {
       toast.error('Could not accept this lead.');

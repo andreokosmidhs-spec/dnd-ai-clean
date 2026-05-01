@@ -188,23 +188,61 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   useEffect(() => {
     const storedIntent = localStorage.getItem('dm-intent-mode');
     if (storedIntent) setIntentMode(storedIntent);
-    
-    // Load messages and options from localStorage (DIRECT)
-    const storedMessages = localStorage.getItem(`dm-log-messages-${sessionId}`);
-    const storedOptions = localStorage.getItem(`dm-log-options-${sessionId}`);
-    
-    // Load messages if they exist (regardless of intro played flag)
-    if (sessionId && storedMessages) {
-      try {
-        const parsed = JSON.parse(storedMessages);
-        console.log(`📜 Loaded ${parsed.length} messages from localStorage for session:`, sessionId);
-        setMessages(parsed);
-      } catch (error) {
-        console.error('Failed to parse stored messages:', error);
-      }
+
+    if (!sessionId) return;
+
+    const messagesKey = `dm-log-messages-${sessionId}`;
+    const queueKey = `dm-pending-beats-${sessionId}`;
+
+    // Drain any map-event arrival beats that were queued while this component
+    // was unmounted (the World Map tab unmounts the Adventure Log). We MERGE
+    // them into the persisted message log atomically before setMessages so
+    // StrictMode's double-mount can't drop the beats between renders.
+    let stored = [];
+    try {
+      stored = JSON.parse(localStorage.getItem(messagesKey) || '[]');
+      if (!Array.isArray(stored)) stored = [];
+    } catch {
+      stored = [];
     }
-    
-    if (sessionId && storedOptions) {
+
+    try {
+      const raw = localStorage.getItem(queueKey);
+      if (raw) {
+        const queue = JSON.parse(raw);
+        if (Array.isArray(queue) && queue.length) {
+          const newBeats = queue
+            .filter((b) => b && (b.text || '').trim())
+            .map((b) => ({
+              type: 'dm',
+              text: b.text,
+              message: b.text,
+              timestamp: b.timestamp || Date.now(),
+              isCinematic: true,
+              source: b.source || 'map-event',
+              meta: {
+                questTitle: b.quest?.name,
+                eventTitle: b.eventTitle,
+              },
+            }));
+          if (newBeats.length) {
+            stored = [...stored, ...newBeats].slice(-200);
+            localStorage.setItem(messagesKey, JSON.stringify(stored));
+          }
+        }
+        localStorage.removeItem(queueKey);
+      }
+    } catch {
+      // ignore queue read errors
+    }
+
+    if (stored.length) {
+      console.log(`📜 Loaded ${stored.length} messages from localStorage for session:`, sessionId);
+      setMessages(stored);
+    }
+
+    const storedOptions = localStorage.getItem(`dm-log-options-${sessionId}`);
+    if (storedOptions) {
       try {
         const parsedOptions = JSON.parse(storedOptions);
         setCurrentOptions(parsedOptions);
@@ -268,6 +306,49 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // World-map event broadcast: when the player accepts a map event, the
+  // WorldMapGraph fires a 'rpg:dm-beat' event carrying an arrival beat
+  // (a Mercer-style 1-2 sentence narration). Append it to the Adventure Log
+  // so the hook lands as narrative, not just a silent quest card.
+  useEffect(() => {
+    const handler = (e) => {
+      const detail = e?.detail || {};
+      const text = (detail.text || '').trim();
+      if (!text || !sessionId) return;
+      const beat = {
+        type: 'dm',
+        text,
+        message: text,
+        timestamp: Date.now(),
+        isCinematic: true,
+        source: detail.source || 'map-event',
+        meta: {
+          questTitle: detail.quest?.name,
+          eventTitle: detail.eventTitle,
+          regionName: detail.regionName,
+        },
+      };
+      setMessages((prev) => {
+        const next = [...prev, beat].slice(-200);
+        try {
+          localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+      // Re-fetch the quest log so the new active quest surfaces immediately.
+      if (campaignId) {
+        fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/quests`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => { if (d?.quests) setQuests(d.quests); })
+          .catch(() => {});
+      }
+    };
+    window.addEventListener('rpg:dm-beat', handler);
+    return () => window.removeEventListener('rpg:dm-beat', handler);
+  }, [campaignId, sessionId]);
 
   // Generate TTS for a specific message
   // Helper function to safely extract narration text from any response structure
@@ -1217,9 +1298,11 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                           <span className={`font-semibold text-sm ${entry.isWorldBrief ? 'text-amber-300 italic' : 'text-violet-400'}`}>
                             {entry.isWorldBrief
                               ? `📜 ${entry.chronicleTitle || 'A Chronicle of the Realm'}`
-                              : entry.isCinematic
-                                ? '🎭 The Adventure Begins'
-                                : 'Dungeon Master'}
+                              : entry.source === 'map-event'
+                                ? `🪶 A Lead Reaches You${entry.meta?.questTitle ? ` — ${entry.meta.questTitle}` : ''}`
+                                : entry.isCinematic
+                                  ? '🎭 The Adventure Begins'
+                                  : 'Dungeon Master'}
                           </span>
                           {entry.isCinematic && !entry.isWorldBrief && (
                             <Sparkles className="h-3 w-3 text-violet-400 animate-pulse" />

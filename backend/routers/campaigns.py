@@ -25,7 +25,7 @@ from services.campaign_service import (
     generate_world_setting_with_ai,
     setting_knowledge_cards,
 )
-from services.world_graph import generate_world_graph, hydrate_region
+from services.world_graph import generate_world_graph, hydrate_region, generate_event_arrival_beat
 from utils.entity_mentions import extract_entity_mentions
 
 import logging
@@ -568,10 +568,29 @@ async def accept_event(campaignId: str, eventId: str):
     campaign["world"] = world
     campaign["updated_at"] = now
     await _save_campaign_doc(campaign)
+
+    # Generate a short Mercer-style arrival beat so the accepted quest lands
+    # in the Adventure Log as narrative (a courier / rumor / letter), not
+    # just a silent card. Any failure falls back to a deterministic template.
+    try:
+        character = await _fetch_character(campaign.get("character_id"))
+    except Exception:
+        character = None
+    try:
+        intent = CampaignIntent(**(campaign.get("intent") or {
+            "tone": "Balanced", "focus": "Story", "scope": "Mixed", "danger": "Medium",
+        }))
+    except Exception:
+        intent = CampaignIntent(tone="Balanced", focus="Story", scope="Mixed", danger="Medium")
+    arrival_beat = await generate_event_arrival_beat(
+        intent, world, character, target_region, target_event
+    )
+
     return {
         "ok": True,
         "event": target_event,
         "quest": _quest_card_to_ui(quest.model_dump()),
+        "arrival_beat": arrival_beat,
     }
 
 

@@ -43,10 +43,11 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 - **Endpoints** (all under `/api/campaigns/{id}/world/*`):
   - `GET /graph` — returns regions, edges, current_region_id (auto-backfills legacy campaigns)
   - `POST /regions/{rid}/visit` — hydrates hints into 5 full events, marks visited, updates current_region_id
-  - `POST /events/{eid}/accept` — converts an event into an active quest KnowledgeCard (tagged with biome + difficulty) and marks event `accepted`
+  - `POST /events/{eid}/accept` — converts an event into an active quest KnowledgeCard (tagged with biome + difficulty), marks event `accepted`, AND returns a Mercer-style `arrival_beat` (1-2 sentence narration of how the hook arrives in fiction — a courier, a rumor, a bell, a letter).
   - `POST /events/{eid}/dismiss` — removes event from the deck
 - **Frontend**: `components/WorldMapGraph.jsx` — pure-SVG node graph with biome-colored nodes, pulsing "you are here" marker, dashed edges, event-count pips, a right-side RegionPanel showing rumors (unvisited) or the hydrated event deck with Accept / Dismiss / Travel buttons. Integrated into `RPGGame.jsx` World Map tab (falls back to legacy WorldMap when no campaignId).
-- **Tests**: `/app/backend/tests/test_world_graph.py` (11/11 passing) covering graph structure, visit/hydration, accept → quest wiring, dismiss, and /quests integration.
+- **Adventure-Log Bridge**: When a player accepts an event on the map, the arrival beat is dispatched as a `rpg:dm-beat` window event AND queued in `localStorage` (so it survives the World-Map → Adventure tab unmount). The `AdventureLogWithDM` listens live and drains the queue on mount; new beats render under a dedicated **"🪶 A Lead Reaches You — &lt;Quest Title&gt;"** card so the quest enters the fiction as narrative, not just a silent card.
+- **Tests**: `/app/backend/tests/test_world_graph.py` (11/11 passing) covering graph structure, visit/hydration, accept → quest wiring, dismiss, and /quests integration. Frontend smoke-tested end-to-end via Playwright (accept → tab switch → beat appears in log with proper title).
 
 ### 📋 Backlog (Future Tasks)
 - P1: Character Portrait upload/selection (AppearanceStep)

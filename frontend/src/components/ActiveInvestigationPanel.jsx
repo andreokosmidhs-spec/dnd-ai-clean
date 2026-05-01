@@ -135,10 +135,14 @@ const ActiveInvestigationPanel = ({
             <span className="font-semibold text-amber-100 text-sm truncate" data-testid="storyline-title">
               {storyline.title}
             </span>
-            <Badge variant="outline" className="text-[10px] border-amber-300/40 text-amber-100/90">
+            <Badge
+              variant="outline"
+              className="text-[10px] border-amber-300/40 text-amber-100/90"
+              data-testid="beat-counter"
+            >
               Beat {idx + 1} of {totalBeats}
             </Badge>
-            <Badge className={`text-[10px] ${checkChip}`}>
+            <Badge className={`text-[10px] ${checkChip}`} data-testid="check-chip">
               {beat.check_type} DC {beat.dc}
             </Badge>
           </div>
@@ -158,7 +162,7 @@ const ActiveInvestigationPanel = ({
           </div>
 
           {/* Mini rail of beat dots */}
-          <div className="flex items-center gap-1.5 mt-1">
+          <div className="flex items-center gap-1.5 mt-1" data-testid="beat-dot-rail">
             {beats.map((b, i) => {
               const tone =
                 b.status === 'passed'   ? 'bg-emerald-400'  :
@@ -167,7 +171,13 @@ const ActiveInvestigationPanel = ({
                 b.status === 'active'   ? 'bg-amber-300 ring-2 ring-amber-200/60' :
                                           'bg-stone-600';
               return (
-                <div key={i} className={`w-2 h-2 rounded-full ${tone}`} title={`Beat ${i+1}: ${b.title} (${b.status})`} />
+                <div
+                  key={i}
+                  className={`w-2 h-2 rounded-full ${tone}`}
+                  title={`Beat ${i+1}: ${b.title} (${b.status})`}
+                  data-testid={`beat-dot-${i}`}
+                  data-beat-status={b.status}
+                />
               );
             })}
             <span className="ml-2 text-[11px] text-amber-200/60">
@@ -247,8 +257,8 @@ export const StorylineRewardModal = ({ open, reward, onClose }) => {
         </DialogHeader>
 
         <div className="space-y-3 py-2">
-          <div className="flex items-center gap-2">
-            <Badge className="bg-amber-500 text-black px-3 py-1 text-sm" data-testid="reward-xp">
+          <div className="flex items-center gap-2" data-testid="reward-xp">
+            <Badge className="bg-amber-500 text-black px-3 py-1 text-sm">
               + {reward.xp} XP
             </Badge>
             {reward.tone && (

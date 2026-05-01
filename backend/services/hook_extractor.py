@@ -234,8 +234,27 @@ async def detect_engaged_hook(
     if not text or not active_hooks:
         return None
 
-    # Cheap pass — substring overlap on topic words
+    # Short-circuit: idle/passive actions can never engage a hook. This stops
+    # the LLM from over-matching on phrases like "I rest in the room and wait
+    # quietly" by latching onto the noun "room" or "wait".
     text_low = text.lower()
+    _IDLE_PATTERNS = (
+        r"\b(rest|sleep|wait|stand\s+still|do\s+nothing|stay\s+put|hold\s+position|"
+        r"breathe|relax|sit\s+down|stay\s+silent|listen\s+for\s+a\s+moment)\b"
+    )
+    if re.search(_IDLE_PATTERNS, text_low) and len(text_low.split()) <= 12:
+        return None
+    # Also require the action to actually be an action (>= 3 tokens or include a verb cue)
+    _ACTION_VERBS = (
+        r"\b(examine|inspect|search|look|study|approach|follow|trail|chase|track|"
+        r"watch|spy|observe|listen|eavesdrop|investigate|check|read|open|pick|"
+        r"climb|enter|talk|ask|question|interrogate|confront|grab|take|pull|push|"
+        r"break|force|sneak|tail|peek|peer|kneel|crouch|reach|touch|move\s+toward|"
+        r"go\s+to|head\s+(?:to|toward))\b"
+    )
+    has_action_verb = bool(re.search(_ACTION_VERBS, text_low))
+
+    # Cheap pass — substring overlap on topic words
     candidates: List[Dict] = []
     for h in active_hooks:
         topic_words = re.findall(r"[a-z]{3,}", (h.get("topic") or "").lower())
@@ -244,8 +263,12 @@ async def detect_engaged_hook(
         hits = sum(1 for w in topic_words if w in text_low)
         if hits >= max(1, min(2, len(topic_words) // 2)):
             candidates.append(h)
-    # If exactly one candidate, take it without an LLM call.
-    if len(candidates) == 1:
+    # If we have candidates but the action has no real verb cue, defer to the LLM
+    # only when there's a single topic match — otherwise reject as ambiguous.
+    if candidates and not has_action_verb and len(candidates) > 1:
+        return None
+    # If exactly one candidate AND a clear action verb, take it without an LLM call.
+    if len(candidates) == 1 and has_action_verb:
         return candidates[0]
 
     api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")

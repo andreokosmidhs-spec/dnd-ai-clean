@@ -38,6 +38,19 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Hook → Storyline → Reward (Procedural Investigation Generator)
+- **Backend**:
+  - `services/hook_extractor.py` — extracts up to 3 "points of interest" from any DM narration (regex fast-path for "Three things draw the eye:" enumerations + LLM fallback for free-form scenes). Each hook ships with literal text + char span + topic + verb_hint. `detect_engaged_hook` decides whether a player's action targets one of the active hooks (idle-verb stoplist + LLM nuance).
+  - `services/storyline_service.py` — drafts a 3-5 beat linear investigation chain rooted in the engaged hook (LLM-generated; deterministic fallback). Each beat carries title, description, task, dc 8-20, check_type+ability, status. `advance_storyline` flips the current beat, activates the next, marks completed on the last beat. `generate_storyline_reward` returns LLM-themed reward {xp, title, description, item, tone}; XP scales with collective DC (rounded to 25, max 1200).
+  - `routers/storylines.py` — endpoints: `POST /storylines/draft`, `GET /storylines`, `GET /storylines/{id}`, `POST /storylines/{id}/resolve`, `POST /storylines/{id}/abandon`. Each storyline draft seeds a linked Quest KnowledgeCard tagged `storyline`.
+  - `routers/lean_dm.py` — every DM turn now extracts hooks from the new narration (persisted to message metadata), and tries to detect engagement against the previous turn's hooks (or `starting_scene.hooks` on turn 1). Engagement auto-drafts a storyline that lands on the response.
+  - `routers/campaigns.py` — backfills `starting_scene.hooks` on legacy campaign loads.
+- **Frontend**:
+  - `components/EntityLink.jsx` — new `HookSpan` (italic dashed underline + verb tooltip). `EntityNarrationParser` now merges `entity_mentions` + `hooks` into a single sorted span list, dropping hooks that overlap an entity range so proper-noun links always win.
+  - `components/ActiveInvestigationPanel.jsx` — collapsible top-bar panel showing active investigation (storyline title, beat counter, check-type+DC chip, beat description, task, beat-dot rail with status colors, Roll d20 / Pass / Fail / Abandon buttons, `data-testid` coverage). `StorylineRewardModal` shows XP + tone + themed item on completion.
+  - `components/AdventureLogWithDM.jsx` — wires hooks into DM messages, attaches active-storyline state (loaded on mount + auto-drafted from `/dm/action`), renders the panel + reward modal + a "POINT OF INTEREST" hint popover when an inline hook is clicked.
+- **Tests**: `/app/backend/tests/test_storylines.py` (10/10 pass) covering hook backfill, draft, list/get, sequential resolve advancing current_beat, completion reward formula (xp = round(max(60, total_dc*8)/25)*25, capped 1200), abandon, lean-DM engagement positive + negative cases. Frontend Playwright run covered hook spans, hook-hint popover, panel mount, full Pass-through-to-completion + reward modal, world-map regression intact.
+
 #### Node-Graph Campaign Map with Regional Event Decks
 - **Backend**: `services/world_graph.py` generates 5-7 biome-themed regions per campaign with normalized x/y coords and edges. Starter region is fully hydrated with 5 LLM-generated event hooks; neighbor regions ship with rumor hints and lazily hydrate on first visit (`hydrate_region`).
 - **Endpoints** (all under `/api/campaigns/{id}/world/*`):

@@ -18,6 +18,8 @@ from pydantic import BaseModel
 
 from services.campaign_service import build_v2_entity_index
 from services.auto_cards import auto_seed_cards_from_narration
+from services.hook_extractor import extract_hooks, detect_engaged_hook
+from services.storyline_service import draft_storyline, storyline_to_dict
 from utils.entity_mentions import extract_entity_mentions
 
 logger = logging.getLogger(__name__)
@@ -317,6 +319,45 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     session_id = f"{campaign_id}:{req.character_id}"
     history = await _load_recent_messages(db, session_id)
 
+    # Pull HOOKS the DM planted in the LAST 1-2 turns so we can detect if
+    # this player action is engaging one of them. Hooks are persisted alongside
+    # DM messages by this very endpoint at the end of the previous turn.
+    active_hooks: List[dict] = []
+    try:
+        recent_dm = await db[_MESSAGES_COLLECTION].find(
+            {"session_id": session_id, "role": "dm"},
+            {"_id": 0, "hooks": 1},
+        ).sort("timestamp", -1).limit(2).to_list(length=2)
+        for m in recent_dm:
+            for h in (m.get("hooks") or []):
+                if isinstance(h, dict) and h.get("id"):
+                    active_hooks.append(h)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Failed to load active hooks: {exc}")
+    # First-turn fallback: no DM messages yet, but the starting_scene was the
+    # opening DM beat. Pull its hooks so engagement detection works on turn 1.
+    if not active_hooks:
+        try:
+            ss_hooks = ((campaign.get("starting_scene") or {}).get("hooks")) or []
+            for h in ss_hooks:
+                if isinstance(h, dict) and h.get("id"):
+                    active_hooks.append(h)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Failed to load starting_scene hooks: {exc}")
+
+    # Engagement detection — does the player's action target one of the active hooks?
+    # If so, draft a storyline IN PARALLEL with the DM narration. The drafted
+    # storyline is returned in the response so the frontend can render the
+    # "Active Investigation" panel + first beat.
+    engaged_hook = None
+    storyline_payload = None
+    if active_hooks:
+        try:
+            engaged_hook = await detect_engaged_hook(req.player_action, active_hooks)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Hook engagement check failed: {exc}")
+            engaged_hook = None
+
     # Build LLM prompt
     system_prompt = _build_system_prompt(campaign, character, cards)
 
@@ -364,6 +405,16 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         raise HTTPException(status_code=502, detail=f"DM generation failed: {exc}") from exc
 
     now = datetime.now(timezone.utc)
+
+    # Extract HOOKS from this DM narration so the next turn can detect
+    # engagement and the frontend can render them inline. Cheap regex first;
+    # LLM fallback only if regex finds nothing.
+    try:
+        narration_hooks = await extract_hooks(narration, max_hooks=3)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Hook extraction failed: {exc}")
+        narration_hooks = []
+
     try:
         await db[_MESSAGES_COLLECTION].insert_many(
             [
@@ -382,11 +433,70 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
                     "role": "dm",
                     "content": narration,
                     "timestamp": now.isoformat(),
+                    "hooks": narration_hooks,
                 },
             ]
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"Failed to persist messages (non-fatal): {exc}")
+
+    # If the player's action engaged a previously-planted hook, draft a
+    # storyline now (after narration). This lands as a payload the frontend
+    # can render as an "Active Investigation" panel + quest card.
+    if engaged_hook is not None:
+        try:
+            drafted = await draft_storyline(
+                campaign=campaign,
+                character=character,
+                hook=engaged_hook,
+                narration_context=narration,
+            )
+            from uuid import uuid4 as _uuid4
+            storyline_id = f"sl_{_uuid4().hex[:10]}"
+            first_beat = (drafted.get("beats") or [{}])[0]
+
+            # Seed a quest KnowledgeCard linked to the storyline so the player
+            # sees it in the Quest Log immediately.
+            from models.campaign_models import KnowledgeCard
+            quest_card = KnowledgeCard(
+                type="quest",
+                title=drafted.get("title") or "Active Investigation",
+                description=(
+                    f"{first_beat.get('description','')} (Beat 1 of {len(drafted.get('beats') or [])} — "
+                    f"{first_beat.get('check_type','Investigation')} DC {first_beat.get('dc',12)}.)"
+                ),
+                source="hook-storyline",
+                confidence="high",
+                tags=["quest", "active", "investigation", "storyline"],
+                status="active",
+                updatedAt=now,
+            )
+            await db.campaign_cards.insert_one(
+                {**quest_card.model_dump(), "campaign_id": campaign_id, "storyline_id": storyline_id}
+            )
+
+            storyline_doc = {
+                "id": storyline_id,
+                "campaign_id": campaign_id,
+                "character_id": req.character_id,
+                "title": drafted.get("title") or "Investigation",
+                "hook_text": engaged_hook.get("text", ""),
+                "hook_id": engaged_hook.get("id"),
+                "hook_topic": engaged_hook.get("topic", ""),
+                "status": "active",
+                "current_beat": 0,
+                "beats": drafted["beats"],
+                "total_dc": drafted["total_dc"],
+                "reward": None,
+                "quest_card_id": quest_card.id,
+                "created_at": now,
+                "updated_at": now,
+            }
+            await db.campaign_storylines.insert_one(dict(storyline_doc))
+            storyline_payload = storyline_to_dict(storyline_doc)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Storyline auto-draft failed: {exc}")
+            storyline_payload = None
 
     # Return a response shape that's compatible with AdventureLogWithDM
     world_dict = campaign.get("world") or {}
@@ -416,6 +526,9 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         "data": {
             "narration": narration,
             "entity_mentions": mentions,
+            "hooks": narration_hooks,
+            "engaged_hook_id": (engaged_hook or {}).get("id") if engaged_hook else None,
+            "storyline": storyline_payload,
             "world_state_update": {},
             "player_updates": {},
             "options": [],

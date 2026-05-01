@@ -42,56 +42,92 @@ export const EntityLink = ({
 };
 
 /**
- * EntityNarrationParser - Renders narration with clickable entity links
- * Uses entity_mentions array from backend (start/end positions)
+ * HookSpan - Italic dashed underline rendering for a "point of interest"
+ * planted by the DM in narration. Hovering shows the suggested verb;
+ * clicking the wrapping container surfaces the hook in a larger UI
+ * (the parent wires `onHookClick` for that).
  */
-export const EntityNarrationParser = ({ 
-  text, 
-  entityMentions = [], 
-  onEntityClick 
+export const HookSpan = ({ hook, onClick, children }) => (
+  <span
+    data-hook-id={hook.id}
+    data-hook-verb={hook.verb_hint || 'examine'}
+    className="
+      italic text-amber-200/90
+      border-b border-dashed border-amber-300/60
+      cursor-help inline-block mx-0.5 px-0.5
+      transition-all duration-200
+      hover:bg-amber-500/10
+      hover:border-amber-200
+      hover:text-amber-100
+    "
+    title={`Hook · ${hook.verb_hint || 'examine'}: ${hook.topic || hook.text}`}
+    onClick={onClick ? () => onClick(hook) : undefined}
+  >
+    {children}
+  </span>
+);
+
+/**
+ * EntityNarrationParser - Renders narration with clickable entity links
+ * Uses entity_mentions array from backend (start/end positions).
+ * Optionally also overlays HOOK spans (italic dashed underline) for
+ * DM-planted points of interest.
+ */
+export const EntityNarrationParser = ({
+  text,
+  entityMentions = [],
+  hooks = [],
+  onEntityClick,
+  onHookClick,
 }) => {
-  // If no mentions, return plain text
-  if (!entityMentions || entityMentions.length === 0) {
-    return <span>{text}</span>;
-  }
-  
+  // Merge entity mentions + hooks into a single sorted span list. When two
+  // ranges overlap, ENTITY wins (the proper-noun link is more useful than
+  // the hook hint).
+  const ents = (entityMentions || []).map((m) => ({ ...m, _kind: 'entity' }));
+  const hks = (hooks || []).map((h) => ({
+    ...h, _kind: 'hook',
+    start: h.start,
+    end: h.end,
+  }));
+
+  const all = [...ents, ...hks].filter((s) => Number.isInteger(s.start) && Number.isInteger(s.end) && s.end > s.start);
+  // Drop hooks that overlap any entity range
+  const filtered = all.filter((s) => {
+    if (s._kind !== 'hook') return true;
+    return !ents.some((e) => !(s.end <= e.start || s.start >= e.end));
+  });
+  const sorted = filtered.sort((a, b) => a.start - b.start);
+
+  if (sorted.length === 0) return <span>{text}</span>;
+
   const parts = [];
   let cursor = 0;
-  
-  // Sort mentions by start position (should already be sorted, but just in case)
-  const sortedMentions = [...entityMentions].sort((a, b) => a.start - b.start);
-  
-  sortedMentions.forEach((mention, idx) => {
-    // Add text before this mention
-    if (mention.start > cursor) {
+  sorted.forEach((sp, idx) => {
+    if (sp.start > cursor) {
+      parts.push({ type: 'text', content: text.substring(cursor, sp.start), key: `t-${idx}-pre` });
+    }
+    if (sp._kind === 'entity') {
       parts.push({
-        type: 'text',
-        content: text.substring(cursor, mention.start),
-        key: `text-${idx}-before`
+        type: 'entity',
+        entityType: sp.entity_type,
+        entityId: sp.entity_id,
+        displayText: sp.display_text || text.substring(sp.start, sp.end),
+        key: `e-${idx}`,
+      });
+    } else {
+      parts.push({
+        type: 'hook',
+        hook: sp,
+        displayText: text.substring(sp.start, sp.end),
+        key: `h-${idx}`,
       });
     }
-    
-    // Add the entity link
-    parts.push({
-      type: 'entity',
-      entityType: mention.entity_type,
-      entityId: mention.entity_id,
-      displayText: mention.display_text,
-      key: `entity-${idx}`
-    });
-    
-    cursor = mention.end;
+    cursor = sp.end;
   });
-  
-  // Add remaining text after last mention
   if (cursor < text.length) {
-    parts.push({
-      type: 'text',
-      content: text.substring(cursor),
-      key: `text-final`
-    });
+    parts.push({ type: 'text', content: text.substring(cursor), key: 't-final' });
   }
-  
+
   return (
     <span>
       {parts.map((part) => {
@@ -106,6 +142,13 @@ export const EntityNarrationParser = ({
             >
               {part.displayText}
             </EntityLink>
+          );
+        }
+        if (part.type === 'hook') {
+          return (
+            <HookSpan key={part.key} hook={part.hook} onClick={onHookClick}>
+              {part.displayText}
+            </HookSpan>
           );
         }
         return <span key={part.key}>{part.content}</span>;

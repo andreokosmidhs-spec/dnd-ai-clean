@@ -14,6 +14,7 @@ import { CampaignLogPanel } from './CampaignLogPanel';
 import CombatHUD from './CombatHUD';
 import WorldInfoPanel from './WorldInfoPanel';
 import QuestLogPanel from './QuestLogPanel';
+import ActiveInvestigationPanel, { StorylineRewardModal } from './ActiveInvestigationPanel';
 import RememberCardDialog from './RememberCardDialog';
 import SceneReportDialog from './SceneReportDialog';
 import DefeatModal from './DefeatModal';
@@ -56,6 +57,15 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   
   // Campaign Log Panel state
   const [showCampaignLog, setShowCampaignLog] = useState(false);
+
+  // Active investigation (multi-beat storyline) — drafted server-side when
+  // the player's action engages a hook the DM planted, OR the active one
+  // returned by the storyline list endpoint on mount.
+  const [activeStoryline, setActiveStoryline] = useState(null);
+  const [showRewardModal, setShowRewardModal] = useState(null);
+  // Lightweight "hook hint" popover: when the player hovers/clicks an inline
+  // hook in a DM message, we surface a small tip suggesting how to engage.
+  const [hookHint, setHookHint] = useState(null);
   
   // TTS Hook
   const { 
@@ -132,8 +142,16 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
 
     const needsBackfill = messages.some((m) =>
       m && m.type === 'dm'
-      && (m.isWorldBrief || m.source === 'intro')
-      && (!m.entity_mentions || m.entity_mentions.length === 0)
+      && (
+        m.isWorldBrief
+        || m.source === 'intro'
+        || m.isIntro
+        || (m.isCinematic && (!m.hooks || m.hooks.length === 0))
+      )
+      && (
+        (!m.entity_mentions || m.entity_mentions.length === 0)
+        || (!m.hooks || m.hooks.length === 0)
+      )
     );
     if (!needsBackfill) {
       entityBackfillRan.current = true;
@@ -149,7 +167,10 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
         const ss = data?.starting_scene || {};
         const briefMentions = ss.world_brief_entity_mentions || [];
         const introMentions = ss.entity_mentions || [];
-        if (briefMentions.length === 0 && introMentions.length === 0) return;
+        const introHooks = ss.hooks || [];
+        if (briefMentions.length === 0 && introMentions.length === 0 && introHooks.length === 0) return;
+
+        const introText = (ss.introText || '').trim();
 
         setMessages((prev) =>
           prev.map((m) => {
@@ -157,14 +178,25 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
             if (m.isWorldBrief && (!m.entity_mentions || m.entity_mentions.length === 0)) {
               return { ...m, entity_mentions: briefMentions };
             }
-            if (m.source === 'intro' && (!m.entity_mentions || m.entity_mentions.length === 0)) {
-              return { ...m, entity_mentions: introMentions };
+            // Match the intro by source flag OR by text equality (covers legacy
+            // messages saved without `source: 'intro'`).
+            const isIntro = m.source === 'intro' || m.isIntro
+              || (introText && (m.text || '').trim() === introText);
+            if (isIntro) {
+              const next = { ...m };
+              if ((!m.entity_mentions || m.entity_mentions.length === 0) && introMentions.length) {
+                next.entity_mentions = introMentions;
+              }
+              if ((!m.hooks || m.hooks.length === 0) && introHooks.length) {
+                next.hooks = introHooks;
+              }
+              return next;
             }
             return m;
           })
         );
       } catch (err) {
-        console.warn('Entity-mention backfill failed (non-fatal):', err);
+        console.warn('Entity/hook backfill failed (non-fatal):', err);
       }
     })();
   }, [campaignId, messages]);
@@ -183,6 +215,25 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messageCount]);
+
+  // Load any in-flight active storyline for this campaign so it survives
+  // refresh / navigation away. (The storyline lives on the server.)
+  useEffect(() => {
+    if (!campaignId) return;
+    let cancel = false;
+    (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/storylines`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const active = (data?.storylines || []).find((s) => s.status === 'active');
+        if (!cancel && active) setActiveStoryline(active);
+      } catch {
+        // non-fatal
+      }
+    })();
+    return () => { cancel = true; };
+  }, [campaignId]);
 
   // Initialize session and load messages
   useEffect(() => {
@@ -848,18 +899,39 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           checkRequest: data.check_request || data.requested_check || null,
           npcMentions: data.npc_mentions || [],
           entity_mentions: data.entity_mentions || [],
+          hooks: data.hooks || [],
+          engagedHookId: data.engaged_hook_id || null,
           timestamp: Date.now(),
           isCinematic: isCinematic,
           audioUrl: null,
           isGeneratingAudio: false
         };
-        
+
         console.log('📝 Adding DM message to state, current message count:', messages.length);
         setMessages(prev => {
           const updated = [...prev, dmMsg];
           console.log('📝 New message count will be:', updated.length);
           return updated;
         });
+
+        // If the player's action engaged a hook and the backend drafted a
+        // storyline, surface it as the new active investigation. This drives
+        // the side panel + reward flow.
+        if (data.storyline) {
+          setActiveStoryline(data.storyline);
+          window.showToast &&
+            window.showToast(
+              `New investigation: ${data.storyline.title}`,
+              'success'
+            );
+          // Refresh quests so the linked quest card appears in the log.
+          if (campaignId) {
+            fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/quests`)
+              .then((r) => (r.ok ? r.json() : null))
+              .then((d) => { if (d?.quests) setQuests(d.quests); })
+              .catch(() => {});
+          }
+        }
 
         // Auto-generate TTS if enabled (non-blocking)
         if (isTTSEnabled && !isCinematic) {
@@ -1271,6 +1343,28 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           </div>
         )}
 
+        {/* Active Investigation Panel — only when a hook-driven storyline is in flight */}
+        {campaignId && activeStoryline && activeStoryline.status === 'active' && (
+          <div className="px-3 pt-3">
+            <ActiveInvestigationPanel
+              campaignId={campaignId}
+              storyline={activeStoryline}
+              onUpdate={(sl) => setActiveStoryline(sl)}
+              onComplete={(sl, reward) => {
+                setActiveStoryline(null);
+                setShowRewardModal(reward);
+                // Refresh quest log so the completed quest moves to history.
+                if (campaignId) {
+                  fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/quests`)
+                    .then((r) => (r.ok ? r.json() : null))
+                    .then((d) => { if (d?.quests) setQuests(d.quests); })
+                    .catch(() => {});
+                }
+              }}
+            />
+          </div>
+        )}
+
         {/* Messages */}
         <ScrollArea className="flex-1" ref={scrollRef}>
           <div className="p-3 space-y-3">
@@ -1400,12 +1494,17 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                         <div className={`text-sm leading-relaxed ${
                           entry.isWorldBrief ? 'text-amber-50/90 italic font-serif tracking-wide' : 'text-violet-50'
                         }`}>
-                          {/* Entity Links: Parse entity markup and make clickable */}
-                          {entry.entity_mentions && entry.entity_mentions.length > 0 ? (
+                          {/* Entity Links + Hooks: parse entity markup AND inline DM hook spans */}
+                          {(
+                            (entry.entity_mentions && entry.entity_mentions.length > 0) ||
+                            (entry.hooks && entry.hooks.length > 0)
+                          ) ? (
                             <EntityNarrationParser
                               text={entry.text}
-                              entityMentions={entry.entity_mentions}
+                              entityMentions={entry.entity_mentions || []}
+                              hooks={entry.hooks || []}
                               onEntityClick={(entity) => setSelectedEntity(entity)}
+                              onHookClick={(hook) => setHookHint(hook)}
                             />
                           ) : entry.npcMentions && entry.npcMentions.length > 0 ? (
                             <NPCMentionHighlighter
@@ -1630,6 +1729,43 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           characterId={gameStateContext.characterState?.id}
           onClose={() => setShowCampaignLog(false)}
         />
+      )}
+
+      {/* Storyline reward modal — appears when an investigation completes */}
+      <StorylineRewardModal
+        open={!!showRewardModal}
+        reward={showRewardModal}
+        onClose={() => setShowRewardModal(null)}
+      />
+
+      {/* Hook hint popover — small tip when player clicks an inline hook */}
+      {hookHint && (
+        <div
+          className="fixed bottom-4 right-4 z-50 max-w-sm bg-stone-950 border border-amber-500/40 text-amber-100 rounded-md shadow-xl p-3"
+          data-testid="hook-hint-popover"
+        >
+          <div className="text-xs text-amber-300/80 uppercase tracking-wider mb-1">
+            Point of interest · {hookHint.verb_hint || 'examine'}
+          </div>
+          <div className="text-sm italic font-serif text-amber-100/95">
+            "{hookHint.text}"
+          </div>
+          <div className="text-[11.5px] text-amber-200/70 mt-2 leading-snug">
+            Type something like <em>"{hookHint.verb_hint || 'examine'} {hookHint.topic || hookHint.text}"</em> to engage.
+            The DM will weave it into a multi-beat investigation.
+          </div>
+          <div className="flex justify-end mt-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-amber-200/80 hover:text-amber-100"
+              onClick={() => setHookHint(null)}
+              data-testid="hook-hint-close-btn"
+            >
+              Dismiss
+            </Button>
+          </div>
+        </div>
       )}
     </Card>
   );

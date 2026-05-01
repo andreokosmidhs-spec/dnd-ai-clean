@@ -259,6 +259,17 @@ async def generate_world(campaignId: str):
     if isinstance(starting_scene, dict):
         starting_scene["worldBrief"] = world_brief
 
+    # Extract POINTS OF INTEREST from the opening arrival scene so the player
+    # sees clickable hooks (italic dashed underline) right away. The cheap
+    # regex pass catches the canonical "Three things draw the eye:" beat.
+    try:
+        from services.hook_extractor import extract_hooks as _extract_hooks
+        intro_text_for_hooks = (starting_scene or {}).get("introText") if isinstance(starting_scene, dict) else None
+        if intro_text_for_hooks:
+            starting_scene["hooks"] = await _extract_hooks(intro_text_for_hooks, max_hooks=3)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Hook extraction for intro failed: {exc}")
+
     # Extract entity mentions so the frontend can render clickable links
     # for locations / factions / NPCs in both the chronicle and the opening
     # arrival scene. Index is built from the world + the opening quest card
@@ -391,6 +402,7 @@ async def _backfill_legacy_campaign(campaign: Dict) -> Dict:
     if starting_scene.get("introText") and (
         "entity_mentions" not in starting_scene
         or "world_brief_entity_mentions" not in starting_scene
+        or "hooks" not in starting_scene
     ):
         try:
             cards_cursor = get_cards_collection().find(
@@ -407,6 +419,13 @@ async def _backfill_legacy_campaign(campaign: Dict) -> Dict:
         starting_scene["entity_mentions"] = extract_entity_mentions(
             starting_scene["introText"], entity_index
         )
+        # Backfill hooks for legacy intros too
+        try:
+            from services.hook_extractor import extract_hooks as _extract_hooks
+            starting_scene["hooks"] = await _extract_hooks(starting_scene["introText"], max_hooks=3)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Legacy hook backfill failed: {exc}")
+            starting_scene["hooks"] = starting_scene.get("hooks") or []
         campaign["starting_scene"] = starting_scene
         needs_save = True
 

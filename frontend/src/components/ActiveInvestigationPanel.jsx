@@ -147,43 +147,43 @@ const ActiveInvestigationPanel = ({
       onClick={onClose}
     >
       {/* Blurred backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-md" aria-hidden="true" />
+      <div className="absolute inset-0 bg-black/75 backdrop-blur-md" aria-hidden="true" />
 
       {/* Frame — clicks inside don't close */}
       <div
-        className="relative w-full max-w-5xl max-h-[88vh] flex flex-col gap-4 rounded-xl border border-amber-500/30 bg-gradient-to-b from-stone-950/95 via-stone-900/95 to-stone-950/95 p-4 sm:p-6 shadow-2xl"
+        className="relative w-full max-w-5xl max-h-[88vh] flex flex-col gap-4 rounded-xl border-2 border-amber-500/60 bg-stone-950 p-4 sm:p-6 shadow-[0_0_60px_rgba(245,158,11,0.25)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center gap-3">
           <Search className="h-5 w-5 text-amber-300 shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-amber-300/70">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-amber-300 font-semibold">
               Investigation
             </div>
-            <div className="text-amber-100 font-semibold text-base sm:text-lg truncate" data-testid="storyline-title">
+            <div className="text-amber-50 font-bold text-base sm:text-lg truncate" data-testid="storyline-title">
               {storyline.title}
             </div>
           </div>
           <Badge
             variant="outline"
-            className="text-[10px] border-amber-300/40 text-amber-100/90"
+            className="text-[11px] border-amber-300/70 text-amber-50 bg-stone-900/80 font-semibold"
             data-testid="beat-counter"
           >
             Beat {idx + 1} of {beats.length}
           </Badge>
-          <Badge variant="outline" className="text-[10px] border-amber-300/30 text-amber-200/80">
+          <Badge variant="outline" className="text-[11px] border-amber-300/70 text-amber-100 bg-stone-900/80 font-semibold">
             total DC {storyline.total_dc}
           </Badge>
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 w-7 p-0 text-amber-200/70 hover:text-amber-100"
+            className="h-8 w-8 p-0 text-amber-100 hover:bg-amber-500/20 hover:text-amber-50"
             onClick={onClose}
             title="Close (Esc)"
             data-testid="storyline-close-btn"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </Button>
         </div>
 
@@ -203,11 +203,11 @@ const ActiveInvestigationPanel = ({
         </div>
 
         {/* Active beat task line */}
-        <div className="rounded-md border border-amber-500/30 bg-stone-950/80 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-amber-300/70 mb-0.5">
+        <div className="rounded-md border border-amber-500/50 bg-stone-900 px-3 py-2.5">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-amber-300 font-semibold mb-1">
             Task
           </div>
-          <div className="text-amber-100/95 text-sm italic">
+          <div className="text-amber-50 text-sm italic font-serif leading-relaxed">
             {beat.task}
           </div>
         </div>
@@ -216,7 +216,7 @@ const ActiveInvestigationPanel = ({
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
-            className="h-9 bg-amber-600 hover:bg-amber-500 text-black font-semibold"
+            className="h-9 bg-amber-500 hover:bg-amber-400 text-black font-bold"
             onClick={handleRoll}
             disabled={busy}
             data-testid="storyline-roll-btn"
@@ -227,7 +227,7 @@ const ActiveInvestigationPanel = ({
           <Button
             size="sm"
             variant="outline"
-            className="h-9 border-emerald-400/50 text-emerald-200 hover:bg-emerald-700/20"
+            className="h-9 border-emerald-400/70 text-emerald-200 bg-emerald-950/40 hover:bg-emerald-700/30 font-semibold"
             onClick={() => submitOutcome('passed', 'Resolved by player.', null)}
             disabled={busy}
             data-testid="storyline-pass-btn"
@@ -237,7 +237,7 @@ const ActiveInvestigationPanel = ({
           <Button
             size="sm"
             variant="outline"
-            className="h-9 border-rose-400/50 text-rose-200 hover:bg-rose-700/20"
+            className="h-9 border-rose-400/70 text-rose-200 bg-rose-950/40 hover:bg-rose-700/30 font-semibold"
             onClick={() => submitOutcome('failed', 'Player accepted the failure.', null)}
             disabled={busy}
             data-testid="storyline-fail-btn"
@@ -248,7 +248,7 @@ const ActiveInvestigationPanel = ({
           <Button
             size="sm"
             variant="ghost"
-            className="h-9 text-amber-200/60 hover:text-amber-100"
+            className="h-9 text-amber-200 hover:text-amber-50 hover:bg-amber-500/10"
             onClick={handleAbandon}
             disabled={busy}
             data-testid="storyline-abandon-btn"
@@ -274,49 +274,51 @@ const BeatCard = ({ beat, index, total, isActive }) => {
 
   return (
     <div
-      className={`relative shrink-0 w-[220px] sm:w-[240px] rounded-lg border-2 overflow-hidden flex flex-col
+      className={`relative shrink-0 w-[230px] sm:w-[250px] rounded-lg border-2 overflow-hidden flex flex-col
         transition-transform duration-300
         ${isActive
-          ? `${c.border} bg-stone-900 shadow-xl scale-[1.04]`
+          ? `${c.border} bg-stone-800 shadow-xl scale-[1.04]`
           : sealed
-            ? 'border-stone-700/60 bg-stone-950/80 opacity-80'
-            : 'border-stone-700/50 bg-stone-950/60 opacity-70'}`}
+            ? 'border-stone-600 bg-stone-900'
+            : 'border-stone-600 bg-stone-900 opacity-85'}`}
       data-testid={`beat-card-${index}`}
       data-beat-status={beat.status}
     >
       {/* Top type bar */}
       <div
-        className={`flex items-center justify-between px-2.5 py-1.5 text-[10.5px] uppercase tracking-wider
-          ${sealed ? 'bg-stone-900 text-stone-500' : 'bg-stone-900/80 text-amber-200'}`}
+        className={`flex items-center justify-between px-2.5 py-1.5 text-[11px] uppercase tracking-wider border-b
+          ${sealed
+            ? 'bg-stone-800 border-stone-700 text-stone-300'
+            : 'bg-stone-700/80 border-stone-600 text-amber-100'}`}
       >
-        <span className="font-semibold">
+        <span className="font-bold">
           {sealed ? `Beat ${index + 1}` : beat.check_type}
         </span>
-        <span className={`px-1.5 py-0.5 rounded border ${
-          sealed ? 'border-stone-700 text-stone-500' : c.chip
+        <span className={`px-1.5 py-0.5 rounded border font-semibold ${
+          sealed ? 'border-stone-500 text-stone-200 bg-stone-900' : c.chip
         }`}>
           DC {beat.dc}
         </span>
       </div>
 
       {/* Card body */}
-      <div className="flex-1 px-3 py-2.5 flex flex-col gap-1.5">
+      <div className="flex-1 px-3 py-3 flex flex-col gap-2">
         {sealed ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-stone-500 py-6">
-            <Lock className="h-7 w-7 mb-1.5" />
-            <div className="text-[11px] tracking-widest uppercase">Sealed</div>
-            <div className="text-[10px] text-stone-600 mt-0.5">Beat {index + 1} of {total}</div>
+          <div className="flex-1 flex flex-col items-center justify-center text-stone-300 py-6">
+            <Lock className="h-8 w-8 mb-2 text-stone-400" />
+            <div className="text-[12px] tracking-widest uppercase font-bold text-stone-200">Sealed</div>
+            <div className="text-[11px] text-stone-400 mt-0.5">Beat {index + 1} of {total}</div>
           </div>
         ) : (
           <>
-            <div className="text-amber-100 font-semibold text-sm leading-tight">
+            <div className="text-amber-50 font-bold text-[14px] leading-tight">
               {beat.title}
             </div>
-            <div className="text-[12px] text-amber-100/80 italic font-serif leading-snug line-clamp-5">
+            <div className="text-[12.5px] text-amber-100 italic font-serif leading-relaxed line-clamp-6">
               {beat.description}
             </div>
             {beat.outcome_text && (
-              <div className="mt-1 text-[11px] text-amber-200/70 border-l-2 border-amber-500/40 pl-2 italic">
+              <div className="mt-1 text-[11.5px] text-amber-200 border-l-2 border-amber-400/70 pl-2 italic">
                 {beat.outcome_text}
               </div>
             )}
@@ -326,22 +328,24 @@ const BeatCard = ({ beat, index, total, isActive }) => {
 
       {/* Footer status */}
       <div
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] uppercase tracking-wider
-          ${sealed ? 'bg-stone-900 text-stone-500' : 'bg-stone-950/80 text-amber-200/80'}`}
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10.5px] uppercase tracking-wider border-t font-semibold
+          ${sealed
+            ? 'bg-stone-800 border-stone-700 text-stone-300'
+            : 'bg-stone-900 border-stone-700 text-amber-100'}`}
       >
-        <span className={`w-1.5 h-1.5 rounded-full ${tone.dot}`} />
+        <span className={`w-2 h-2 rounded-full ${tone.dot}`} />
         <span>{tone.label}</span>
         <div className="flex-1" />
-        <span className="text-stone-500">{index + 1}/{total}</span>
+        <span className="text-stone-300">{index + 1}/{total}</span>
       </div>
 
       {/* Stamp for resolved cards */}
       {resolved && (
         <div
           className={`pointer-events-none absolute inset-0 flex items-center justify-center
-            ${beat.status === 'passed' ? 'text-emerald-400/40' :
-              beat.status === 'failed' ? 'text-rose-500/40' :
-                                          'text-amber-400/40'}`}
+            ${beat.status === 'passed' ? 'text-emerald-400/60' :
+              beat.status === 'failed' ? 'text-rose-500/60' :
+                                          'text-amber-400/60'}`}
         >
           <span className="text-3xl font-black uppercase tracking-widest -rotate-12 border-4 border-current px-3 py-0.5">
             {beat.status}

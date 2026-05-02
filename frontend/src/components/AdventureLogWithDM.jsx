@@ -1727,24 +1727,24 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
       {/* Hook hint popover — small tip when player clicks an inline hook */}
       {hookHint && (
         <div
-          className="fixed bottom-4 right-4 z-50 max-w-sm bg-stone-950 border border-amber-500/40 text-amber-100 rounded-md shadow-xl p-3"
+          className="fixed bottom-4 right-4 z-50 max-w-sm bg-stone-950 border-2 border-amber-500/70 text-amber-50 rounded-md shadow-2xl p-4"
           data-testid="hook-hint-popover"
         >
-          <div className="text-xs text-amber-300/80 uppercase tracking-wider mb-1">
+          <div className="text-[11px] text-amber-300 font-bold uppercase tracking-wider mb-1.5">
             Point of interest · {hookHint.verb_hint || 'examine'}
           </div>
-          <div className="text-sm italic font-serif text-amber-100/95">
+          <div className="text-sm italic font-serif text-amber-50">
             "{hookHint.text}"
           </div>
-          <div className="text-[11.5px] text-amber-200/70 mt-2 leading-snug">
-            Type something like <em>"{hookHint.verb_hint || 'examine'} {hookHint.topic || hookHint.text}"</em> to engage.
+          <div className="text-[12px] text-amber-100/95 mt-2.5 leading-snug">
+            Type something like <em className="text-amber-200">"{hookHint.verb_hint || 'examine'} {hookHint.topic || hookHint.text}"</em> to engage.
             The DM will weave it into a multi-beat investigation.
           </div>
           <div className="flex justify-end mt-2">
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 text-amber-200/80 hover:text-amber-100"
+              className="h-7 text-amber-100 hover:text-amber-50 hover:bg-amber-500/15"
               onClick={() => setHookHint(null)}
               data-testid="hook-hint-close-btn"
             >

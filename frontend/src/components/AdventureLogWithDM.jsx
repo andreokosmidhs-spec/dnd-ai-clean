@@ -58,9 +58,10 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   // Campaign Log Panel state
   const [showCampaignLog, setShowCampaignLog] = useState(false);
 
-  // Active investigation (multi-beat storyline) — drafted server-side when
-  // the player's action engages a hook the DM planted, OR the active one
-  // returned by the storyline list endpoint on mount.
+  // Active investigation (multi-beat storyline). It is set ONLY when the
+  // player's action engages a hook in this session — never auto-restored from
+  // the server on mount. The player can dismiss it; the storyline keeps
+  // existing server-side and shows up in the Quest Log either way.
   const [activeStoryline, setActiveStoryline] = useState(null);
   const [showRewardModal, setShowRewardModal] = useState(null);
   // Lightweight "hook hint" popover: when the player hovers/clicks an inline
@@ -216,24 +217,9 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
     }
   }, [messageCount]);
 
-  // Load any in-flight active storyline for this campaign so it survives
-  // refresh / navigation away. (The storyline lives on the server.)
-  useEffect(() => {
-    if (!campaignId) return;
-    let cancel = false;
-    (async () => {
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/storylines`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const active = (data?.storylines || []).find((s) => s.status === 'active');
-        if (!cancel && active) setActiveStoryline(active);
-      } catch {
-        // non-fatal
-      }
-    })();
-    return () => { cancel = true; };
-  }, [campaignId]);
+  // (No mount-time storyline auto-restore: the investigation panel only
+  // surfaces when the player's CURRENT action engages a hook in this session.
+  // The storyline still lives server-side and stays linked to the Quest Log.)
 
   // Initialize session and load messages
   useEffect(() => {
@@ -1343,26 +1329,26 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           </div>
         )}
 
-        {/* Active Investigation Panel — only when a hook-driven storyline is in flight */}
+        {/* Active Investigation — centered modal with blurred backdrop.
+            Appears only when a NEW storyline is drafted from a hook engagement
+            this session. Dismissible; the storyline persists server-side. */}
         {campaignId && activeStoryline && activeStoryline.status === 'active' && (
-          <div className="px-3 pt-3">
-            <ActiveInvestigationPanel
-              campaignId={campaignId}
-              storyline={activeStoryline}
-              onUpdate={(sl) => setActiveStoryline(sl)}
-              onComplete={(sl, reward) => {
-                setActiveStoryline(null);
-                setShowRewardModal(reward);
-                // Refresh quest log so the completed quest moves to history.
-                if (campaignId) {
-                  fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/quests`)
-                    .then((r) => (r.ok ? r.json() : null))
-                    .then((d) => { if (d?.quests) setQuests(d.quests); })
-                    .catch(() => {});
-                }
-              }}
-            />
-          </div>
+          <ActiveInvestigationPanel
+            campaignId={campaignId}
+            storyline={activeStoryline}
+            onUpdate={(sl) => setActiveStoryline(sl)}
+            onClose={() => setActiveStoryline(null)}
+            onComplete={(sl, reward) => {
+              setActiveStoryline(null);
+              setShowRewardModal(reward);
+              if (campaignId) {
+                fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/quests`)
+                  .then((r) => (r.ok ? r.json() : null))
+                  .then((d) => { if (d?.quests) setQuests(d.quests); })
+                  .catch(() => {});
+              }
+            }}
+          />
         )}
 
         {/* Messages */}

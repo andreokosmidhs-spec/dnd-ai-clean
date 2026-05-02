@@ -38,6 +38,22 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Failure Semantics for Investigations
+Properly defined what happens when a beat's check fails — until now a fail still advanced, making the DC pointless.
+- **Backend** (`services/storyline_service.py`, `routers/storylines.py`):
+  - `/resolve` now accepts `mode: "fail-forward" | "press-on"`. Fail-forward marks the beat failed, advances, and emits a `complication` (1-2 sentence Mercer-style narration). Press-on keeps the beat active, sets `press_on_used=true` (one-time per storyline), emits a cost-of-retry complication. Second press-on returns `400 — Press On already used`.
+  - New `POST /storylines/{sid}/creative` — body `{approach_text}`. Calls `judge_creative_approach` (LLM judge that's generous to inventive thinking); returns `{judgment: 'passed'|'partial'|'failed', narration, applied_check, complication?}`. Pass/partial → beat passed (player gets credit); fail → beat failed + complication generated.
+  - **Reward scales linearly** with passed beats (XP rounded to 25, items only awarded if ≥50% of beats passed). All-fail storylines yield 0 XP, no item.
+  - Storyline drafts now persist `press_on_used:false`, `complication:null` defaults.
+- **Frontend** (`components/ActiveInvestigationPanel.jsx`, `AdventureLogWithDM.jsx`):
+  - Roll button shows `Roll d20+<mod>`; ability mod is derived from character's stats per check type (Investigation→INT, Persuasion→CHA, etc.).
+  - On a failed roll → `FailurePrompt` dialog opens with three choices: **Press On** (greyed if already used), **Push Through** (fail forward), **Try a Different Approach** (opens a `CreativeApproachDialog` with a Textarea for the player to describe an alternative strategy).
+  - `Try Different Approach` is also available as a top-level button on the panel (not gated behind a fail).
+  - Header shows live `passed` / `failed` count badges.
+  - Complications and creative-approach narrations land in the Adventure Log under their own card titles: **"⚠️ Complication — &lt;Storyline&gt;"** and **"✨ A Different Approach (judgment)"** — both persisted to localStorage.
+  - Reward modal shows `passed · failed` chip and an honest "No item this run" line when the threshold wasn't met.
+- **Tests**: `/app/backend/tests/test_storyline_failure_semantics.py` (8/8 passing) covering all four mechanics + reward scaling + regressions.
+
 #### Hook → Storyline → Reward (Procedural Investigation Generator)
 - **Backend**:
   - `services/hook_extractor.py` — extracts up to 3 "points of interest" from any DM narration (regex fast-path for "Three things draw the eye:" enumerations + LLM fallback for free-form scenes). Each hook ships with literal text + char span + topic + verb_hint. `detect_engaged_hook` decides whether a player's action targets one of the active hooks (idle-verb stoplist + LLM nuance).

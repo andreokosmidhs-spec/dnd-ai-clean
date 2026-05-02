@@ -42,7 +42,9 @@ from models.campaign_models import KnowledgeCard
 from services.storyline_service import (
     advance_storyline,
     draft_storyline,
+    generate_complication_beat,
     generate_storyline_reward,
+    judge_creative_approach,
     storyline_to_dict,
 )
 
@@ -109,6 +111,15 @@ class ResolveStorylineBody(BaseModel):
     outcome: str  # "passed" | "failed" | "skipped"
     outcome_text: Optional[str] = None
     roll_total: Optional[int] = None
+    # Failure handling: "fail-forward" advances to next beat with a complication,
+    # "press-on" retries the SAME beat (one-time per storyline) with a complication.
+    # Defaults to "fail-forward" when outcome="failed".
+    mode: Optional[str] = None  # "fail-forward" | "press-on"
+
+
+class CreativeApproachBody(BaseModel):
+    """Player describes an alternative way to resolve the current beat."""
+    approach_text: str
 
 
 # -------------------- endpoints --------------------
@@ -173,6 +184,8 @@ async def draft_storyline_endpoint(campaign_id: str, body: DraftStorylineBody):
         "current_beat": 0,
         "beats": drafted["beats"],
         "total_dc": drafted["total_dc"],
+        "press_on_used": False,
+        "complication": None,
         "reward": None,
         "quest_card_id": quest_card.id,
         "created_at": now,
@@ -220,21 +233,81 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
         raise HTTPException(status_code=400, detail="Storyline already completed")
 
     current = int(doc.get("current_beat") or 0)
+    beats = doc.get("beats") or []
+    cur_beat = beats[current] if 0 <= current < len(beats) else {}
+    campaign = await _load_campaign(campaign_id)
+    character = await _load_character(doc.get("character_id")) or {}
+
+    # Decide failure mode (only relevant when outcome == 'failed').
+    mode = (body.mode or "").strip().lower()
+    is_press_on = (body.outcome == "failed" and mode == "press-on")
+
+    if is_press_on:
+        if doc.get("press_on_used"):
+            raise HTTPException(status_code=400, detail="Press On already used this storyline")
+        # Generate the cost-of-retry complication beat WITHOUT advancing.
+        complication_text = await generate_complication_beat(
+            intent=campaign.get("intent") or {},
+            world=campaign.get("world") or {},
+            character=character,
+            storyline=doc,
+            beat=cur_beat,
+            mode="press-on",
+        )
+        # Mark the beat with the complication note but keep it active.
+        beats = doc.get("beats") or []
+        if 0 <= current < len(beats):
+            beats[current]["status"] = "active"
+            beats[current]["outcome_text"] = (body.outcome_text or "Failed — pressing on.")[:240]
+        doc["press_on_used"] = True
+        doc["complication"] = complication_text
+        doc["updated_at"] = datetime.now(timezone.utc)
+        await _storylines_collection().update_one(
+            {"campaign_id": campaign_id, "id": storyline_id},
+            {"$set": {k: v for k, v in doc.items() if k != "_id"}},
+        )
+        return {
+            "storyline": storyline_to_dict(doc),
+            "completed": False,
+            "mode": "press-on",
+            "complication": complication_text,
+            "reward": None,
+        }
+
+    # Default path: advance the beat (outcome can be passed | failed | skipped).
     storyline = advance_storyline(doc, current, body.outcome, body.outcome_text)
+
+    # If failed (and not press-on), produce a fail-forward complication so the
+    # Adventure Log gets a narrative beat tying the failure to the story.
+    complication_text: Optional[str] = None
+    if body.outcome == "failed":
+        try:
+            complication_text = await generate_complication_beat(
+                intent=campaign.get("intent") or {},
+                world=campaign.get("world") or {},
+                character=character,
+                storyline=storyline,
+                beat=cur_beat,
+                mode="fail-forward",
+            )
+            storyline["complication"] = complication_text
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"complication beat failed (non-fatal): {exc}")
 
     completed = storyline.get("status") == "completed"
     reward: Optional[Dict] = None
     if completed:
-        campaign = await _load_campaign(campaign_id)
-        character = await _load_character(doc.get("character_id")) or {}
         reward = await generate_storyline_reward(campaign, character, storyline)
         storyline["reward"] = reward
-        # Mark the linked quest card completed (best-effort)
+        # Mark the linked quest card based on pass ratio: completed if any
+        # beats passed, else failed.
+        passed_any = any(b.get("status") == "passed" for b in (storyline.get("beats") or []))
+        quest_status = "completed" if passed_any else "failed"
         quest_card_id = storyline.get("quest_card_id")
         if quest_card_id:
             await _cards_collection().update_one(
                 {"campaign_id": campaign_id, "id": quest_card_id},
-                {"$set": {"status": "completed", "updatedAt": datetime.now(timezone.utc)}},
+                {"$set": {"status": quest_status, "updatedAt": datetime.now(timezone.utc)}},
             )
     else:
         # Update the linked quest card description so the Quest Log reflects
@@ -243,10 +316,10 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
         if quest_card_id:
             beats = storyline.get("beats") or []
             cur = int(storyline.get("current_beat") or 0)
-            cur_beat = beats[cur] if 0 <= cur < len(beats) else {}
+            cur_beat_now = beats[cur] if 0 <= cur < len(beats) else {}
             new_desc = (
-                f"{cur_beat.get('description','')} (Beat {cur+1} of {len(beats)} — "
-                f"{cur_beat.get('check_type','Investigation')} DC {cur_beat.get('dc',12)}.)"
+                f"{cur_beat_now.get('description','')} (Beat {cur+1} of {len(beats)} — "
+                f"{cur_beat_now.get('check_type','Investigation')} DC {cur_beat_now.get('dc',12)}.)"
             )
             await _cards_collection().update_one(
                 {"campaign_id": campaign_id, "id": quest_card_id},
@@ -261,6 +334,102 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
     return {
         "storyline": storyline_to_dict(storyline),
         "completed": completed,
+        "mode": "fail-forward" if body.outcome == "failed" else "advance",
+        "complication": complication_text,
+        "reward": reward,
+    }
+
+
+@router.post("/{campaign_id}/storylines/{storyline_id}/creative")
+async def creative_approach_endpoint(
+    campaign_id: str, storyline_id: str, body: CreativeApproachBody
+):
+    """Player proposes an alternative approach to the current beat. The DM
+    judges (passed | partial | failed); on passed/partial, the beat advances
+    and the player gets credit. On failed, the beat is marked failed and we
+    fall through to fail-forward (complication + advance)."""
+    text = (body.approach_text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="approach_text is required")
+
+    doc = await _storylines_collection().find_one({"campaign_id": campaign_id, "id": storyline_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Storyline not found")
+    if doc.get("status") == "completed":
+        raise HTTPException(status_code=400, detail="Storyline already completed")
+
+    current = int(doc.get("current_beat") or 0)
+    beats = doc.get("beats") or []
+    if not (0 <= current < len(beats)):
+        raise HTTPException(status_code=400, detail="No active beat")
+    cur_beat = beats[current]
+
+    campaign = await _load_campaign(campaign_id)
+    character = await _load_character(doc.get("character_id")) or {}
+
+    judgment = await judge_creative_approach(
+        intent=campaign.get("intent") or {},
+        world=campaign.get("world") or {},
+        character=character,
+        storyline=doc,
+        beat=cur_beat,
+        approach_text=text,
+    )
+
+    judged_outcome = judgment.get("outcome", "partial")
+    narration = judgment.get("narration") or ""
+    # Map judgment to a storyline outcome:
+    #   'passed'  -> advance with a clean pass
+    #   'partial' -> advance, marked passed (player took a hit narratively)
+    #   'failed'  -> mark failed, fall through to fail-forward
+    storyline_outcome = "passed" if judged_outcome in {"passed", "partial"} else "failed"
+
+    storyline = advance_storyline(
+        doc, current, storyline_outcome,
+        outcome_text=f"Creative approach ({judged_outcome}): {narration}"[:240],
+    )
+
+    complication_text: Optional[str] = None
+    if storyline_outcome == "failed":
+        try:
+            complication_text = await generate_complication_beat(
+                intent=campaign.get("intent") or {},
+                world=campaign.get("world") or {},
+                character=character,
+                storyline=storyline,
+                beat=cur_beat,
+                mode="fail-forward",
+            )
+            storyline["complication"] = complication_text
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"complication after creative-fail failed: {exc}")
+
+    completed = storyline.get("status") == "completed"
+    reward: Optional[Dict] = None
+    if completed:
+        reward = await generate_storyline_reward(campaign, character, storyline)
+        storyline["reward"] = reward
+        passed_any = any(b.get("status") == "passed" for b in (storyline.get("beats") or []))
+        quest_status = "completed" if passed_any else "failed"
+        quest_card_id = storyline.get("quest_card_id")
+        if quest_card_id:
+            await _cards_collection().update_one(
+                {"campaign_id": campaign_id, "id": quest_card_id},
+                {"$set": {"status": quest_status, "updatedAt": datetime.now(timezone.utc)}},
+            )
+
+    await _storylines_collection().update_one(
+        {"campaign_id": campaign_id, "id": storyline_id},
+        {"$set": {k: v for k, v in storyline.items() if k != "_id"}},
+    )
+
+    return {
+        "storyline": storyline_to_dict(storyline),
+        "completed": completed,
+        "judgment": judged_outcome,        # 'passed' | 'partial' | 'failed'
+        "narration": narration,            # DM's response to the creative approach
+        "applied_check": judgment.get("applied_check"),
+        "complication": complication_text,  # only when judged_outcome == 'failed'
         "reward": reward,
     }
 

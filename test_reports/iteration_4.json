@@ -1,0 +1,43 @@
+{
+  "summary": "Tested the new failure-semantics layer on top of Hook->Storyline->Reward. Backend: authored /app/backend/tests/test_storyline_failure_semantics.py with 8 pytest cases -- 8/8 PASS on a clean run. Verified: (1) fresh /storylines/draft persists press_on_used=false and complication=null defaults; (2) /resolve {outcome:'failed', mode:'fail-forward'} advances current_beat by 1, marks beat[prev].status='failed', returns mode='fail-forward' and a non-empty 1-2 sentence complication string, and sets storyline.complication to that text; (3) /resolve {outcome:'failed', mode:'press-on'} does NOT advance (current_beat stays), keeps beat status='active', sets press_on_used=true and returns mode='press-on' + complication; (4) second press-on on same storyline returns 400 with message 'Press On already used this storyline' (wrapped in {error:{message:...}} by the global error handler - note for FE); (5) /creative with approach_text returns judgment in {passed,partial,failed}, narration string, applied_check dict, and advances the storyline (pass/partial -> beat passed; fail -> beat failed + complication); (6) reward scaling: all-fail storyline yields xp=0 and item=null; (n-1)-of-n pass storyline yields xp < theoretical all-pass base, xp % 25 == 0, within ~50 xp of base*(n-1)/n, and item is present because pass ratio >=50%; (7) regression: list/get/abandon all still work. Frontend: loaded latest campaign (a19b5ff2-...) successfully via main-menu-load-latest-campaign-btn; verified via codebase+runtime that the NEW data-testids exist (failure-prompt, fail-press-on-btn, fail-push-through-btn, fail-creative-btn, creative-approach-dialog, creative-approach-input, creative-submit-btn, beat-counter, reward-xp, reward-item, beat-card-{i}). Took a screenshot of the loaded campaign page showing 3 inline hook spans and the Adventure Log. Could NOT drive a live FailurePrompt in this run because the ActiveInvestigationPanel mounts only when the engagement flow sends a `storyline` payload through the DM action, and the Send button click on the footer input did not produce a new DM turn (likely a mode/focus issue with the textarea in the automation). The existing storyline created via /storylines/draft does not auto-mount the panel on page reload -- the UI only mounts the panel from engagement-driven state. NOT a blocking bug for this review (backend is fully verified end-to-end; iteration 3 already validated panel mount, roll/pass/fail/abandon/reward-modal path). Linting clean.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/campaigns/{cid}/storylines/{sid}/resolve (press-on conflict)", "issue": "400 body is wrapped by the global error middleware as {error:{message:'Press On already used this storyline',type:'bad_request'}, success:false, data:null} rather than FastAPI's native {detail:...}. Confirm the frontend reads body.error.message (not body.detail) so the user-facing toast surfaces the reason -- otherwise the user will just see a generic 400."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Drafting a storyline via /storylines/draft and reloading does NOT mount the ActiveInvestigationPanel", "issue": "AdventureLogWithDM appears to mount the panel only from an engagement turn's in-memory payload, not by polling /storylines on load. If the user refreshes mid-investigation, the panel vanishes until a new engagement turn is made. Worth confirming intended; if not, add a GET /storylines?status=active on load and hydrate the panel from the latest active doc.", "affected_selectors": ["active-investigation-panel"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_storyline_failure_semantics.py",
+    "/app/test_reports/pytest/failure_semantics_results.xml"
+  ],
+  "action_items": [
+    "(Minor) Verify ActiveInvestigationPanel rehydrates from GET /api/campaigns/{cid}/storylines (status=active) on page load, so a mid-investigation refresh doesn't lose the panel.",
+    "(Minor) Confirm frontend error-toast mapping for /resolve 400 reads error.message (wrapped format), not detail, so 'Press On already used this storyline' surfaces to the user.",
+    "(Optional) Live Playwright pass through FailurePrompt -> CreativeApproachDialog on a real engagement flow. Main agent can self-test once the engagement-turn input is driven correctly in automation or by manual QA.",
+    "(Already called out in iteration 3) Engagement detector still over-matches some passive actions; not re-tested here."
+  ],
+  "critical_code_review_comments": [
+    "routers/storylines.py::resolve_storyline_beat correctly short-circuits press-on before advance_storyline, generates a separate 'cost-of-retry' complication, and refuses a second press-on. Good.",
+    "routers/storylines.py::creative_approach_endpoint maps judged 'partial' to outcome 'passed' when advancing -- this means a partial still counts as a passed beat for reward-scaling purposes. Intended? If not, partial beats should count as half-pass for reward ratio.",
+    "services/storyline_service.generate_storyline_reward: item is correctly gated on >=50% passed beats; zero-pass correctly yields xp=0 and no item. Verified.",
+    "storyline_to_dict should ensure `press_on_used` and `complication` keys are always present in the output dict even for pre-existing docs drafted before this migration (back-compat). Old docs without press_on_used default to False via python .get() lookups in routers, but the frontend may rely on the key being in the payload. Consider defaulting in storyline_to_dict.",
+    "/creative and /resolve both run advance_storyline + persist + reward-generation inline; duplication is minor but an internal _advance_and_persist helper would reduce drift risk."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_storyline_failure_semantics.py"
+  ],
+  "success_rate": {"backend": "100% (8/8 new failure-semantics tests pass)", "frontend": "Not fully exercised this iteration -- main-menu load + data-testid presence verified; live FailurePrompt/CreativeApproachDialog path not driven due to engagement-input automation issue (flow itself is wired in code per iteration 3 verification)"},
+  "test_credentials": "None required; uses seeded campaign a19b5ff2-e859-4cef-9019-b36e2dbfdd39 and character 69f2985e0999201c3edfaa3a.",
+  "seed_data_creation": "Tests insert ~6 TEST_-prefixed storylines (plus linked quest cards) on the existing campaign: draft-defaults, failforward, presson, creative, allfail-reward, mixed-pass, reg-listget, reg-abandon. Several are completed (status=completed) and one is abandoned. They do not block rerunning the suite.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression file: /app/backend/tests/test_storyline_failure_semantics.py (rerun anytime). Iteration 3 regression file /app/backend/tests/test_storylines.py still valid. For FE testing of the FailurePrompt live path, drive engagement via the footer input: select 'Action' mode, focus the textarea (Alt+A shortcut), type an engagement phrase like 'I carefully follow the scuff marks leading away from the scene.', click the Send button, wait ~20s for the LLM, then [data-testid=active-investigation-panel] should appear. Then click [data-testid=storyline-roll-btn] repeatedly (d20+0 vs DC 10-12 fails ~50% of the time) until [data-testid=failure-prompt] opens; click [data-testid=fail-creative-btn] -> [data-testid=creative-approach-dialog] -> [data-testid=creative-approach-input] + [data-testid=creative-submit-btn]. Adventure-log entries surface with titles 'Complication -' and 'A Different Approach (passed|partial|failed)'. On second press-on, expect a toast with 'Press On already used this storyline' sourced from response.error.message (backend uses wrapped error shape, NOT fastapi detail).",
+  "rca of the issue": "N/A for this iteration -- no backend bug. Frontend integration concern: panel rehydration on refresh likely relies on in-memory state only; confirm with main agent."
+}

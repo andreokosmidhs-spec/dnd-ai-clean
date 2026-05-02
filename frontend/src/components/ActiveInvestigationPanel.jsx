@@ -1,26 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
-import { Search, Check, X, Dice5, Loader2, Trophy, Scroll, Lock } from 'lucide-react';
+import { Textarea } from './ui/textarea';
+import { Search, Check, X, Dice5, Loader2, Trophy, Scroll, Lock, RotateCw, ArrowRight, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { abilityMod } from '../utils/hp';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 const checkColors = {
-  Investigation:  { chip: 'bg-sky-500/20 text-sky-200 border-sky-400/40',         border: 'border-sky-400/60'        },
-  Perception:     { chip: 'bg-cyan-500/20 text-cyan-200 border-cyan-400/40',      border: 'border-cyan-400/60'       },
-  Insight:        { chip: 'bg-violet-500/20 text-violet-200 border-violet-400/40', border: 'border-violet-400/60'    },
-  Persuasion:     { chip: 'bg-amber-500/20 text-amber-200 border-amber-400/40',    border: 'border-amber-400/60'     },
-  Deception:      { chip: 'bg-purple-500/20 text-purple-200 border-purple-400/40', border: 'border-purple-400/60'    },
-  Intimidation:   { chip: 'bg-red-500/20 text-red-200 border-red-400/40',          border: 'border-red-400/60'       },
-  Stealth:        { chip: 'bg-slate-500/20 text-slate-200 border-slate-400/40',    border: 'border-slate-400/60'     },
-  'Sleight of Hand': { chip: 'bg-zinc-500/20 text-zinc-200 border-zinc-400/40',    border: 'border-zinc-400/60'      },
-  Athletics:      { chip: 'bg-orange-500/20 text-orange-200 border-orange-400/40', border: 'border-orange-400/60'    },
-  Arcana:         { chip: 'bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-400/40', border: 'border-fuchsia-400/60' },
-  History:        { chip: 'bg-yellow-500/20 text-yellow-200 border-yellow-400/40', border: 'border-yellow-400/60'    },
-  Nature:         { chip: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40', border: 'border-emerald-400/60' },
-  Survival:       { chip: 'bg-lime-500/20 text-lime-200 border-lime-400/40',       border: 'border-lime-400/60'      },
+  Investigation:    { chip: 'bg-sky-500/20 text-sky-200 border-sky-400/40',         border: 'border-sky-400/60'        },
+  Perception:       { chip: 'bg-cyan-500/20 text-cyan-200 border-cyan-400/40',      border: 'border-cyan-400/60'       },
+  Insight:          { chip: 'bg-violet-500/20 text-violet-200 border-violet-400/40', border: 'border-violet-400/60'    },
+  Persuasion:       { chip: 'bg-amber-500/20 text-amber-200 border-amber-400/40',    border: 'border-amber-400/60'     },
+  Deception:        { chip: 'bg-purple-500/20 text-purple-200 border-purple-400/40', border: 'border-purple-400/60'    },
+  Intimidation:     { chip: 'bg-red-500/20 text-red-200 border-red-400/40',          border: 'border-red-400/60'       },
+  Stealth:          { chip: 'bg-slate-500/20 text-slate-200 border-slate-400/40',    border: 'border-slate-400/60'     },
+  'Sleight of Hand':{ chip: 'bg-zinc-500/20 text-zinc-200 border-zinc-400/40',       border: 'border-zinc-400/60'      },
+  Athletics:        { chip: 'bg-orange-500/20 text-orange-200 border-orange-400/40', border: 'border-orange-400/60'    },
+  Arcana:           { chip: 'bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-400/40', border: 'border-fuchsia-400/60' },
+  History:          { chip: 'bg-yellow-500/20 text-yellow-200 border-yellow-400/40', border: 'border-yellow-400/60'    },
+  Nature:           { chip: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40', border: 'border-emerald-400/60' },
+  Survival:         { chip: 'bg-lime-500/20 text-lime-200 border-lime-400/40',       border: 'border-lime-400/60'      },
 };
 
 const colorsFor = (k) => checkColors[k] || checkColors.Investigation;
@@ -33,53 +35,86 @@ const STATUS_TONE = {
   pending: { dot: 'bg-stone-600',   label: 'sealed'    },
 };
 
+const ABILITY_FOR_CHECK = {
+  Investigation: 'int', Perception: 'wis',  Insight: 'wis',
+  Persuasion: 'cha',    Deception: 'cha',   Intimidation: 'cha',
+  Stealth: 'dex',       'Sleight of Hand': 'dex',
+  Athletics: 'str',     Arcana: 'int',      History: 'int',
+  Nature: 'wis',        Survival: 'wis',
+};
+
+const readAbilityScore = (character, key) => {
+  if (!character) return 10;
+  const a = character.abilityScores || character.stats || {};
+  return Number(
+    a[key] ??
+    a[{ str: 'strength', dex: 'dexterity', con: 'constitution', int: 'intelligence', wis: 'wisdom', cha: 'charisma' }[key]] ??
+    10
+  );
+};
+
+const formatMod = (m) => (m >= 0 ? `+${m}` : `${m}`);
+
 /**
  * ActiveInvestigationPanel — centered modal with a card-draft layout.
+ * Failure semantics:
+ *   - Default: "fail-forward" (advance with a complication beat)
+ *   - One-time "Press On" per storyline (retry with a cost)
+ *   - "Try a different approach" — player types a strategy, DM judges
  *
- *   ┌──────── BLURRED BACKDROP ────────┐
- *   │   ┌─ Card 1 ─┬─ Card 2 ─┬─ ─┐    │
- *   │   │   live   │  sealed  │ … │    │
- *   │   └──────────┴──────────┴───┘    │
- *   │       Roll d20 · Pass · Fail     │
- *   └──────────────────────────────────┘
- *
- * The active beat sits center, future beats render face-down (sealed) to
- * the right, resolved beats render face-up + dimmed to the left.
- *
- * Style is intentionally restrained right now — once the user shares the
- * card-draft reference image we'll do a tighter visual pass on the card
- * frames (border art, parchment grain, type-bar gradient, etc.).
+ * Rolls are d20 + ability modifier (Investigation→INT, etc.).
  */
 const ActiveInvestigationPanel = ({
   campaignId,
+  character,
   storyline,
   onUpdate,
   onComplete,
   onClose,
+  onComplication,    // fired when the backend returns a complication beat
+  onCreativeNarration, // fired when a creative approach lands a narration
 }) => {
   const [busy, setBusy] = useState(false);
-  const [lastRoll, setLastRoll] = useState(null);
+  const [lastRoll, setLastRoll] = useState(null);  // { die, mod, total, dc, passed }
+  const [failPrompt, setFailPrompt] = useState(false);
+  const [creativeOpen, setCreativeOpen] = useState(false);
+  const [creativeText, setCreativeText] = useState('');
 
-  // Lock body scroll while the modal is up; close on Escape.
+  // Lock body scroll while the modal is up; close on Escape (only when
+  // no nested dialogs are open).
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const onKey = (e) => { if (e.key === 'Escape') onClose && onClose(); };
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !failPrompt && !creativeOpen) onClose && onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKey);
     };
-  }, [onClose]);
+  }, [onClose, failPrompt, creativeOpen]);
 
-  if (!storyline || storyline.status !== 'active') return null;
-
-  const beats = storyline.beats || [];
-  const idx = storyline.current_beat ?? 0;
+  const beats = storyline?.beats || [];
+  const idx = storyline?.current_beat ?? 0;
   const beat = beats[idx];
-  if (!beat) return null;
 
-  const submitOutcome = async (outcome, outcomeText, rollTotal) => {
+  const ability = useMemo(
+    () => ABILITY_FOR_CHECK[beat?.check_type] || 'int',
+    [beat?.check_type]
+  );
+  const mod = useMemo(
+    () => abilityMod(readAbilityScore(character, ability)),
+    [character, ability]
+  );
+
+  if (!storyline || storyline.status !== 'active' || !beat) return null;
+
+  const pressOnAvailable = !storyline.press_on_used;
+
+  // -------- API helpers --------
+
+  const callResolve = async ({ outcome, mode = null, rollTotal = null, outcomeText = null }) => {
     setBusy(true);
     try {
       const res = await fetch(
@@ -89,41 +124,93 @@ const ActiveInvestigationPanel = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             outcome,
-            outcome_text: outcomeText || null,
-            roll_total: rollTotal ?? null,
+            mode,
+            outcome_text: outcomeText,
+            roll_total: rollTotal,
           }),
         }
       );
-      if (!res.ok) throw new Error(`Resolve failed: ${res.status}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `Resolve failed: ${res.status}`);
+      }
       const data = await res.json();
+      if (data.complication && onComplication) onComplication(data.complication, data.storyline);
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);
       } else {
         onUpdate && onUpdate(data.storyline);
       }
-      setLastRoll(null);
     } catch (e) {
-      toast.error('Could not advance the investigation. Try again.');
+      toast.error(e.message || 'Could not advance the investigation.');
+    } finally {
+      setBusy(false);
+      setFailPrompt(false);
+    }
+  };
+
+  const callCreative = async (approach) => {
+    if (!approach.trim()) {
+      toast.error('Describe your approach first.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/api/campaigns/${campaignId}/storylines/${storyline.id}/creative`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ approach_text: approach }),
+        }
+      );
+      if (!res.ok) throw new Error(`Creative failed: ${res.status}`);
+      const data = await res.json();
+      if (data.narration && onCreativeNarration) {
+        onCreativeNarration(data.narration, data.judgment, data.storyline);
+      }
+      if (data.complication && onComplication) {
+        onComplication(data.complication, data.storyline);
+      }
+      if (data.completed) {
+        onComplete && onComplete(data.storyline, data.reward);
+      } else {
+        onUpdate && onUpdate(data.storyline);
+      }
+      setCreativeOpen(false);
+      setCreativeText('');
+      toast.success(`DM judged: ${data.judgment}`);
+    } catch (e) {
+      toast.error('Could not submit your approach.');
     } finally {
       setBusy(false);
     }
   };
 
+  // -------- Roll & resolve --------
+
   const handleRoll = () => {
     const die = 1 + Math.floor(Math.random() * 20);
-    setLastRoll(die);
-    const passed = die >= beat.dc;
-    submitOutcome(
-      passed ? 'passed' : 'failed',
-      `Rolled ${die} vs DC ${beat.dc} — ${passed ? 'success' : 'failed'}.`,
-      die
-    );
+    const total = die + mod;
+    const passed = total >= beat.dc;
+    setLastRoll({ die, mod, total, dc: beat.dc, passed });
+    if (passed) {
+      callResolve({
+        outcome: 'passed',
+        rollTotal: total,
+        outcomeText: `Rolled ${die}${formatMod(mod)} = ${total} vs DC ${beat.dc} — success.`,
+      });
+    } else {
+      // Don't advance yet — let the player choose: Press On / Push Through / Creative
+      setFailPrompt(true);
+    }
   };
 
+  const passed = beats.filter((b) => b.status === 'passed').length;
+  const failed = beats.filter((b) => b.status === 'failed').length;
+
   const handleAbandon = async () => {
-    if (!window.confirm('Abandon this investigation? The active quest card will be marked failed.')) {
-      return;
-    }
+    if (!window.confirm('Abandon this investigation? The active quest card will be marked failed.')) return;
     setBusy(true);
     try {
       const res = await fetch(
@@ -146,10 +233,8 @@ const ActiveInvestigationPanel = ({
       data-testid="active-investigation-panel"
       onClick={onClose}
     >
-      {/* Blurred backdrop */}
       <div className="absolute inset-0 bg-black/75 backdrop-blur-md" aria-hidden="true" />
 
-      {/* Frame — clicks inside don't close */}
       <div
         className="relative w-full max-w-5xl max-h-[88vh] flex flex-col gap-4 rounded-xl border-2 border-amber-500/60 bg-stone-950 p-4 sm:p-6 shadow-[0_0_60px_rgba(245,158,11,0.25)]"
         onClick={(e) => e.stopPropagation()}
@@ -165,51 +250,48 @@ const ActiveInvestigationPanel = ({
               {storyline.title}
             </div>
           </div>
-          <Badge
-            variant="outline"
-            className="text-[11px] border-amber-300/70 text-amber-50 bg-stone-900/80 font-semibold"
-            data-testid="beat-counter"
-          >
+          <Badge variant="outline" className="text-[11px] border-amber-300/70 text-amber-50 bg-stone-900/80 font-semibold" data-testid="beat-counter">
             Beat {idx + 1} of {beats.length}
           </Badge>
-          <Badge variant="outline" className="text-[11px] border-amber-300/70 text-amber-100 bg-stone-900/80 font-semibold">
-            total DC {storyline.total_dc}
+          <Badge variant="outline" className="text-[11px] border-emerald-300/60 text-emerald-200 bg-stone-900/80 font-semibold">
+            {passed} passed
+          </Badge>
+          <Badge variant="outline" className="text-[11px] border-rose-300/60 text-rose-200 bg-stone-900/80 font-semibold">
+            {failed} failed
           </Badge>
           <Button
-            size="sm"
-            variant="ghost"
+            size="sm" variant="ghost"
             className="h-8 w-8 p-0 text-amber-100 hover:bg-amber-500/20 hover:text-amber-50"
-            onClick={onClose}
-            title="Close (Esc)"
+            onClick={onClose} title="Close (Esc)"
             data-testid="storyline-close-btn"
           >
             <X className="h-5 w-5" />
           </Button>
         </div>
 
-        {/* Card draft row — horizontally scrollable on mobile */}
+        {/* Card draft row */}
         <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
           <div className="flex gap-3 sm:gap-4 px-1 pb-2 items-stretch min-w-min h-full">
             {beats.map((b, i) => (
-              <BeatCard
-                key={i}
-                beat={b}
-                index={i}
-                total={beats.length}
-                isActive={i === idx}
-              />
+              <BeatCard key={i} beat={b} index={i} total={beats.length} isActive={i === idx} />
             ))}
           </div>
         </div>
 
         {/* Active beat task line */}
         <div className="rounded-md border border-amber-500/50 bg-stone-900 px-3 py-2.5">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-amber-300 font-semibold mb-1">
-            Task
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[11px] uppercase tracking-[0.16em] text-amber-300 font-semibold">Task</span>
+            <Badge variant="outline" className="text-[10.5px] border-amber-300/60 text-amber-100/95 ml-auto">
+              {ability.toUpperCase()} mod {formatMod(mod)}
+            </Badge>
           </div>
-          <div className="text-amber-50 text-sm italic font-serif leading-relaxed">
-            {beat.task}
-          </div>
+          <div className="text-amber-50 text-sm italic font-serif leading-relaxed">{beat.task}</div>
+          {lastRoll && !lastRoll.passed && (
+            <div className="mt-2 text-[12px] text-rose-200 italic">
+              Last roll: {lastRoll.die}{formatMod(lastRoll.mod)} = {lastRoll.total} vs DC {lastRoll.dc} — failed.
+            </div>
+          )}
         </div>
 
         {/* Action bar */}
@@ -217,55 +299,192 @@ const ActiveInvestigationPanel = ({
           <Button
             size="sm"
             className="h-9 bg-amber-500 hover:bg-amber-400 text-black font-bold"
-            onClick={handleRoll}
-            disabled={busy}
+            onClick={handleRoll} disabled={busy}
             data-testid="storyline-roll-btn"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Dice5 className="h-4 w-4 mr-1" />}
-            Roll d20{lastRoll != null ? ` · last: ${lastRoll}` : ''}
+            Roll d20{formatMod(mod)}
           </Button>
           <Button
-            size="sm"
-            variant="outline"
-            className="h-9 border-emerald-400/70 text-emerald-200 bg-emerald-950/40 hover:bg-emerald-700/30 font-semibold"
-            onClick={() => submitOutcome('passed', 'Resolved by player.', null)}
-            disabled={busy}
-            data-testid="storyline-pass-btn"
+            size="sm" variant="outline"
+            className="h-9 border-fuchsia-400/70 text-fuchsia-200 bg-fuchsia-950/40 hover:bg-fuchsia-700/30 font-semibold"
+            onClick={() => setCreativeOpen(true)} disabled={busy}
+            data-testid="storyline-creative-btn"
+            title="Type your alternative approach — the DM will judge it"
           >
-            <Check className="h-4 w-4 mr-1" /> Pass
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-9 border-rose-400/70 text-rose-200 bg-rose-950/40 hover:bg-rose-700/30 font-semibold"
-            onClick={() => submitOutcome('failed', 'Player accepted the failure.', null)}
-            disabled={busy}
-            data-testid="storyline-fail-btn"
-          >
-            <X className="h-4 w-4 mr-1" /> Fail
+            <Wand2 className="h-4 w-4 mr-1" /> Try Different Approach
           </Button>
           <div className="flex-1" />
           <Button
-            size="sm"
-            variant="ghost"
+            size="sm" variant="ghost"
             className="h-9 text-amber-200 hover:text-amber-50 hover:bg-amber-500/10"
-            onClick={handleAbandon}
-            disabled={busy}
+            onClick={handleAbandon} disabled={busy}
             data-testid="storyline-abandon-btn"
           >
             Abandon
           </Button>
         </div>
+
+        {/* Failure resolution prompt */}
+        <FailurePrompt
+          open={failPrompt}
+          beat={beat}
+          lastRoll={lastRoll}
+          pressOnAvailable={pressOnAvailable}
+          busy={busy}
+          onPressOn={() => callResolve({
+            outcome: 'failed',
+            mode: 'press-on',
+            rollTotal: lastRoll?.total ?? null,
+            outcomeText: lastRoll
+              ? `Rolled ${lastRoll.die}${formatMod(lastRoll.mod)} = ${lastRoll.total} vs DC ${lastRoll.dc} — pressing on.`
+              : 'Pressing on after a failed attempt.',
+          })}
+          onPushThrough={() => callResolve({
+            outcome: 'failed',
+            mode: 'fail-forward',
+            rollTotal: lastRoll?.total ?? null,
+            outcomeText: lastRoll
+              ? `Rolled ${lastRoll.die}${formatMod(lastRoll.mod)} = ${lastRoll.total} vs DC ${lastRoll.dc} — failure carried forward.`
+              : 'Failure carried forward.',
+          })}
+          onCreative={() => { setFailPrompt(false); setCreativeOpen(true); }}
+          onCancel={() => setFailPrompt(false)}
+        />
+
+        {/* Creative-approach drawer */}
+        <CreativeApproachDialog
+          open={creativeOpen}
+          beat={beat}
+          busy={busy}
+          text={creativeText}
+          setText={setCreativeText}
+          onSubmit={() => callCreative(creativeText)}
+          onClose={() => { setCreativeOpen(false); setCreativeText(''); }}
+        />
       </div>
     </div>
   );
 };
 
-/**
- * BeatCard — TCG-style card representation of a single beat.
- * Active beat is fully revealed; future beats are sealed (face-down with
- * just the index showing); resolved beats are dimmed and stamped.
- */
+const FailurePrompt = ({ open, beat, lastRoll, pressOnAvailable, busy, onPressOn, onPushThrough, onCreative, onCancel }) => (
+  <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+    <DialogContent className="bg-stone-950 border-2 border-rose-500/50 text-amber-50 max-w-md" data-testid="failure-prompt">
+      <DialogHeader>
+        <DialogTitle className="text-rose-200 flex items-center gap-2">
+          <X className="h-5 w-5" /> Failed: {beat.title}
+        </DialogTitle>
+        <DialogDescription className="text-amber-100/95 italic font-serif pt-1">
+          {lastRoll
+            ? `You rolled ${lastRoll.die}${formatMod(lastRoll.mod)} = ${lastRoll.total} vs DC ${lastRoll.dc}. Choose how to handle the failure.`
+            : 'Choose how to handle the failure.'}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-2.5 py-1.5">
+        <Button
+          variant="outline"
+          className="w-full h-auto py-2.5 px-3 justify-start text-left whitespace-normal border-amber-400/70 text-amber-100 bg-amber-950/30 hover:bg-amber-700/30"
+          onClick={onPressOn} disabled={busy || !pressOnAvailable}
+          data-testid="fail-press-on-btn"
+        >
+          <RotateCw className="h-4 w-4 mr-2 shrink-0" />
+          <div className="flex-1">
+            <div className="font-bold text-sm">
+              Press On <span className="text-amber-300 text-[11px]">(once per investigation)</span>
+            </div>
+            <div className="text-[11.5px] text-amber-100/80 mt-0.5">
+              {pressOnAvailable
+                ? 'Retry the same beat at the cost of a complication.'
+                : 'Already used this storyline.'}
+            </div>
+          </div>
+        </Button>
+
+        <Button
+          variant="outline"
+          className="w-full h-auto py-2.5 px-3 justify-start text-left whitespace-normal border-rose-400/70 text-rose-200 bg-rose-950/40 hover:bg-rose-700/30"
+          onClick={onPushThrough} disabled={busy}
+          data-testid="fail-push-through-btn"
+        >
+          <ArrowRight className="h-4 w-4 mr-2 shrink-0" />
+          <div className="flex-1">
+            <div className="font-bold text-sm">Push Through (fail forward)</div>
+            <div className="text-[11.5px] text-rose-100/85 mt-0.5">
+              The story moves on with the failure baked in. Your final reward will be reduced.
+            </div>
+          </div>
+        </Button>
+
+        <Button
+          variant="outline"
+          className="w-full h-auto py-2.5 px-3 justify-start text-left whitespace-normal border-fuchsia-400/70 text-fuchsia-200 bg-fuchsia-950/40 hover:bg-fuchsia-700/30"
+          onClick={onCreative} disabled={busy}
+          data-testid="fail-creative-btn"
+        >
+          <Wand2 className="h-4 w-4 mr-2 shrink-0" />
+          <div className="flex-1">
+            <div className="font-bold text-sm">Try a Different Approach</div>
+            <div className="text-[11.5px] text-fuchsia-100/85 mt-0.5">
+              Describe an alternative strategy. The DM will judge whether it works.
+            </div>
+          </div>
+        </Button>
+      </div>
+
+      <div className="flex justify-end pt-1">
+        <Button size="sm" variant="ghost" className="h-8 text-amber-200" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+    </DialogContent>
+  </Dialog>
+);
+
+const CreativeApproachDialog = ({ open, beat, busy, text, setText, onSubmit, onClose }) => (
+  <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <DialogContent className="bg-stone-950 border-2 border-fuchsia-500/50 text-amber-50 max-w-lg" data-testid="creative-approach-dialog">
+      <DialogHeader>
+        <DialogTitle className="text-fuchsia-200 flex items-center gap-2">
+          <Wand2 className="h-5 w-5" /> Try a Different Approach
+        </DialogTitle>
+        <DialogDescription className="text-amber-100/90 italic font-serif pt-1">
+          The current beat asks you to <span className="text-amber-200 not-italic font-semibold">{beat.task}</span>.
+          Describe how you'd handle it differently — the DM will judge whether it works.
+        </DialogDescription>
+      </DialogHeader>
+
+      <Textarea
+        rows={5}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder='e.g. "Instead of forcing my way past the guard, I offer to share information about the smuggling ring in exchange for safe passage."'
+        className="bg-stone-900 border-fuchsia-500/40 text-amber-50 placeholder:text-amber-100/40"
+        data-testid="creative-approach-input"
+        autoFocus
+      />
+      <div className="text-[11px] text-amber-100/70">
+        Be specific. The DM rewards inventive thinking; vague plans get partial outcomes.
+      </div>
+
+      <div className="flex justify-end gap-2 pt-1">
+        <Button size="sm" variant="ghost" className="h-9 text-amber-200" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          className="h-9 bg-fuchsia-500 hover:bg-fuchsia-400 text-black font-bold"
+          onClick={onSubmit} disabled={busy || !(text || '').trim()}
+          data-testid="creative-submit-btn"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Wand2 className="h-4 w-4 mr-1" />}
+          Submit Approach
+        </Button>
+      </div>
+    </DialogContent>
+  </Dialog>
+);
+
 const BeatCard = ({ beat, index, total, isActive }) => {
   const c = colorsFor(beat.check_type);
   const tone = STATUS_TONE[beat.status] || STATUS_TONE.pending;
@@ -284,24 +503,17 @@ const BeatCard = ({ beat, index, total, isActive }) => {
       data-testid={`beat-card-${index}`}
       data-beat-status={beat.status}
     >
-      {/* Top type bar */}
       <div
         className={`flex items-center justify-between px-2.5 py-1.5 text-[11px] uppercase tracking-wider border-b
-          ${sealed
-            ? 'bg-stone-800 border-stone-700 text-stone-300'
-            : 'bg-stone-700/80 border-stone-600 text-amber-100'}`}
+          ${sealed ? 'bg-stone-800 border-stone-700 text-stone-300' : 'bg-stone-700/80 border-stone-600 text-amber-100'}`}
       >
-        <span className="font-bold">
-          {sealed ? `Beat ${index + 1}` : beat.check_type}
-        </span>
+        <span className="font-bold">{sealed ? `Beat ${index + 1}` : beat.check_type}</span>
         <span className={`px-1.5 py-0.5 rounded border font-semibold ${
           sealed ? 'border-stone-500 text-stone-200 bg-stone-900' : c.chip
         }`}>
           DC {beat.dc}
         </span>
       </div>
-
-      {/* Card body */}
       <div className="flex-1 px-3 py-3 flex flex-col gap-2">
         {sealed ? (
           <div className="flex-1 flex flex-col items-center justify-center text-stone-300 py-6">
@@ -311,9 +523,7 @@ const BeatCard = ({ beat, index, total, isActive }) => {
           </div>
         ) : (
           <>
-            <div className="text-amber-50 font-bold text-[14px] leading-tight">
-              {beat.title}
-            </div>
+            <div className="text-amber-50 font-bold text-[14px] leading-tight">{beat.title}</div>
             <div className="text-[12.5px] text-amber-100 italic font-serif leading-relaxed line-clamp-6">
               {beat.description}
             </div>
@@ -325,27 +535,20 @@ const BeatCard = ({ beat, index, total, isActive }) => {
           </>
         )}
       </div>
-
-      {/* Footer status */}
       <div
         className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10.5px] uppercase tracking-wider border-t font-semibold
-          ${sealed
-            ? 'bg-stone-800 border-stone-700 text-stone-300'
-            : 'bg-stone-900 border-stone-700 text-amber-100'}`}
+          ${sealed ? 'bg-stone-800 border-stone-700 text-stone-300' : 'bg-stone-900 border-stone-700 text-amber-100'}`}
       >
         <span className={`w-2 h-2 rounded-full ${tone.dot}`} />
         <span>{tone.label}</span>
         <div className="flex-1" />
         <span className="text-stone-300">{index + 1}/{total}</span>
       </div>
-
-      {/* Stamp for resolved cards */}
       {resolved && (
         <div
           className={`pointer-events-none absolute inset-0 flex items-center justify-center
             ${beat.status === 'passed' ? 'text-emerald-400/60' :
-              beat.status === 'failed' ? 'text-rose-500/60' :
-                                          'text-amber-400/60'}`}
+              beat.status === 'failed' ? 'text-rose-500/60' : 'text-amber-400/60'}`}
         >
           <span className="text-3xl font-black uppercase tracking-widest -rotate-12 border-4 border-current px-3 py-0.5">
             {beat.status}
@@ -356,18 +559,11 @@ const BeatCard = ({ beat, index, total, isActive }) => {
   );
 };
 
-/**
- * StorylineRewardModal — celebration card on completion. Shows XP, tone-flavored
- * description, and an item if the LLM produced one.
- */
 export const StorylineRewardModal = ({ open, reward, onClose }) => {
   if (!reward) return null;
   return (
     <Dialog open={!!open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        className="bg-stone-950 border-amber-500/40 text-amber-100 max-w-md"
-        data-testid="storyline-reward-modal"
-      >
+      <DialogContent className="bg-stone-950 border-amber-500/40 text-amber-100 max-w-md" data-testid="storyline-reward-modal">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-amber-200">
             <Trophy className="h-5 w-5 text-amber-300" />
@@ -379,10 +575,13 @@ export const StorylineRewardModal = ({ open, reward, onClose }) => {
         </DialogHeader>
 
         <div className="space-y-3 py-2">
-          <div className="flex items-center gap-2" data-testid="reward-xp">
-            <Badge className="bg-amber-500 text-black px-3 py-1 text-sm">
-              + {reward.xp} XP
-            </Badge>
+          <div className="flex items-center gap-2 flex-wrap" data-testid="reward-xp">
+            <Badge className="bg-amber-500 text-black px-3 py-1 text-sm">+ {reward.xp} XP</Badge>
+            {(reward.passed != null && reward.failed != null) && (
+              <Badge variant="outline" className="border-amber-300/40 text-amber-100/80">
+                {reward.passed} passed · {reward.failed} failed
+              </Badge>
+            )}
             {reward.tone && (
               <Badge variant="outline" className="border-amber-300/40 text-amber-100/80">
                 tone · {reward.tone}
@@ -390,7 +589,7 @@ export const StorylineRewardModal = ({ open, reward, onClose }) => {
             )}
           </div>
 
-          {reward.item && (
+          {reward.item ? (
             <div className="rounded-md border border-amber-500/30 bg-stone-900/80 p-3" data-testid="reward-item">
               <div className="flex items-center gap-2">
                 <Scroll className="h-4 w-4 text-amber-300" />
@@ -399,20 +598,17 @@ export const StorylineRewardModal = ({ open, reward, onClose }) => {
                   {reward.item.kind || 'item'}
                 </Badge>
               </div>
-              <p className="text-[12.5px] text-amber-100/80 mt-1.5 leading-snug">
-                {reward.item.description}
-              </p>
+              <p className="text-[12.5px] text-amber-100/80 mt-1.5 leading-snug">{reward.item.description}</p>
+            </div>
+          ) : (
+            <div className="text-[12px] text-amber-100/65 italic">
+              No item this run — too many threads slipped through your fingers.
             </div>
           )}
         </div>
 
         <div className="flex justify-end pt-1">
-          <Button
-            size="sm"
-            className="bg-amber-600 hover:bg-amber-500 text-black"
-            onClick={onClose}
-            data-testid="reward-close-btn"
-          >
+          <Button size="sm" className="bg-amber-600 hover:bg-amber-500 text-black" onClick={onClose} data-testid="reward-close-btn">
             Continue
           </Button>
         </div>

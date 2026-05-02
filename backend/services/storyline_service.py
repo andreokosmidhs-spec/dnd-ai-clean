@@ -43,6 +43,15 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
 
+
+def _intent_get(intent, key: str, default: str = ""):
+    """Read a field from a CampaignIntent (Pydantic) OR plain dict."""
+    if intent is None:
+        return default
+    if isinstance(intent, dict):
+        return intent.get(key, default)
+    return getattr(intent, key, default)
+
 logger = logging.getLogger(__name__)
 
 
@@ -263,13 +272,28 @@ async def draft_storyline(
 # -------------------- reward --------------------
 
 def _xp_for_total_dc(total_dc: int) -> int:
-    """Total DC -> XP. Roughly DC*8 with a soft floor and ceiling.
-    A 4-beat storyline summing to DC 56 yields ~450 XP — a solid level-1
-    chunk without trivializing levels.
+    """Total DC -> base XP. Roughly DC*8 with a soft floor and ceiling.
+    A 4-beat storyline summing to DC 56 yields ~450 XP. The actual XP awarded
+    SCALES with how many beats the player actually passed (linear).
     """
     base = max(60, total_dc * 8)
     # Smooth-cap: round to nearest 25, max 1200
     return min(1200, int(round(base / 25)) * 25)
+
+
+def _scaled_xp(storyline: Dict) -> int:
+    """Scale base XP by `passed_beats / total_beats` so failed beats reduce
+    the reward proportionally. A run of 3-of-4 passes nets 75% of base XP.
+    All-fail completion still nets 0 XP (item also gated below).
+    """
+    base = _xp_for_total_dc(int(storyline.get("total_dc") or 0))
+    beats = storyline.get("beats") or []
+    if not beats:
+        return base
+    passed = sum(1 for b in beats if b.get("status") == "passed")
+    ratio = passed / float(len(beats))
+    # Round to nearest 25 for cleanliness; never below 0.
+    return max(0, int(round(base * ratio / 25)) * 25)
 
 
 async def generate_storyline_reward(
@@ -277,21 +301,30 @@ async def generate_storyline_reward(
     character: Dict,
     storyline: Dict,
 ) -> Dict:
-    """LLM-themed completion reward. Always returns a dict with at least
-    `xp` populated; `item`, `title`, and `description` come from the LLM
-    when available, else from a deterministic template.
+    """LLM-themed completion reward. XP is SCALED by passed-beat ratio.
+    `item`, `title`, and `description` come from the LLM when available;
+    item is only awarded when at least half the beats passed.
     """
     total_dc = int(storyline.get("total_dc") or 0)
-    xp = _xp_for_total_dc(total_dc)
+    xp = _scaled_xp(storyline)
+    beats = storyline.get("beats") or []
+    passed = sum(1 for b in beats if b.get("status") == "passed")
+    failed = sum(1 for b in beats if b.get("status") == "failed")
+    pass_ratio = passed / float(len(beats)) if beats else 0
+    # Item is only awarded if at least half the beats passed.
+    award_item = pass_ratio >= 0.5
+
     fallback = {
         "xp": xp,
+        "passed": passed,
+        "failed": failed,
         "title": storyline.get("title") or "Investigation Resolved",
         "description": (
             f"You closed the thread you started pulling. Word of your work "
             f"will travel quietly through {((campaign.get('world') or {}).get('starting_town') or {}).get('name', 'the district')}."
         ),
         "item": None,
-        "tone": "satisfaction",
+        "tone": "satisfaction" if pass_ratio >= 0.5 else "bitter",
     }
 
     api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
@@ -306,22 +339,29 @@ async def generate_storyline_reward(
         )
         intent = campaign.get("intent") or {}
 
+        item_schema = (
+            '{"name": "...", "description": "...", "kind": "item|info|favor|key"}'
+            if award_item else 'null'
+        )
         prompt = (
             "The player has resolved an investigation chain. Generate a CLOSING REWARD "
-            "that feels earned by the actual beats they played through.\n\n"
+            "that feels earned by the actual beats they played through. The reward "
+            "should reflect the BEAT OUTCOMES below — celebrate passes, acknowledge "
+            "failures honestly. If the player failed half or more of the beats, the "
+            "tone should turn bittersweet or grim and NO item should be awarded.\n\n"
             f"=== STORYLINE ===\nTitle: {storyline.get('title','')}\n{beat_summary}\n\n"
+            f"=== OUTCOME ===\nPassed: {passed} / {len(beats)} | Failed: {failed}\n"
             f"=== CAMPAIGN TONE ===\n{intent.get('tone','Balanced')} | {intent.get('focus','Mystery')}\n\n"
             f"=== TOTAL DIFFICULTY ===\nDC sum: {total_dc} (player will receive {xp} XP separately)\n\n"
             "=== RULES ===\n"
-            "- 1 thematic ITEM (not always magical — could be a piece of information, a "
-            "  letter sealed by an NPC, a small heirloom, a contact's name, a key).\n"
+            f"- {'Award' if award_item else 'DO NOT award'} an item.\n"
             "- 1 short closing line (<=160 chars) that lands the resolution as narrative — "
             "  Mercer-style, restrained, no fate talk.\n"
             "- NO XP number in the closing line; XP is shown by the UI.\n"
             "- Output strict JSON, no code fence.\n\n"
             "=== OUTPUT ===\n"
             "{\n"
-            "  \"item\": {\"name\": \"...\", \"description\": \"...\", \"kind\": \"item|info|favor|key\"},\n"
+            f"  \"item\": {item_schema},\n"
             "  \"description\": \"closing line\",\n"
             "  \"tone\": \"satisfaction|grim|hopeful|bitter|reverent\"\n"
             "}\n"
@@ -345,14 +385,18 @@ async def generate_storyline_reward(
             data = _json.loads(text[s:e + 1]) if s != -1 and e > s else {}
 
         item = data.get("item") if isinstance(data.get("item"), dict) else None
-        if item:
+        if item and award_item:
             item = {
                 "name": str(item.get("name") or "Token of the Investigation")[:60],
                 "description": str(item.get("description") or "")[:240],
                 "kind": str(item.get("kind") or "item")[:16],
             }
+        else:
+            item = None
         return {
             "xp": xp,
+            "passed": passed,
+            "failed": failed,
             "title": storyline.get("title") or fallback["title"],
             "description": str(data.get("description") or fallback["description"])[:200],
             "item": item,
@@ -402,3 +446,227 @@ def storyline_to_dict(storyline: Dict) -> Dict:
         if isinstance(v, datetime):
             out[k] = v.isoformat()
     return out
+
+
+# -------------------- failure narration --------------------
+
+
+_COMPLICATION_FALLBACKS = {
+    "Investigation": "You comb the spot a second time and find what you missed: nothing. The trail's gone cold, and a faint sound behind you reminds you that someone else may have been watching.",
+    "Perception": "Your gaze slides across the scene without catching. By the time you realize what you missed, the moment is gone — and you've spent it in plain sight.",
+    "Insight": "You read them wrong. Whatever you thought you saw in their face, you don't see it now — and the silence that follows is heavier than any answer.",
+    "Persuasion": "Your words land badly. The person you came to convince looks past you, decision already made. The room cools by a degree.",
+    "Deception": "The lie sits on your tongue, but the listener tilts their head a fraction, and you feel it slip. You'll have to mean what you say next.",
+    "Intimidation": "Your threat lands without weight. They've heard worse from worse, and now they're certain you bluffed.",
+    "Stealth": "A boot scuff. A breath at the wrong moment. You feel the shift before you see it — eyes finding you in the dim.",
+    "Athletics": "Your grip slips. Whatever you reached for is on the ground, and so is some of your dignity. A bruise will surface tomorrow.",
+    "Sleight of Hand": "Your fingers move a heartbeat too late. You feel the brush of a sleeve against yours — they noticed.",
+    "Arcana": "The runes refuse to resolve. What seemed familiar a breath ago now reads as gibberish, and the moment slips away.",
+    "History": "The detail that connected it all has fallen out of your memory like a stone through silk. You'll have to piece it together another way.",
+    "Nature": "The signs lie. What you read as one thing is another, and you've spent breath chasing the wrong shape.",
+    "Survival": "The wind shifts, and what you tracked is downwind now. Your trail goes nowhere clean.",
+}
+
+
+async def generate_complication_beat(
+    intent,
+    world: Dict,
+    character: Optional[Dict],
+    storyline: Dict,
+    beat: Dict,
+    mode: str = "fail-forward",
+) -> str:
+    """Produce a 1-2 sentence Mercer-style complication beat for a failed
+    check. Lands in the Adventure Log so failure has narrative weight.
+
+    `mode` is one of:
+      - "fail-forward" : the story moves on with this failure baked in
+      - "press-on"     : the player has chosen to retry; complication = a cost paid
+
+    Falls back to a deterministic template when the LLM is unavailable.
+    """
+    fallback_base = _COMPLICATION_FALLBACKS.get(beat.get("check_type") or "", _COMPLICATION_FALLBACKS["Investigation"])
+    fallback = (
+        fallback_base
+        if mode == "fail-forward"
+        else (fallback_base + " You steel yourself for another try, but it costs you.")
+    )
+
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return fallback
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+        hero_name = "the hero"
+        if character:
+            identity = character.get("identity") or {}
+            hero_name = identity.get("name") or hero_name
+        beats = storyline.get("beats") or []
+        beat_idx = next((i for i, b in enumerate(beats) if b.get("title") == beat.get("title")), -1)
+
+        prompt = (
+            "Narrate the COMPLICATION when a D&D player just FAILED an ability check "
+            "in the middle of an investigation. 1-2 sentences. Second person, present tense, "
+            "Mercer-cinematic, restrained.\n\n"
+            f"=== STORYLINE ===\nTitle: {storyline.get('title','')}\n"
+            f"Beat {beat_idx+1} of {len(beats)}: {beat.get('title','')}\n"
+            f"Task: {beat.get('task','')}\n"
+            f"Check: {beat.get('check_type','Investigation')} DC {beat.get('dc',12)}\n"
+            f"Beat description: {beat.get('description','')}\n\n"
+            f"=== HERO ===\n{hero_name}\n"
+            f"Campaign tone: {_intent_get(intent,'tone','Balanced')} | focus: {_intent_get(intent,'focus','Mystery')} | danger: {_intent_get(intent,'danger','Medium')}\n\n"
+            "=== MODE ===\n"
+            f"{'fail-forward — the story moves on; the failure leaves a mark on the next beat (witness fled, lock jammed, lie noticed, wound taken).' if mode == 'fail-forward' else 'press-on — the player will try again; the complication is the COST paid for getting another shot (a wound, a moment burned, a small debt).'}\n\n"
+            "=== RULES ===\n"
+            "- 1-2 sentences. 22-50 words.\n"
+            "- ONE concrete sensory detail (a sound, a smell, a flicker of expression, a scuff, a drop of blood).\n"
+            "- Make the consequence visible — the player should feel something has changed.\n"
+            "- NO clichés ('fate', 'the gods', 'a chill runs', 'destiny').\n"
+            "- No quotation marks around the passage. Output only the beat."
+        )
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"complication-{uuid4()}",
+            system_message=(
+                "You are a senior D&D narrator (Matt-Mercer style): cinematic, grounded, "
+                "restrained. You narrate failure with weight, never with melodrama."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        text = raw.strip()
+        if text.startswith('"') and text.endswith('"') and len(text) > 2:
+            text = text[1:-1].strip()
+        return text or fallback
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Complication beat generation failed: {exc}")
+        return fallback
+
+
+# -------------------- creative approach judging --------------------
+
+
+async def judge_creative_approach(
+    intent,
+    world: Dict,
+    character: Optional[Dict],
+    storyline: Dict,
+    beat: Dict,
+    approach_text: str,
+) -> Dict:
+    """Player typed an alternative approach to the current beat. Have the
+    DM judge whether it works.
+
+    Returns:
+      {
+        "outcome": "passed" | "partial" | "failed",
+        "narration": "1-2 sentence DM beat describing what happens",
+        "applied_check": {"type": "<skill>", "dc": int} | null,
+      }
+
+    'partial' = the approach worked but at a cost; we treat it as 'passed' for
+    progression but the narration captures the price (the storyline still
+    advances; XP still credited for this beat).
+    """
+    fallback = {
+        "outcome": "partial",
+        "narration": (
+            "Your approach works — partly. The path you chose isn't the one the "
+            "obstacle was built for, and the seams of it leave marks on you both."
+        ),
+        "applied_check": None,
+    }
+    if not (approach_text or "").strip():
+        return fallback
+
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return fallback
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+        hero_bits = ""
+        if character:
+            identity = character.get("identity") or {}
+            cls = character.get("class") or character.get("class_") or {}
+            bg = character.get("background") or {}
+            hero_bits = (
+                f"Hero: {identity.get('name','the hero')} ({(cls.get('key') or 'adventurer').lower()}, "
+                f"{(bg.get('key') or 'wanderer').lower()} background)"
+            )
+
+        prompt = (
+            "A D&D player has proposed a CREATIVE alternative approach to the current "
+            "investigation beat instead of just rolling the suggested check. Judge whether "
+            "it would plausibly succeed.\n\n"
+            "=== CURRENT BEAT ===\n"
+            f"Title: {beat.get('title','')}\n"
+            f"Original task: {beat.get('task','')}\n"
+            f"Original check: {beat.get('check_type','Investigation')} DC {beat.get('dc',12)}\n"
+            f"Beat description: {beat.get('description','')}\n\n"
+            f"=== STORYLINE CONTEXT ===\nTitle: {storyline.get('title','')}\n"
+            f"Tone: {_intent_get(intent,'tone','Balanced')} | focus: {_intent_get(intent,'focus','Mystery')} | danger: {_intent_get(intent,'danger','Medium')}\n"
+            f"{hero_bits}\n\n"
+            "=== PLAYER'S APPROACH ===\n"
+            f"\"{approach_text.strip()[:600]}\"\n\n"
+            "=== RULES ===\n"
+            "- Decide outcome: 'passed' (clean success), 'partial' (it works but at a cost), "
+            "  or 'failed' (the approach doesn't work for solid in-fiction reasons).\n"
+            "- Be GENEROUS with creativity — reward inventive thinking. Only return 'failed' "
+            "  if the approach contradicts the fiction (impossible, breaks physics, ignores "
+            "  what the player knows about the scene). 'partial' is a good middle ground.\n"
+            "- If the approach naturally calls for a different ability check than the original, "
+            "  set applied_check = {type, dc}; otherwise null.\n"
+            "- Narration: 1-2 sentences, second person, Mercer-cinematic. Show what happens.\n"
+            "- NO clichés ('the gods smile', 'fate aligns', etc.).\n"
+            "- Output strict JSON, no code fence.\n\n"
+            "=== OUTPUT ===\n"
+            "{\n"
+            "  \"outcome\": \"passed|partial|failed\",\n"
+            "  \"narration\": \"...\",\n"
+            "  \"applied_check\": {\"type\": \"...\", \"dc\": 10} | null\n"
+            "}"
+        )
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"creative-judge-{uuid4()}",
+            system_message=(
+                "You are a senior D&D DM judging creative player solutions. You reward "
+                "inventive thinking and only call something a failure when the fiction "
+                "demands it. Output strict JSON only."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.lower().startswith("json"):
+                text = text[4:].lstrip()
+        try:
+            data = _json.loads(text)
+        except Exception:
+            s, e = text.find("{"), text.rfind("}")
+            data = _json.loads(text[s:e + 1]) if s != -1 and e > s else {}
+
+        outcome = (data.get("outcome") or "partial").strip().lower()
+        if outcome not in {"passed", "partial", "failed"}:
+            outcome = "partial"
+        narration = (data.get("narration") or "").strip().strip('"')[:280] or fallback["narration"]
+        applied = data.get("applied_check") if isinstance(data.get("applied_check"), dict) else None
+        if applied:
+            t = str(applied.get("type") or "").strip()
+            try:
+                d = int(applied.get("dc") or beat.get("dc", 12))
+            except Exception:
+                d = beat.get("dc", 12)
+            if t and t in _VALID_CHECK_TYPES:
+                applied = {"type": t, "dc": max(8, min(20, d))}
+            else:
+                applied = None
+        return {"outcome": outcome, "narration": narration, "applied_check": applied}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Creative-approach judge failed: {exc}")
+        return fallback
+

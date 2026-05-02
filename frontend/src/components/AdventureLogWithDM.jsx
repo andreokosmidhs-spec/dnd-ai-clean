@@ -1329,15 +1329,48 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           </div>
         )}
 
-        {/* Active Investigation — centered modal with blurred backdrop.
-            Appears only when a NEW storyline is drafted from a hook engagement
-            this session. Dismissible; the storyline persists server-side. */}
+        {/* Active Investigation — centered modal with blurred backdrop. */}
         {campaignId && activeStoryline && activeStoryline.status === 'active' && (
           <ActiveInvestigationPanel
             campaignId={campaignId}
+            character={gameStateContext.characterState}
             storyline={activeStoryline}
             onUpdate={(sl) => setActiveStoryline(sl)}
             onClose={() => setActiveStoryline(null)}
+            onComplication={(text, sl) => {
+              if (!text) return;
+              const beat = {
+                type: 'dm', text, message: text,
+                timestamp: Date.now(),
+                isCinematic: true,
+                source: 'storyline-complication',
+                meta: { storylineTitle: sl?.title },
+              };
+              setMessages((prev) => {
+                const next = [...prev, beat].slice(-200);
+                if (sessionId) {
+                  try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+                }
+                return next;
+              });
+            }}
+            onCreativeNarration={(text, judgment, sl) => {
+              if (!text) return;
+              const beat = {
+                type: 'dm', text, message: text,
+                timestamp: Date.now(),
+                isCinematic: true,
+                source: 'storyline-creative',
+                meta: { judgment, storylineTitle: sl?.title },
+              };
+              setMessages((prev) => {
+                const next = [...prev, beat].slice(-200);
+                if (sessionId) {
+                  try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+                }
+                return next;
+              });
+            }}
             onComplete={(sl, reward) => {
               setActiveStoryline(null);
               setShowRewardModal(reward);
@@ -1380,9 +1413,13 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                               ? `📜 ${entry.chronicleTitle || 'A Chronicle of the Realm'}`
                               : entry.source === 'map-event'
                                 ? `🪶 A Lead Reaches You${entry.meta?.questTitle ? ` — ${entry.meta.questTitle}` : ''}`
-                                : entry.isCinematic
-                                  ? '🎭 The Adventure Begins'
-                                  : 'Dungeon Master'}
+                                : entry.source === 'storyline-complication'
+                                  ? `⚠️ Complication${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
+                                  : entry.source === 'storyline-creative'
+                                    ? `✨ A Different Approach${entry.meta?.judgment ? ` (${entry.meta.judgment})` : ''}`
+                                    : entry.isCinematic
+                                      ? '🎭 The Adventure Begins'
+                                      : 'Dungeon Master'}
                           </span>
                           {entry.isCinematic && !entry.isWorldBrief && (
                             <Sparkles className="h-3 w-3 text-violet-400 animate-pulse" />

@@ -487,6 +487,8 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
                 "current_beat": 0,
                 "beats": drafted["beats"],
                 "total_dc": drafted["total_dc"],
+                "press_on_used": False,
+                "complication": None,
                 "reward": None,
                 "quest_card_id": quest_card.id,
                 "created_at": now,

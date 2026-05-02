@@ -273,7 +273,15 @@ const ActiveInvestigationPanel = ({
         <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
           <div className="flex gap-3 sm:gap-4 px-1 pb-2 items-stretch min-w-min h-full">
             {beats.map((b, i) => (
-              <BeatCard key={i} beat={b} index={i} total={beats.length} isActive={i === idx} />
+              <BeatCard
+                key={i}
+                beat={b}
+                index={i}
+                total={beats.length}
+                isActive={i === idx}
+                complication={i === idx ? storyline.complication : null}
+                pressOnUsed={i === idx ? !!storyline.press_on_used : false}
+              />
             ))}
           </div>
         </div>
@@ -485,24 +493,42 @@ const CreativeApproachDialog = ({ open, beat, busy, text, setText, onSubmit, onC
   </Dialog>
 );
 
-const BeatCard = ({ beat, index, total, isActive }) => {
+const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) => {
   const c = colorsFor(beat.check_type);
   const tone = STATUS_TONE[beat.status] || STATUS_TONE.pending;
   const sealed = beat.status === 'pending';
   const resolved = ['passed', 'failed', 'skipped'].includes(beat.status);
+  const hasComplication = isActive && !!(complication && complication.trim());
 
   return (
     <div
       className={`relative shrink-0 w-[230px] sm:w-[250px] rounded-lg border-2 overflow-hidden flex flex-col
         transition-transform duration-300
         ${isActive
-          ? `${c.border} bg-stone-800 shadow-xl scale-[1.04]`
+          ? `${hasComplication ? 'border-rose-500/80 shadow-[0_0_24px_rgba(244,63,94,0.45)]' : c.border + ' shadow-xl'} bg-stone-800 scale-[1.04]`
           : sealed
             ? 'border-stone-600 bg-stone-900'
             : 'border-stone-600 bg-stone-900 opacity-85'}`}
       data-testid={`beat-card-${index}`}
       data-beat-status={beat.status}
+      data-has-complication={hasComplication ? '1' : '0'}
     >
+      {/* Carry-forward complication ribbon (active card only) */}
+      {hasComplication && (
+        <div
+          className="px-2.5 py-1.5 text-[11px] bg-rose-950/80 border-b border-rose-500/60 text-rose-100"
+          data-testid="beat-complication-ribbon"
+        >
+          <div className="flex items-center gap-1.5 text-rose-300 uppercase tracking-wider font-bold text-[10px] mb-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
+            {pressOnUsed ? 'Pressing On — Cost Paid' : 'Carrying Forward'}
+          </div>
+          <div className="italic font-serif text-rose-50 leading-snug line-clamp-3">
+            {complication}
+          </div>
+        </div>
+      )}
+
       <div
         className={`flex items-center justify-between px-2.5 py-1.5 text-[11px] uppercase tracking-wider border-b
           ${sealed ? 'bg-stone-800 border-stone-700 text-stone-300' : 'bg-stone-700/80 border-stone-600 text-amber-100'}`}

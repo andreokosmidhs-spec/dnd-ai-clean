@@ -279,6 +279,8 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
 
     # If failed (and not press-on), produce a fail-forward complication so the
     # Adventure Log gets a narrative beat tying the failure to the story.
+    # On success/skip, clear any previously carried complication — the player
+    # has resolved the beat clean, the carry-over is no longer pressing.
     complication_text: Optional[str] = None
     if body.outcome == "failed":
         try:
@@ -293,6 +295,8 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
             storyline["complication"] = complication_text
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"complication beat failed (non-fatal): {exc}")
+    else:
+        storyline["complication"] = None
 
     completed = storyline.get("status") == "completed"
     reward: Optional[Dict] = None
@@ -403,6 +407,10 @@ async def creative_approach_endpoint(
             storyline["complication"] = complication_text
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"complication after creative-fail failed: {exc}")
+    else:
+        # Player solved this beat creatively — the carried complication (if any)
+        # has been worked around. Clear it.
+        storyline["complication"] = None
 
     completed = storyline.get("status") == "completed"
     reward: Optional[Dict] = None

@@ -518,6 +518,11 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
         onClose={handleCloseDrawer}
         isPinned={selectedCard ? isPinned(selectedCard.id) : false}
         onTogglePin={togglePin}
+        campaignId={campaignId}
+        onCardUpdated={(updated) => {
+          // Refresh just the selected card; the deck list re-fetches on close.
+          setSelectedCard(updated);
+        }}
       />
     </div>
   );

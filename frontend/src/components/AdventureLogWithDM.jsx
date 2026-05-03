@@ -1371,6 +1371,27 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                 return next;
               });
             }}
+            onLeadMinted={(lead) => {
+              if (!lead) return;
+              const isSealed = lead.status === 'sealed';
+              const text = isSealed
+                ? `A lead worth pursuing slips through your fingers — for now. The card "${lead.title}" is in your deck, sealed. You can try to unravel it later by finding someone who can help, or revisiting the puzzle with a fresh angle.`
+                : `A new lead falls into place: "${lead.title}". ${(lead.description || '').slice(0, 220)}`;
+              const msg = {
+                type: 'dm', text, message: text,
+                timestamp: Date.now(),
+                isCinematic: false,
+                source: isSealed ? 'lead-sealed' : 'lead-revealed',
+                meta: { leadTitle: lead.title, leadId: lead.id, sealed: isSealed },
+              };
+              setMessages((prev) => {
+                const next = [...prev, msg].slice(-200);
+                if (sessionId) {
+                  try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+                }
+                return next;
+              });
+            }}
             onComplete={(sl, reward) => {
               setActiveStoryline(null);
               setShowRewardModal(reward);
@@ -1417,9 +1438,13 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                                   ? `⚠️ Complication${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
                                   : entry.source === 'storyline-creative'
                                     ? `✨ A Different Approach${entry.meta?.judgment ? ` (${entry.meta.judgment})` : ''}`
-                                    : entry.isCinematic
-                                      ? '🎭 The Adventure Begins'
-                                      : 'Dungeon Master'}
+                                    : entry.source === 'lead-revealed'
+                                      ? `🪄 New Lead — ${entry.meta?.leadTitle || ''}`
+                                      : entry.source === 'lead-sealed'
+                                        ? `🔒 Sealed Lead — ${entry.meta?.leadTitle || ''}`
+                                        : entry.isCinematic
+                                          ? '🎭 The Adventure Begins'
+                                          : 'Dungeon Master'}
                           </span>
                           {entry.isCinematic && !entry.isWorldBrief && (
                             <Sparkles className="h-3 w-3 text-violet-400 animate-pulse" />

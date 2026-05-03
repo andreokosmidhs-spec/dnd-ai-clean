@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Textarea } from '../ui/textarea';
 import {
   Sheet,
   SheetContent,
@@ -8,13 +9,19 @@ import {
   SheetTitle,
   SheetDescription,
 } from '../ui/sheet';
-import { Star, Calendar, Hash, Info } from 'lucide-react';
+import { Star, Calendar, Hash, Info, Lock, Unlock, Dice5, Wand2, Loader2 } from 'lucide-react';
 import { CARD_TYPE_CONFIG, getCardFullTitle, getCardTags, getCardFullDetails, normalizeCardType } from './cardTypeConfig';
+import { toast } from 'sonner';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 /**
  * Card Details Drawer Component
  */
-export const CardDetailsDrawer = ({ card, type, isOpen, onClose, isPinned, onTogglePin }) => {
+export const CardDetailsDrawer = ({ card, type, isOpen, onClose, isPinned, onTogglePin, campaignId, onCardUpdated }) => {
+  const [unsealBusy, setUnsealBusy] = useState(false);
+  const [unsealMode, setUnsealMode] = useState(null); // 'roll' | 'creative' | null
+  const [creativeText, setCreativeText] = useState('');
   if (!card || !type) return null;
   
   const config = CARD_TYPE_CONFIG[normalizeCardType(type)] || CARD_TYPE_CONFIG.locations;
@@ -99,6 +106,151 @@ export const CardDetailsDrawer = ({ card, type, isOpen, onClose, isPinned, onTog
               </p>
             </div>
           ))}
+
+          {/* Sealed Lead — second-chance UI. The player can roll a check
+              (d20 + mod) OR describe a creative approach to unravel it. */}
+          {card.type === 'lead' && card.status === 'sealed' && (
+            <div className="border-t border-gray-800 pt-4 mt-4 space-y-3" data-testid="sealed-lead-panel">
+              <div className="flex items-center gap-2 text-xs text-rose-300">
+                <Lock className="w-3.5 h-3.5" />
+                <span className="uppercase tracking-wider font-bold">
+                  Sealed Lead — {card.reveal_check_type || 'Investigation'} DC {card.reveal_dc || 12}
+                </span>
+              </div>
+              <div className="text-xs text-gray-400 italic">
+                You couldn't piece this together in the moment. Try again — roll a fresh
+                check, or describe a creative angle.
+              </div>
+
+              {unsealMode === null && (
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    className="flex-1 h-9 bg-amber-500 hover:bg-amber-400 text-black font-bold"
+                    onClick={async () => {
+                      setUnsealBusy(true);
+                      try {
+                        const die = 1 + Math.floor(Math.random() * 20);
+                        const res = await fetch(
+                          `${BACKEND_URL}/api/campaigns/${campaignId}/cards/${card.id}/unseal`,
+                          {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ mode: 'roll', roll_total: die }),
+                          }
+                        );
+                        const data = await res.json();
+                        if (data.unsealed) {
+                          toast.success(`Rolled ${die} — unsealed.`);
+                          onCardUpdated && onCardUpdated(data.card);
+                        } else {
+                          toast.error(`Rolled ${die} — still sealed.`);
+                        }
+                      } catch {
+                        toast.error('Unseal failed.');
+                      } finally {
+                        setUnsealBusy(false);
+                      }
+                    }}
+                    disabled={unsealBusy}
+                    data-testid="unseal-roll-btn"
+                  >
+                    {unsealBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Dice5 className="h-4 w-4 mr-1" />}
+                    Roll d20
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-9 border-fuchsia-400/70 text-fuchsia-200 bg-fuchsia-950/40 hover:bg-fuchsia-700/30 font-semibold"
+                    onClick={() => setUnsealMode('creative')}
+                    disabled={unsealBusy}
+                    data-testid="unseal-creative-open-btn"
+                  >
+                    <Wand2 className="h-4 w-4 mr-1" /> Try a Different Angle
+                  </Button>
+                </div>
+              )}
+
+              {unsealMode === 'creative' && (
+                <div className="space-y-2">
+                  <Textarea
+                    rows={4}
+                    value={creativeText}
+                    onChange={(e) => setCreativeText(e.target.value)}
+                    placeholder='e.g. "I take the medallion to the old loremaster who lives by the river — he might recognize the mark."'
+                    className="bg-stone-900 border-fuchsia-500/40 text-amber-50 placeholder:text-amber-100/40 text-sm"
+                    data-testid="unseal-creative-input"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1 h-9 bg-fuchsia-500 hover:bg-fuchsia-400 text-black font-bold"
+                      disabled={unsealBusy || !creativeText.trim()}
+                      onClick={async () => {
+                        setUnsealBusy(true);
+                        try {
+                          const res = await fetch(
+                            `${BACKEND_URL}/api/campaigns/${campaignId}/cards/${card.id}/unseal`,
+                            {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ mode: 'creative', creative_text: creativeText }),
+                            }
+                          );
+                          const data = await res.json();
+                          if (data.unsealed) {
+                            toast.success('Unsealed.');
+                            onCardUpdated && onCardUpdated(data.card);
+                            setUnsealMode(null);
+                            setCreativeText('');
+                          } else {
+                            toast.error(data.narration || 'Approach didn\'t work — try another angle.');
+                          }
+                        } catch {
+                          toast.error('Unseal failed.');
+                        } finally {
+                          setUnsealBusy(false);
+                        }
+                      }}
+                      data-testid="unseal-creative-submit-btn"
+                    >
+                      {unsealBusy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Wand2 className="h-4 w-4 mr-1" />}
+                      Submit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-9 text-amber-200"
+                      onClick={() => { setUnsealMode(null); setCreativeText(''); }}
+                      disabled={unsealBusy}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {Array.isArray(card.targets) && card.targets.length > 0 && (
+                <div className="text-xs text-gray-500 mt-1">
+                  <span className="uppercase tracking-wider text-gray-400 mr-1">Lead points to:</span>
+                  {card.targets.map((t, i) => (
+                    <span key={i} className="inline-block mr-1.5 px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-200">
+                      {t.type}: {t.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {card.type === 'lead' && card.status === 'active' && (
+            <div className="border-t border-gray-800 pt-4 mt-4">
+              <div className="flex items-center gap-2 text-xs text-emerald-300">
+                <Unlock className="w-3.5 h-3.5" />
+                <span className="uppercase tracking-wider font-bold">Lead revealed</span>
+              </div>
+            </div>
+          )}
           
           {/* Biome panel — present only on location cards. Surfaces the
               survival/nature DC modifiers and the resources/animals/

@@ -221,6 +221,95 @@ async def get_storyline(campaign_id: str, storyline_id: str):
     return storyline_to_dict(doc)
 
 
+async def _mint_lead_card_if_knowledge(
+    *,
+    campaign_id: str,
+    storyline: Dict,
+    beat: Dict,
+    outcome: str,
+    creative_text: Optional[str] = None,
+) -> Optional[Dict]:
+    """If the just-resolved beat was reveal_type='knowledge', mint a Lead
+    knowledge card.
+      - On 'passed': the lead is REVEALED (description = the secret revelation).
+      - On 'failed': the lead is SEALED — title visible, body hidden behind a
+        prompt encouraging the player to find help to unravel it later.
+    Returns the card dict (without _id) so the caller can include it in the
+    response payload, or None if the beat wasn't a knowledge beat.
+    """
+    if (beat.get("reveal_type") or "") != "knowledge":
+        return None
+
+    revelation = (beat.get("description") or "").strip()
+    if not revelation:
+        return None
+
+    targets = beat.get("targets") or []
+    target_names = [str(t.get("name", "")).strip() for t in targets if isinstance(t, dict) and t.get("name")]
+    target_chip = ", ".join(target_names[:3])
+    base_tags = ["lead", storyline.get("title", "investigation").lower()]
+    if target_chip:
+        base_tags.append(target_chip.lower())
+    for t in targets:
+        if isinstance(t, dict) and t.get("type"):
+            base_tags.append(f"target-{t['type']}")
+
+    now = datetime.now(timezone.utc)
+    if outcome == "passed":
+        card = KnowledgeCard(
+            type="lead",
+            title=beat.get("title") or "Lead",
+            description=revelation,
+            source="storyline-knowledge",
+            confidence="high",
+            tags=base_tags + ["revealed"],
+            status="active",
+            updatedAt=now,
+        )
+        doc = {
+            **card.model_dump(),
+            "campaign_id": campaign_id,
+            "storyline_id": storyline.get("id"),
+            "beat_title": beat.get("title"),
+            "secret_content": None,         # nothing left hidden
+            "reveal_dc": beat.get("dc", 12),
+            "reveal_check_type": beat.get("check_type", "Investigation"),
+            "targets": targets,
+        }
+    else:  # 'failed'
+        targets_hint = (" Targets pointed to: " + target_chip + ".") if target_chip else ""
+        sealed_body = (
+            "A lead worth pursuing — but you couldn't piece it together in the moment."
+            " Find someone who can help you read it." + targets_hint
+        )
+        card = KnowledgeCard(
+            type="lead",
+            title=beat.get("title") or "Sealed Lead",
+            description=sealed_body,
+            source="storyline-knowledge",
+            confidence="low",
+            tags=base_tags + ["sealed"],
+            status="sealed",
+            updatedAt=now,
+        )
+        doc = {
+            **card.model_dump(),
+            "campaign_id": campaign_id,
+            "storyline_id": storyline.get("id"),
+            "beat_title": beat.get("title"),
+            "secret_content": revelation,    # held back until unsealed
+            "reveal_dc": beat.get("dc", 12),
+            "reveal_check_type": beat.get("check_type", "Investigation"),
+            "targets": targets,
+        }
+
+    await _cards_collection().insert_one(dict(doc))
+    out = {k: v for k, v in doc.items() if k != "_id"}
+    if isinstance(out.get("updatedAt"), datetime):
+        out["updatedAt"] = out["updatedAt"].isoformat()
+    return out
+
+
 @router.post("/{campaign_id}/storylines/{storyline_id}/resolve")
 async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: ResolveStorylineBody):
     if body.outcome not in {"passed", "failed", "skipped"}:
@@ -276,6 +365,20 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
 
     # Default path: advance the beat (outcome can be passed | failed | skipped).
     storyline = advance_storyline(doc, current, body.outcome, body.outcome_text)
+
+    # Knowledge-beat reward: mint a "lead" knowledge card. Passed = revealed;
+    # failed = sealed (player can later try to unseal it).
+    lead_card: Optional[Dict] = None
+    if body.outcome in {"passed", "failed"}:
+        try:
+            lead_card = await _mint_lead_card_if_knowledge(
+                campaign_id=campaign_id,
+                storyline=storyline,
+                beat=cur_beat,
+                outcome=body.outcome,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"lead card mint failed (non-fatal): {exc}")
 
     # If failed (and not press-on), produce a fail-forward complication so the
     # Adventure Log gets a narrative beat tying the failure to the story.
@@ -341,6 +444,7 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
         "mode": "fail-forward" if body.outcome == "failed" else "advance",
         "complication": complication_text,
         "reward": reward,
+        "lead": lead_card,
     }
 
 
@@ -393,6 +497,19 @@ async def creative_approach_endpoint(
         outcome_text=f"Creative approach ({judged_outcome}): {narration}"[:240],
     )
 
+    # Knowledge-beat reward via creative path: same minting rules.
+    lead_card: Optional[Dict] = None
+    try:
+        lead_card = await _mint_lead_card_if_knowledge(
+            campaign_id=campaign_id,
+            storyline=storyline,
+            beat=cur_beat,
+            outcome=storyline_outcome,
+            creative_text=text,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"lead card mint via creative failed: {exc}")
+
     complication_text: Optional[str] = None
     if storyline_outcome == "failed":
         try:
@@ -439,6 +556,7 @@ async def creative_approach_endpoint(
         "applied_check": judgment.get("applied_check"),
         "complication": complication_text,  # only when judged_outcome == 'failed'
         "reward": reward,
+        "lead": lead_card,
     }
 
 
@@ -460,3 +578,134 @@ async def abandon_storyline(campaign_id: str, storyline_id: str):
             {"$set": {"status": "failed", "updatedAt": datetime.now(timezone.utc)}},
         )
     return {"ok": True}
+
+
+# ==================== Sealed Lead Cards ====================
+
+
+class UnsealLeadBody(BaseModel):
+    """Player attempts to unseal a previously failed knowledge lead.
+    `mode` selects roll vs creative:
+      - "roll":     rolls d20 + ability mod (frontend computes total)
+      - "creative": LLM judge, similar to storyline /creative
+    """
+    mode: str  # "roll" | "creative"
+    roll_total: Optional[int] = None
+    creative_text: Optional[str] = None
+
+
+@router.post("/{campaign_id}/cards/{card_id}/unseal")
+async def unseal_lead(campaign_id: str, card_id: str, body: UnsealLeadBody):
+    card = await _cards_collection().find_one(
+        {"campaign_id": campaign_id, "id": card_id}, {"_id": 0}
+    )
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    if card.get("type") != "lead" or card.get("status") != "sealed":
+        raise HTTPException(status_code=400, detail="Card is not a sealed lead")
+
+    secret = (card.get("secret_content") or "").strip()
+    if not secret:
+        raise HTTPException(status_code=400, detail="Lead has no hidden content to unseal")
+
+    dc = int(card.get("reveal_dc") or 12)
+    check_type = card.get("reveal_check_type") or "Investigation"
+    now = datetime.now(timezone.utc)
+
+    if body.mode == "roll":
+        if body.roll_total is None:
+            raise HTTPException(status_code=400, detail="roll_total required for mode=roll")
+        succeeded = int(body.roll_total) >= dc
+        if not succeeded:
+            return {
+                "ok": False,
+                "unsealed": False,
+                "narration": (
+                    "You turn the matter over again, but the picture won't resolve. "
+                    "You'll need someone with a sharper eye on this — or a fresh angle entirely."
+                ),
+                "card": card,
+            }
+        await _cards_collection().update_one(
+            {"campaign_id": campaign_id, "id": card_id},
+            {"$set": {
+                "status": "active",
+                "description": secret,
+                "secret_content": None,
+                "tags": list({*(card.get("tags") or []), "revealed", "unsealed"} - {"sealed"}),
+                "confidence": "high",
+                "updatedAt": now,
+            }},
+        )
+        narration = (
+            "It clicks into place — the piece you were missing surfaces, "
+            "and the lead reads cleanly now."
+        )
+    elif body.mode == "creative":
+        approach = (body.creative_text or "").strip()
+        if not approach:
+            raise HTTPException(status_code=400, detail="creative_text required for mode=creative")
+        campaign = await _load_campaign(campaign_id)
+        # Find any character_id we can use for the judge — fall back to None
+        sl_id = card.get("storyline_id")
+        character = None
+        if sl_id:
+            sl = await _storylines_collection().find_one(
+                {"campaign_id": campaign_id, "id": sl_id}, {"character_id": 1}
+            )
+            if sl and sl.get("character_id"):
+                character = await _load_character(sl["character_id"]) or {}
+        # Synthetic beat for the judge
+        synthetic_beat = {
+            "title": card.get("title") or "Sealed Lead",
+            "task": "Find a way to unravel the lead by an alternative means.",
+            "description": secret,
+            "dc": dc,
+            "check_type": check_type,
+        }
+        from services.storyline_service import judge_creative_approach
+        judgment = await judge_creative_approach(
+            intent=campaign.get("intent") or {},
+            world=campaign.get("world") or {},
+            character=character or {},
+            storyline={"title": card.get("title", "Sealed Lead")},
+            beat=synthetic_beat,
+            approach_text=approach,
+        )
+        outcome = judgment.get("outcome") or "partial"
+        narration = judgment.get("narration") or ""
+        if outcome in {"passed", "partial"}:
+            await _cards_collection().update_one(
+                {"campaign_id": campaign_id, "id": card_id},
+                {"$set": {
+                    "status": "active",
+                    "description": secret,
+                    "secret_content": None,
+                    "tags": list({*(card.get("tags") or []), "revealed", "unsealed"} - {"sealed"}),
+                    "confidence": "high" if outcome == "passed" else "medium",
+                    "updatedAt": now,
+                }},
+            )
+        else:
+            return {
+                "ok": False,
+                "unsealed": False,
+                "narration": narration or (
+                    "Your angle doesn't pry it open. The lead stays sealed."
+                ),
+                "card": card,
+            }
+    else:
+        raise HTTPException(status_code=400, detail="mode must be 'roll' or 'creative'")
+
+    updated = await _cards_collection().find_one(
+        {"campaign_id": campaign_id, "id": card_id}, {"_id": 0}
+    )
+    if updated and isinstance(updated.get("updatedAt"), datetime):
+        updated["updatedAt"] = updated["updatedAt"].isoformat()
+    return {
+        "ok": True,
+        "unsealed": True,
+        "narration": narration,
+        "card": updated,
+    }

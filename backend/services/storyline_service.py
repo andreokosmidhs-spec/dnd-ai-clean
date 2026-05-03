@@ -72,6 +72,51 @@ _VALID_CHECK_TYPES = {
 }
 
 
+_KNOWLEDGE_CHECKS = {"Investigation", "History", "Arcana", "Religion", "Nature", "Insight", "Perception"}
+
+
+def _infer_reveal_type(check_type: str) -> str:
+    """Default reveal type if the LLM didn't mark a beat: knowledge for pure
+    information-gathering checks, action for the rest."""
+    return "knowledge" if (check_type or "") in _KNOWLEDGE_CHECKS else "action"
+
+
+def _normalize_targets(raw) -> List[Dict]:
+    """Sanitize target list for knowledge beats. Each target is {type, name}.
+    Drops malformed entries; max 4."""
+    if not isinstance(raw, list):
+        return []
+    out: List[Dict] = []
+    for r in raw[:4]:
+        if not isinstance(r, dict):
+            continue
+        t = str(r.get("type") or "").strip().lower()
+        n = str(r.get("name") or "").strip()
+        if t not in {"npc", "faction", "location", "direction"} or not n:
+            continue
+        out.append({"type": t, "name": n[:60]})
+    return out
+
+
+def _finalize_beat(beat: Dict) -> Dict:
+    """Ensure every beat has a sane reveal_type, prompt (for knowledge), targets,
+    and ability. Used by both the LLM and template paths."""
+    rt = (beat.get("reveal_type") or "").strip().lower()
+    if rt not in {"action", "knowledge"}:
+        rt = _infer_reveal_type(beat.get("check_type") or "")
+    beat["reveal_type"] = rt
+    if rt == "knowledge":
+        # Default prompt if the LLM didn't supply one
+        if not (beat.get("prompt") or "").strip():
+            beat["prompt"] = f"Roll {beat.get('check_type','Investigation')} (DC {beat.get('dc',12)}) to reveal what you can piece together."
+        beat["targets"] = beat.get("targets") or []
+    else:
+        # action beats don't need prompt/targets
+        beat["prompt"] = ""
+        beat["targets"] = []
+    return beat
+
+
 # -------------------- deterministic fallback --------------------
 
 _FALLBACK_BEAT_TEMPLATES = [
@@ -116,7 +161,7 @@ def _template_storyline(hook: Dict, intent_focus: str = "Mystery") -> Dict:
     beats: List[Dict] = []
     for i, t in enumerate(_FALLBACK_BEAT_TEMPLATES):
         ability = _VALID_CHECK_TYPES.get(t["check_type"], "INT")
-        beats.append({
+        beats.append(_finalize_beat({
             "title": t["title"],
             "description": t["description"],
             "task": t["task_tmpl"].format(topic=topic),
@@ -125,7 +170,7 @@ def _template_storyline(hook: Dict, intent_focus: str = "Mystery") -> Dict:
             "ability": ability,
             "status": "active" if i == 0 else "pending",
             "outcome_text": None,
-        })
+        }))
     total_dc = sum(b["dc"] for b in beats)
     return {
         "title": title,
@@ -193,6 +238,16 @@ async def draft_storyline(
             "  (a relationship, a debt, a lie, a place, a witness) — not a copy of the previous.\n"
             "- Vary check types across beats. DC range: 10..18. At least one beat between 13-16.\n"
             "- Plausible at level 1-3.\n"
+            "- Each beat MUST be marked with reveal_type:\n"
+            "  • 'knowledge' if the player ROLLS to LEARN something — Investigation / History / Arcana /\n"
+            "    Religion / Nature / Insight / Perception spotting a clue. The beat's `description` becomes\n"
+            "    a SECRET revelation that the player only sees if they pass; you must also provide a `prompt`\n"
+            "    field — a short public-facing line shown BEFORE the roll (e.g. 'Roll History to recognize the\n"
+            "    crest stamped on the medallion.'). For knowledge beats also include `targets`: a short list of\n"
+            "    {type, name} pointers naming the NPC, faction, location, or direction the lead points to.\n"
+            "  • 'action' for everything else (Persuasion, Stealth, Athletics, Deception, Intimidation, etc.).\n"
+            "    For action beats, `description` is the cinematic framing of the moment (always shown); no\n"
+            "    `prompt` or `targets` needed.\n"
             "- NO clichés ('ancient evil', 'chosen one', 'prophecy'). Real human stakes.\n"
             "- Title for the storyline is 3-6 words.\n\n"
             "=== OUTPUT (strict JSON only, no code fence) ===\n"
@@ -201,10 +256,13 @@ async def draft_storyline(
             "  \"beats\": [\n"
             "    {\n"
             "      \"title\": \"...\",\n"
-            "      \"description\": \"1-2 sentences opening this beat (mid-cinematic, present tense, second person; <=240 chars)\",\n"
+            "      \"description\": \"1-2 sentences (mid-cinematic, present tense, second person; <=240 chars). For knowledge beats, this is the SECRET REVELATION shown only on success.\",\n"
             "      \"task\": \"what the hero must DO this beat (one short imperative)\",\n"
             "      \"dc\": 10,\n"
-            "      \"check_type\": \"Investigation|Perception|Insight|Persuasion|Deception|Intimidation|Stealth|Sleight of Hand|Athletics|Arcana|History|Nature|Survival\"\n"
+            "      \"check_type\": \"Investigation|Perception|Insight|Persuasion|Deception|Intimidation|Stealth|Sleight of Hand|Athletics|Arcana|History|Nature|Survival|Religion\",\n"
+            "      \"reveal_type\": \"action|knowledge\",\n"
+            "      \"prompt\": \"(knowledge beats only) public-facing tease shown BEFORE the roll, no spoilers\",\n"
+            "      \"targets\": [{\"type\": \"npc|faction|location|direction\", \"name\": \"...\"}]\n"
             "    }\n"
             "  ]\n"
             "}\n"
@@ -250,16 +308,19 @@ async def draft_storyline(
             dc = max(8, min(20, dc))
             if not (t and d and tk):
                 continue
-            beats.append({
+            beats.append(_finalize_beat({
                 "title": t[:48],
                 "description": d[:280],
                 "task": tk[:160],
                 "dc": dc,
                 "check_type": ct,
                 "ability": ab,
+                "reveal_type": (rb.get("reveal_type") or "").strip().lower(),
+                "prompt": (rb.get("prompt") or "").strip()[:200],
+                "targets": _normalize_targets(rb.get("targets")),
                 "status": "active" if i == 0 else "pending",
                 "outcome_text": None,
-            })
+            }))
         if len(beats) < 3:
             return fallback
         total_dc = sum(b["dc"] for b in beats)

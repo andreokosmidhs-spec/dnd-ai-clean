@@ -1,0 +1,48 @@
+{
+  "summary": "Tested the just-built Lead-card mechanic (knowledge beats mint active-or-sealed lead cards; sealed leads can be unsealed via roll or creative angle). Backend: authored /app/backend/tests/test_lead_cards.py with 11 pytest cases — 11/11 PASS. Verified: (1) /storylines/draft tags every beat with reveal_type in {'action','knowledge'}; knowledge beats carry a non-empty `prompt` and a list `targets`; action beats have empty prompt/targets. (2) /resolve outcome=passed on a knowledge beat returns lead.type='lead', status='active', secret_content=null, tags include 'revealed', description == the secret revelation. (3) /resolve outcome=failed mode=fail-forward on a knowledge beat returns lead.status='sealed', secret_content holds the hidden revelation, description contains a 'find someone' prompt, tags include 'sealed', and the card is persisted in campaign_cards (verified via GET /api/campaigns/{cid}/cards). (4) /resolve on an action beat returns lead=null. (5) /creative on a knowledge beat (passed/partial judgment) also mints an active lead. (6) /unseal mode=roll roll_total>=dc -> ok=true unsealed=true, description swapped with secret, secret_content cleared, status='active', tags 'sealed'->'revealed'+'unsealed'. (7) /unseal mode=roll roll_total<dc -> ok=false unsealed=false, card stays sealed (verified by a follow-up high roll that successfully unsealed). (8) /unseal mode=creative on plausible approach -> ok=true unsealed=true (LLM judged passed/partial); card.status='active'. (9) Unseal on a non-sealed (already active) card returns 400 with 'Card is not a sealed lead'. (10) Unseal with an invalid mode returns 400. Regression: re-ran /app/backend/tests/test_storyline_failure_semantics.py — 7/8 pass; 1 pre-existing flake (test_creative_endpoint_returns_judgment_and_advances asserts applied_check is not None, but the LLM lawfully returns null when no alternate skill is needed; service contract documents applied_check as nullable, so the test is over-strict — NOT a regression caused by lead-card work). Frontend: code-level review confirms all required selectors/wiring exist (data-testid=sealed-lead-panel, unseal-roll-btn, unseal-creative-open-btn, unseal-creative-input, unseal-creative-submit-btn; ActiveInvestigationPanel.jsx hides description for knowledge beats until resolved and renders dashed-border prompt box + Lock + uppercase chips; AdventureLogWithDM emits '🪄 New Lead' / '🔒 Sealed Lead' log entries via onLeadMinted). Live UI smoke-load of the campaign succeeds; full live drive of the BeatCard knowledge prompt and Sealed Lead drawer requires an engagement-turn input (same automation friction documented in iteration_4) — code paths are wired correctly and were exercised end-to-end via backend tests.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/campaigns/{cid}/cards/{cardId}/unseal (mode=roll, low roll)", "issue": "Backend response on a failed roll returns the original sealed `card` (status='sealed', secret_content still set in the response body). That leaks the secret_content to the client even on a failure. Currently the FE drawer doesn't render secret_content, but anyone hitting the API directly can read the answer. Consider stripping secret_content from the response on failure (return only ok=false, unsealed=false, narration)."},
+      {"endpoint": "POST /api/campaigns/{cid}/storylines/{sid}/resolve (knowledge beat mint)", "issue": "_mint_lead_card_if_knowledge inserts the card via _cards_collection().insert_one(dict(doc)) which mutates `doc` with a Mongo _id; the response payload then strips _id but retains everything else. Acceptable, but worth verifying no _id leak via list endpoints (cards endpoint should also project away _id)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Live BeatCard knowledge-prompt rendering & Sealed Lead drawer interaction", "issue": "Could not drive UI live because ActiveInvestigationPanel only mounts on an engagement-turn DM payload (same blocker as iteration_4). Code review confirms the dashed prompt box, lock icon, target chips, and unseal panel + buttons are all wired with correct data-testids. Recommend a manual QA pass or fixing the panel-rehydration-on-reload first.", "affected_selectors": ["active-investigation-panel", "sealed-lead-panel", "unseal-roll-btn", "unseal-creative-open-btn", "unseal-creative-input", "unseal-creative-submit-btn"]}
+    ],
+    "design_issues": [
+      {"screen": "BeatCard target chips (knowledge beats)", "issues": ["Chips currently render `t.type` only (e.g. 'NPC', 'FACTION') — the actual `t.name` is dropped at render time. The targets list arrives with {type, name} but only the type label is shown. If the intent was to surface the lead's pointer, append the name (e.g. 'NPC · Mira'). Verify with main agent."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_lead_cards.py",
+    "/app/test_reports/pytest/lead_cards.xml",
+    "/app/backend/tests/test_storyline_failure_semantics.py"
+  ],
+  "action_items": [
+    "(Minor) Strip card.secret_content from /unseal failure responses so the secret can't be read by clients on a failed roll/creative attempt.",
+    "(Design) Decide whether BeatCard target chips should include the target name; currently only the `type` is shown.",
+    "(Pre-existing, non-blocking) Update test_storyline_failure_semantics.py::test_creative_endpoint_returns_judgment_and_advances to accept applied_check=None per the service contract (currently asserts non-null and is LLM-flaky).",
+    "(Pre-existing) ActiveInvestigationPanel rehydration on page reload still relies on engagement-turn in-memory state — see iteration_4."
+  ],
+  "critical_code_review_comments": [
+    "routers/storylines.py::_mint_lead_card_if_knowledge correctly persists both active and sealed leads with reveal_dc/reveal_check_type/targets carried over for later unsealing. Good separation of secret_content (hidden) vs description (player-facing).",
+    "routers/storylines.py::unseal_lead returns the FULL sealed card (including secret_content) on a failed roll — see action item.",
+    "services/storyline_service.py::_finalize_beat correctly back-fills reveal_type via _infer_reveal_type when the LLM omits it, and supplies a default `prompt` for knowledge beats. Investigation/History/Arcana/Religion/Nature/Insight/Perception are all classified as knowledge — good coverage.",
+    "services/storyline_service.py::_normalize_targets properly clamps to 4, validates type ∈ {npc,faction,location,direction}, and trims name to 60 chars. Good.",
+    "ActiveInvestigationPanel.jsx::BeatCard line 566-577 only renders `t.type` in the chip — consider also showing `t.name` per design intent.",
+    "CardDetailsDrawer.jsx sealed-lead-panel correctly toggles between roll and creative modes, calls /unseal, and on ok=true unsealed=true updates the card and surfaces a 'Lead revealed' confirmation (verified in source)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_lead_cards.py"
+  ],
+  "success_rate": {"backend": "100% (11/11 lead-card tests pass; 7/8 prior failure-semantics pass — 1 pre-existing LLM-flake unrelated to leads)", "frontend": "Source-level wiring verified for all required selectors and behaviors; live BeatCard/SealedLead drawer not driven due to engagement-turn automation friction (same as iteration_4). Campaign loads cleanly with no console errors."},
+  "test_credentials": "None — uses seeded campaign a19b5ff2-e859-4cef-9019-b36e2dbfdd39 and character 69f2985e0999201c3edfaa3a.",
+  "seed_data_creation": "Tests insert ~12 TEST_-prefixed storylines (each with linked quest cards) plus ~5 sealed/active lead cards in campaign_cards on every full run. Several leads are unsealed by the suite; one stays sealed at completion. Non-blocking for re-runs.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression file for lead-card mechanic: /app/backend/tests/test_lead_cards.py (run with `REACT_APP_BACKEND_URL=<preview_url> pytest backend/tests/test_lead_cards.py -v`). Total runtime ~110s due to LLM calls inside draft + creative + unseal-creative. Sealed-lead schema observed: {type:'lead', status:'sealed', description: 'find-someone-to-help' prompt, secret_content: hidden revelation, reveal_dc, reveal_check_type, targets:[{type,name}], tags including 'sealed'}. After /unseal success: {status:'active', description=secret, secret_content=null, tags 'sealed'->'revealed','unsealed'}. For a live FE pass through the BeatCard knowledge prompt + sealed-lead drawer: drive an engagement-turn (Action mode, footer textarea, an investigative phrase, ~20s LLM wait), then look for [data-testid=active-investigation-panel] and inside it the dashed prompt box on knowledge beats. For sealed-lead drawer: open Campaign Log -> Knowledge Deck -> click a sealed lead card -> [data-testid=sealed-lead-panel] should render with [data-testid=unseal-roll-btn] and [data-testid=unseal-creative-open-btn]. Note: /unseal failure currently returns full card incl. secret_content — main agent may want to strip it.",
+  "rca of the issue": "N/A — no backend bug. Two minor improvements suggested: (1) /unseal failure path leaks secret_content in the response payload; (2) BeatCard target chip renders type only, not name. Both are small touch-ups, not regressions."
+}

@@ -73,6 +73,7 @@ const ActiveInvestigationPanel = ({
   onClose,
   onComplication,    // fired when the backend returns a complication beat
   onCreativeNarration, // fired when a creative approach lands a narration
+  onLeadMinted,      // fired when a knowledge beat mints a Lead card (revealed or sealed)
 }) => {
   const [busy, setBusy] = useState(false);
   const [lastRoll, setLastRoll] = useState(null);  // { die, mod, total, dc, passed }
@@ -136,6 +137,7 @@ const ActiveInvestigationPanel = ({
       }
       const data = await res.json();
       if (data.complication && onComplication) onComplication(data.complication, data.storyline);
+      if (data.lead && onLeadMinted) onLeadMinted(data.lead);
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);
       } else {
@@ -172,6 +174,7 @@ const ActiveInvestigationPanel = ({
       if (data.complication && onComplication) {
         onComplication(data.complication, data.storyline);
       }
+      if (data.lead && onLeadMinted) onLeadMinted(data.lead);
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);
       } else {
@@ -550,9 +553,44 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
         ) : (
           <>
             <div className="text-amber-50 font-bold text-[14px] leading-tight">{beat.title}</div>
-            <div className="text-[12.5px] text-amber-100 italic font-serif leading-relaxed line-clamp-6">
-              {beat.description}
-            </div>
+
+            {/* Knowledge beats: HIDE the description until the beat is resolved.
+                Show the public-facing prompt + lock instead so the player
+                doesn't see the answer before they roll. */}
+            {beat.reveal_type === 'knowledge' && !resolved ? (
+              <div className="rounded-md border border-dashed border-amber-500/50 bg-stone-950/60 p-2.5 text-center">
+                <Lock className="h-5 w-5 text-amber-300/80 mx-auto mb-1" />
+                <div className="text-[11.5px] text-amber-200/95 italic font-serif leading-snug">
+                  {beat.prompt || `Roll ${beat.check_type} (DC ${beat.dc}) to reveal what you can piece together.`}
+                </div>
+                {Array.isArray(beat.targets) && beat.targets.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap justify-center gap-1">
+                    {beat.targets.slice(0, 3).map((t, ti) => (
+                      <span
+                        key={ti}
+                        className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-[10px] uppercase tracking-wide text-amber-100"
+                      >
+                        {t.type}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : beat.reveal_type === 'knowledge' && beat.status === 'failed' ? (
+              <div className="rounded-md border border-dashed border-rose-500/50 bg-stone-950/60 p-2.5">
+                <div className="flex items-center gap-1.5 text-rose-300 text-[10px] uppercase tracking-wider font-bold mb-1">
+                  <Lock className="h-3 w-3" /> Sealed Lead
+                </div>
+                <div className="text-[11.5px] text-amber-100/85 italic font-serif leading-snug">
+                  You couldn't piece it together. The lead is now in your deck — find someone who can help.
+                </div>
+              </div>
+            ) : (
+              <div className="text-[12.5px] text-amber-100 italic font-serif leading-relaxed line-clamp-6">
+                {beat.description}
+              </div>
+            )}
+
             {beat.outcome_text && (
               <div className="mt-1 text-[11.5px] text-amber-200 border-l-2 border-amber-400/70 pl-2 italic">
                 {beat.outcome_text}

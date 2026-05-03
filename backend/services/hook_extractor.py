@@ -244,7 +244,7 @@ async def detect_engaged_hook(
     )
     if re.search(_IDLE_PATTERNS, text_low) and len(text_low.split()) <= 12:
         return None
-    # Also require the action to actually be an action (>= 3 tokens or include a verb cue)
+
     _ACTION_VERBS = (
         r"\b(examine|inspect|search|look|study|approach|follow|trail|chase|track|"
         r"watch|spy|observe|listen|eavesdrop|investigate|check|read|open|pick|"
@@ -253,6 +253,17 @@ async def detect_engaged_hook(
         r"go\s+to|head\s+(?:to|toward))\b"
     )
     has_action_verb = bool(re.search(_ACTION_VERBS, text_low))
+
+    # Scene-investigation verbs: a GENERIC sweep of the place ("I investigate
+    # the warehouse", "I search the room", "I look around"). We treat these
+    # as engaging the MOST THEMATIC hook from the active set so the player
+    # never gets stuck just because they didn't name a specific noun.
+    _SCENE_VERBS = (
+        r"\b(investigate|search|explore|look\s+around|check\s+(?:out|around)|"
+        r"examine\s+(?:the\s+)?(?:area|room|place|warehouse|building|hall|street|alley|chamber)|"
+        r"scout|case|sweep|survey|study\s+(?:the\s+)?(?:area|room|place))\b"
+    )
+    is_scene_action = bool(re.search(_SCENE_VERBS, text_low))
 
     # Cheap pass — substring overlap on topic words
     candidates: List[Dict] = []
@@ -263,6 +274,13 @@ async def detect_engaged_hook(
         hits = sum(1 for w in topic_words if w in text_low)
         if hits >= max(1, min(2, len(topic_words) // 2)):
             candidates.append(h)
+
+    # Generic scene action with no topic match → fall back to the FIRST hook.
+    # This covers "I investigate the warehouse" against {latch, crate, scuff marks}
+    # — any of those is a sensible answer; we pick the one the DM listed first.
+    if not candidates and is_scene_action and active_hooks:
+        return active_hooks[0]
+
     # If we have candidates but the action has no real verb cue, defer to the LLM
     # only when there's a single topic match — otherwise reject as ambiguous.
     if candidates and not has_action_verb and len(candidates) > 1:
@@ -288,8 +306,13 @@ async def detect_engaged_hook(
             "A D&D player just took an action. Decide whether the action engages one of "
             "the listed POINTS OF INTEREST from the recent narration. Engagement means the "
             "player is actively investigating, following, watching, listening, approaching, "
-            "or interacting with that specific hook. Generic exploration ('I look around') "
-            "does NOT count.\n\n"
+            "or interacting with that specific hook.\n\n"
+            "BE GENEROUS — if the player is taking a clear investigatory or observational "
+            "action toward the SCENE that contains the hooks (e.g. 'I investigate the warehouse' "
+            "while the hooks are 'a metal latch in a rotting door', 'a broken crate', "
+            "'scuff marks'), return the FIRST hook listed (it's the one the DM most wants the "
+            "player to find first). Only return null when the action is purely idle "
+            "(rest, wait, do nothing) or unrelated to the scene.\n\n"
             f"=== PLAYER ACTION ===\n{text}\n\n"
             f"=== HOOKS ===\n{labelled}\n\n"
             "=== OUTPUT (strict JSON) ===\n"

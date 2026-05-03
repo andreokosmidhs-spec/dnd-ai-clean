@@ -4,11 +4,13 @@ import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 
-const QuestLogPanel = ({ quests = [], onUpdateStatus }) => {
+const QuestLogPanel = ({ quests = [], onUpdateStatus, embedded = false }) => {
   const [expandedQuests, setExpandedQuests] = useState({});
   const [showCompleted, setShowCompleted] = useState(false);
   // Whole panel collapses to a single header bar so the narration can sit
   // at the top of the screen. Defaults to collapsed (matches WorldInfoPanel).
+  // When embedded inside a Sheet, the header chrome is owned by the caller and
+  // the body is always visible.
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   const toggleQuest = (questId) => {
@@ -160,6 +162,51 @@ const QuestLogPanel = ({ quests = [], onUpdateStatus }) => {
     );
   };
 
+  const body = (
+    <>
+      {/* Active Quests */}
+      {activeQuests.length > 0 ? (
+        <div className="space-y-2 mb-3">
+          {activeQuests.map(quest => (
+            <QuestCard key={quest.quest_id} quest={quest} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-gray-400 text-xs italic text-center py-4">
+          No active quests. Explore and talk to NPCs to find new adventures!
+        </div>
+      )}
+
+      {/* Completed/Failed Quests Toggle */}
+      {(completedQuests.length > 0 || failedQuests.length > 0) && (
+        <div className="mt-3 pt-3 border-t border-gray-700">
+          <Button
+            onClick={() => setShowCompleted(!showCompleted)}
+            variant="ghost"
+            size="sm"
+            className="w-full h-7 text-xs text-gray-400 hover:text-gray-200"
+          >
+            {showCompleted ? 'Hide' : 'Show'} Completed Quests ({completedQuests.length + failedQuests.length})
+          </Button>
+          {showCompleted && (
+            <div className="mt-2 space-y-2">
+              {completedQuests.map(quest => (
+                <QuestCard key={quest.quest_id} quest={quest} />
+              ))}
+              {failedQuests.map(quest => (
+                <QuestCard key={quest.quest_id} quest={quest} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  if (embedded) {
+    return <div className="space-y-2">{body}</div>;
+  }
+
   return (
     <Card className="bg-black/90 border-amber-600/30 backdrop-blur-sm">
       <CardContent className="p-3">
@@ -187,46 +234,7 @@ const QuestLogPanel = ({ quests = [], onUpdateStatus }) => {
           </div>
         </button>
 
-        {isPanelOpen && (
-          <>
-            {/* Active Quests */}
-            {activeQuests.length > 0 ? (
-              <div className="space-y-2 mb-3">
-                {activeQuests.map(quest => (
-                  <QuestCard key={quest.quest_id} quest={quest} />
-                ))}
-              </div>
-            ) : (
-              <div className="text-gray-400 text-xs italic text-center py-4">
-                No active quests. Explore and talk to NPCs to find new adventures!
-              </div>
-            )}
-
-            {/* Completed/Failed Quests Toggle */}
-            {(completedQuests.length > 0 || failedQuests.length > 0) && (
-              <div className="mt-3 pt-3 border-t border-gray-700">
-                <Button
-                  onClick={() => setShowCompleted(!showCompleted)}
-                  variant="ghost"
-                  size="sm"
-                  className="w-full h-7 text-xs text-gray-400 hover:text-gray-200"
-                >
-                  {showCompleted ? 'Hide' : 'Show'} Completed Quests ({completedQuests.length + failedQuests.length})
-                </Button>
-                {showCompleted && (
-                  <div className="mt-2 space-y-2">
-                    {completedQuests.map(quest => (
-                      <QuestCard key={quest.quest_id} quest={quest} />
-                    ))}
-                    {failedQuests.map(quest => (
-                      <QuestCard key={quest.quest_id} quest={quest} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
+        {isPanelOpen && body}
       </CardContent>
     </Card>
   );

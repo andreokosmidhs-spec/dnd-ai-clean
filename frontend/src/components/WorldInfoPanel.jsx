@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { Globe, MapPin, Users, ChevronDown, ChevronUp, Shield, Scroll, AlertTriangle } from 'lucide-react';
 
-const WorldInfoPanel = ({ worldBlueprint, currentLocation }) => {
+const WorldInfoPanel = ({ worldBlueprint, currentLocation, embedded = false }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (!worldBlueprint) {
     return null;
   }
+
+  // When embedded (e.g. inside a Sheet), skip the inline header toggle and
+  // always render the body content. Caller owns the chrome.
+  const showBody = embedded || isExpanded;
 
   const worldCore = worldBlueprint.world_core || {};
   const startingRegion = worldBlueprint.starting_region || {};
@@ -21,33 +25,35 @@ const WorldInfoPanel = ({ worldBlueprint, currentLocation }) => {
   const currentTension = setting.current_tension;
 
   return (
-    <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700">
-      {/* Header - Always visible */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between p-4 hover:bg-gray-750 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <Globe className="text-blue-400" size={24} />
-          <div className="text-left">
-            <h3 className="text-white font-bold text-lg">
-              {worldCore.name || 'Unknown Realm'}
-            </h3>
-            <p className="text-gray-400 text-sm">
-              {currentLocation || startingTown.name || 'Exploring...'}
-            </p>
+    <div className={embedded ? '' : 'bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700'}>
+      {/* Header - hidden when embedded inside a Sheet */}
+      {!embedded && (
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full flex items-center justify-between p-4 hover:bg-gray-750 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <Globe className="text-blue-400" size={24} />
+            <div className="text-left">
+              <h3 className="text-white font-bold text-lg">
+                {worldCore.name || 'Unknown Realm'}
+              </h3>
+              <p className="text-gray-400 text-sm">
+                {currentLocation || startingTown.name || 'Exploring...'}
+              </p>
+            </div>
           </div>
-        </div>
-        {isExpanded ? (
-          <ChevronUp className="text-gray-400" size={20} />
-        ) : (
-          <ChevronDown className="text-gray-400" size={20} />
-        )}
-      </button>
+          {isExpanded ? (
+            <ChevronUp className="text-gray-400" size={20} />
+          ) : (
+            <ChevronDown className="text-gray-400" size={20} />
+          )}
+        </button>
+      )}
 
       {/* Expandable content */}
-      {isExpanded && (
-        <div className="p-4 pt-0 space-y-4 border-t border-gray-700">
+      {showBody && (
+        <div className={embedded ? 'space-y-4' : 'p-4 pt-0 space-y-4 border-t border-gray-700'}>
           {/* World Info */}
           <div>
             <p className="text-gray-300 text-sm leading-relaxed">

@@ -12,8 +12,7 @@ import { EntityNarrationParser } from './EntityLink';
 import { EntityQuickInspect } from './EntityQuickInspect';
 import { CampaignLogPanel } from './CampaignLogPanel';
 import CombatHUD from './CombatHUD';
-import WorldInfoPanel from './WorldInfoPanel';
-import QuestLogPanel from './QuestLogPanel';
+import CampaignTopBar from './CampaignTopBar';
 import ActiveInvestigationPanel, { StorylineRewardModal } from './ActiveInvestigationPanel';
 import RememberCardDialog from './RememberCardDialog';
 import SceneReportDialog from './SceneReportDialog';
@@ -1297,22 +1296,17 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           </div>
         )}
 
-        {/* World Info Panel - Collapsible */}
-        {worldBlueprint && (
-          <div className="px-3 pt-3">
-            <WorldInfoPanel 
-              worldBlueprint={worldBlueprint} 
-              currentLocation={worldState?.current_location || worldState?.location}
-            />
-          </div>
-        )}
-
-        {/* Quest Log Panel — always render when in a campaign so players see
-            the opening lead from turn 0 and the empty-state message otherwise. */}
-        {campaignId && (
-          <div className="px-3 pt-3">
-            <QuestLogPanel quests={quests} onUpdateStatus={handleUpdateQuestStatus} />
-          </div>
+        {/* Compact top bar — Realm + Quests open as right-side slide-overs.
+            Replaces the chunky inline collapsible cards so the chat owns
+            the vertical real-estate. */}
+        {(worldBlueprint || campaignId) && (
+          <CampaignTopBar
+            worldBlueprint={worldBlueprint}
+            currentLocation={worldState?.current_location || worldState?.location}
+            quests={quests}
+            onUpdateQuestStatus={handleUpdateQuestStatus}
+            campaignId={campaignId}
+          />
         )}
 
         {/* Campaign Log Button - Only show when campaignId exists */}

@@ -38,6 +38,16 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Compact Realm + Quests Top Bar (Feb 2026)
+Replaced the chunky inline collapsible `WorldInfoPanel` and `QuestLogPanel` cards with two compact pill buttons in a top bar above the Adventure Log narration. Each opens a right-side slide-over `Sheet` containing the full panel content, freeing ~270-400px of vertical real-estate for the chat.
+- **New `components/CampaignTopBar.jsx`** — renders two pills:
+  - **Realm pill** (`data-testid="realm-button"`): Globe icon + realm name + starting town subtitle. Clicking opens the Realm Sheet with the full WorldInfoPanel body.
+  - **Quests pill** (`data-testid="quests-button"`): Scroll icon + active-count badge. Clicking opens the Quest Log Sheet with the full QuestLogPanel body (active + completed/failed toggle, mark-complete/mark-failed actions preserved).
+- **`WorldInfoPanel.jsx` + `QuestLogPanel.jsx`** got an `embedded` prop that skips the inline header/toggle chrome and always renders the body — caller (the Sheet) owns the title/close.
+- **`AdventureLogWithDM.jsx`** now mounts `CampaignTopBar` instead of the two inline panels. The compact bar sits flush above the chronicler card.
+- The papyrus theme assimilates the buttons aesthetically (parchment-tan backgrounds, sepia ink, blue/amber accents preserved on icons via wildcard CSS).
+- Verified live on the avon Rogue's loaded campaign: Realm Sheet renders Era / Tension / 3 Factions / 2 Recent History entries; Quest Sheet renders 52 active quests with full expand/collapse behavior. Vertical real-estate freed — the Chronicle sits right below the top bar instead of being pushed below two card stacks.
+
 #### Failure Semantics for Investigations
 Properly defined what happens when a beat's check fails — until now a fail still advanced, making the DC pointless.
 - **Backend** (`services/storyline_service.py`, `routers/storylines.py`):

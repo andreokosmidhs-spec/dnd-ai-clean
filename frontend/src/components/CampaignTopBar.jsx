@@ -1,0 +1,142 @@
+import React, { useState } from 'react';
+import { Globe, Scroll } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from './ui/sheet';
+import { Badge } from './ui/badge';
+import WorldInfoPanel from './WorldInfoPanel';
+import QuestLogPanel from './QuestLogPanel';
+
+/**
+ * Compact top-bar with two pill buttons (Realm + Quests). Each opens a
+ * right-side slide-over Sheet that hosts the full WorldInfoPanel /
+ * QuestLogPanel content. Replaces the chunky inline collapsibles so the
+ * narration scroll gets the vertical real-estate it deserves.
+ */
+const CampaignTopBar = ({
+  worldBlueprint,
+  currentLocation,
+  quests = [],
+  onUpdateQuestStatus,
+  campaignId,
+}) => {
+  const [realmOpen, setRealmOpen] = useState(false);
+  const [questsOpen, setQuestsOpen] = useState(false);
+
+  const realmLabel =
+    worldBlueprint?.world_core?.name ||
+    worldBlueprint?.starting_town?.name ||
+    'Realm';
+  const locationLabel =
+    currentLocation || worldBlueprint?.starting_town?.name || null;
+  const activeCount = quests.filter((q) => q.status === 'active').length;
+
+  const showRealm = !!worldBlueprint;
+  const showQuests = !!campaignId;
+
+  if (!showRealm && !showQuests) return null;
+
+  return (
+    <div
+      className="px-3 pt-3 flex items-center gap-2 flex-wrap"
+      data-testid="campaign-top-bar"
+    >
+      {showRealm && (
+        <Sheet open={realmOpen} onOpenChange={setRealmOpen}>
+          <SheetTrigger asChild>
+            <button
+              type="button"
+              data-testid="realm-button"
+              className="group inline-flex items-center gap-2 rounded-full border border-blue-500/40 bg-blue-950/40 hover:bg-blue-900/50 hover:border-blue-400/60 transition-colors px-3 py-1.5 text-xs font-medium text-blue-100 shadow-sm"
+            >
+              <Globe size={14} className="text-blue-300" />
+              <span className="max-w-[10rem] truncate">{realmLabel}</span>
+              {locationLabel && (
+                <span className="text-blue-300/70 hidden sm:inline">·</span>
+              )}
+              {locationLabel && (
+                <span className="max-w-[8rem] truncate text-blue-300/80 hidden sm:inline">
+                  {locationLabel}
+                </span>
+              )}
+            </button>
+          </SheetTrigger>
+          <SheetContent
+            side="right"
+            className="w-full sm:max-w-md bg-gray-900 border-gray-700 text-white overflow-y-auto"
+            data-testid="realm-sheet"
+          >
+            <SheetHeader>
+              <SheetTitle className="text-blue-300 flex items-center gap-2">
+                <Globe size={18} />
+                {realmLabel}
+              </SheetTitle>
+              {locationLabel && (
+                <p className="text-sm text-gray-400">{locationLabel}</p>
+              )}
+            </SheetHeader>
+            <div className="mt-4">
+              <WorldInfoPanel
+                worldBlueprint={worldBlueprint}
+                currentLocation={currentLocation}
+                embedded
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+
+      {showQuests && (
+        <Sheet open={questsOpen} onOpenChange={setQuestsOpen}>
+          <SheetTrigger asChild>
+            <button
+              type="button"
+              data-testid="quests-button"
+              className="group inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-950/30 hover:bg-amber-900/40 hover:border-amber-400/60 transition-colors px-3 py-1.5 text-xs font-medium text-amber-100 shadow-sm"
+            >
+              <Scroll size={14} className="text-amber-300" />
+              <span>Quests</span>
+              <Badge
+                variant="outline"
+                className="h-5 px-1.5 text-[10px] border-amber-400/50 text-amber-200 bg-amber-900/30"
+              >
+                {activeCount}
+              </Badge>
+            </button>
+          </SheetTrigger>
+          <SheetContent
+            side="right"
+            className="w-full sm:max-w-md bg-gray-900 border-gray-700 text-white overflow-y-auto"
+            data-testid="quests-sheet"
+          >
+            <SheetHeader>
+              <SheetTitle className="text-amber-300 flex items-center gap-2">
+                <Scroll size={18} />
+                Quest Log
+                <Badge
+                  variant="outline"
+                  className="ml-1 text-xs border-amber-400/50 text-amber-200"
+                >
+                  {activeCount} Active
+                </Badge>
+              </SheetTitle>
+            </SheetHeader>
+            <div className="mt-4">
+              <QuestLogPanel
+                quests={quests}
+                onUpdateStatus={onUpdateQuestStatus}
+                embedded
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+    </div>
+  );
+};
+
+export default CampaignTopBar;

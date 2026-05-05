@@ -25,6 +25,7 @@ from typing import Dict, List, Optional
 from uuid import uuid4
 
 from data.biomes import BIOMES, list_biome_keys
+from data.event_catalog import EVENT_TYPES, filter_eligible
 from models.campaign_models import CampaignIntent
 
 logger = logging.getLogger(__name__)
@@ -196,31 +197,224 @@ def _place_nodes_circle(count: int, center: tuple = (0.5, 0.5), radius: float = 
     return coords
 
 
-def _make_event(biome: str, title: str, description: str) -> Dict:
+# -------------------- presence: factions & races --------------------
+
+# Heuristic keywords mapped to faction archetypes used by the event catalog.
+_FACTION_ARCHETYPE_KEYWORDS = {
+    "criminal":   ["thief", "thieves", "syndicate", "smuggler", "smugglers", "cut", "knife", "shadow", "underground", "black market", "cartel"],
+    "smuggler":   ["smuggler", "smugglers", "runners", "fence"],
+    "merchant":   ["merchant", "trader", "trade", "guild of trade", "company", "house of"],
+    "guild":      ["guild", "league", "society of"],
+    "military":   ["watch", "garrison", "legion", "army", "warden", "wardens", "knight", "soldier", "company of"],
+    "religious":  ["temple", "church", "order", "priest", "faith", "cult", "monastery", "saint", "celestial"],
+    "scholarly":  ["scholar", "academy", "library", "scribe", "scribes", "lyceum", "college", "circle of scribes"],
+    "arcane":     ["mage", "wizard", "circle", "arcane", "sorcer", "occult", "warlock", "thaumaturg"],
+    "noble":      ["noble", "house of", "court", "council", "throne", "crown", "barony"],
+    "native":     ["clan", "tribe", "kindred", "folk of"],
+}
+
+# Standard races we recognise (matches the character creation set). Lowercase keys.
+_RACES = ["human", "elf", "half-elf", "dwarf", "halfling", "tiefling",
+          "half-orc", "orc", "gnome", "dragonborn"]
+
+
+def _infer_faction_archetypes(name: str, description: str = "") -> List[str]:
+    """Map a free-form faction name + description to one or more archetype tags."""
+    blob = f"{name} {description}".lower()
+    found: List[str] = []
+    for arche, keywords in _FACTION_ARCHETYPE_KEYWORDS.items():
+        if any(k in blob for k in keywords):
+            found.append(arche)
+    # Fallback: if nothing matched, assume noble/guild for a generic name with capitals.
+    if not found:
+        found = ["guild"]
+    return found
+
+
+def _world_factions(world: Dict) -> List[Dict]:
+    """Pull the factions array from a world doc with safe fallbacks. Looks at
+    `world.factions` first then `world.setting.factions` (current shape).
+    Each entry is normalized to {name, description, archetypes}."""
+    raw = world.get("factions") or (world.get("setting") or {}).get("factions") or []
+    out: List[Dict] = []
+    for f in raw:
+        if isinstance(f, str):
+            name, desc = f, ""
+        elif isinstance(f, dict):
+            name = f.get("name") or f.get("title") or ""
+            desc = (
+                f.get("description")
+                or f.get("summary")
+                or " ".join([f.get("domain", ""), f.get("stance", "")]).strip()
+            )
+        else:
+            continue
+        if not name:
+            continue
+        out.append({
+            "name": name,
+            "description": desc,
+            "archetypes": _infer_faction_archetypes(name, desc),
+        })
+    return out
+
+
+def _pick_region_factions(world_factions: List[Dict], biome: str,
+                          is_starting: bool, rng: random.Random) -> List[Dict]:
+    """Pick 1-2 factions present in this region. Starter region gets all the
+    factions whose archetypes naturally lean urban/criminal/merchant if the
+    biome is urban/coast; neighbors get a 1-2 faction slice biased by biome."""
+    if not world_factions:
+        return []
+    if is_starting:
+        # Starter: include up to 3 factions (the "settled" hub).
+        k = min(3, len(world_factions))
+    else:
+        k = rng.randint(1, min(2, len(world_factions)))
+    return rng.sample(world_factions, k=k)
+
+
+def _pick_region_races(world: Dict, character: Optional[Dict], biome: str,
+                       is_starting: bool, rng: random.Random) -> List[str]:
+    """Decide which races dominate this region. Always seed with the player's
+    race + a couple of biome-flavored extras."""
+    races: List[str] = ["human"]  # most worlds have humans somewhere
+    if character:
+        ident = character.get("identity") or {}
+        race = (character.get("race") or {}).get("key") or (ident.get("race") or "")
+        race = (race or "").lower().strip()
+        if race and race in _RACES and race not in races:
+            races.append(race)
+    biome_bias = {
+        "forest":    ["elf", "half-elf"],
+        "fey":       ["elf", "halfling", "gnome"],
+        "mountain":  ["dwarf", "half-orc"],
+        "underdark": ["dwarf", "tiefling"],
+        "tundra":    ["dwarf", "half-orc"],
+        "swamp":     ["tiefling", "half-orc"],
+        "plains":    ["halfling", "half-orc", "human"],
+        "urban":     ["halfling", "half-elf", "tiefling"],
+        "coast":     ["half-elf", "halfling"],
+        "desert":    ["dragonborn", "tiefling"],
+        "volcanic":  ["dragonborn"],
+        "shadow":    ["tiefling"],
+    }
+    extras = biome_bias.get(biome, ["halfling"])
+    pool = [r for r in extras if r not in races]
+    if pool:
+        k = 2 if is_starting else 1
+        for r in rng.sample(pool, k=min(k, len(pool))):
+            races.append(r)
+    return races
+
+
+def region_tags(region: Dict) -> set:
+    """Compose the set of tags used to filter the event catalog."""
+    tags: set = set()
+    biome = region.get("biome") or "plains"
+    tags.add(f"biome:{biome}")
+    for f in region.get("present_factions") or []:
+        for a in (f.get("archetypes") or []):
+            tags.add(f"faction:{a}")
+    for race in region.get("dominant_races") or []:
+        tags.add(f"race:{(race or '').lower()}")
+    return tags
+
+
+def _make_event(biome: str, title: str, description: str,
+                event_type: str = "mystery", difficulty: Optional[str] = None,
+                drafted_because: Optional[List[str]] = None) -> Dict:
+    """Build an event card. `drafted_because` lists the human-readable reasons
+    the catalog/LLM picked this card for this region (faction/race), surfaced
+    in the UI as "Drafted because: …"."""
+    if event_type not in EVENT_TYPES:
+        event_type = "mystery"
+    diff = difficulty or random.choice(["easy", "medium", "medium", "hard"])
     return {
         "id": f"evt_{uuid4().hex[:8]}",
+        "type": event_type,
         "title": title,
         "description": description,
         "biome": biome,
-        "difficulty": random.choice(["easy", "medium", "medium", "hard"]),
+        "difficulty": diff,
         "status": "available",
-        "tags": ["event", biome],
+        "tags": ["event", biome, event_type],
+        "drafted_because": drafted_because or [],
     }
 
 
+def _drafting_reasons(template: Dict, region: Dict) -> List[str]:
+    """Human-readable reasons this template applied — surfaced on the card."""
+    reasons: List[str] = []
+    requires = template.get("requires") or []
+    region_factions = region.get("present_factions") or []
+    region_races = region.get("dominant_races") or []
+    for tag in requires:
+        if tag.startswith("faction:"):
+            arche = tag.split(":", 1)[1]
+            if arche == "any":
+                continue
+            for f in region_factions:
+                if arche in (f.get("archetypes") or []):
+                    reasons.append(f"{f['name']} operates here")
+                    break
+        elif tag.startswith("race:"):
+            r = tag.split(":", 1)[1]
+            if r in {"any", "any-non-human"}:
+                continue
+            if r in region_races:
+                reasons.append(f"{r.title()} community in this region")
+    return reasons
+
+
+def _seed_events_for_region(region: Dict, count: int,
+                            rng: Optional[random.Random] = None) -> List[Dict]:
+    """Pull `count` events from the catalog filtered by the region's tags. If
+    the catalog can't fill the deck (rare biome + thin presence), top up with
+    biome-default templates so every region still has a deck."""
+    rng = rng or random.Random()
+    biome = region.get("biome") or "plains"
+    tags = region_tags(region)
+    eligible = filter_eligible(tags, count=count, rng=rng)
+    out: List[Dict] = []
+    for tpl in eligible:
+        out.append(_make_event(
+            biome=biome,
+            title=tpl["title"],
+            description=tpl["description"],
+            event_type=tpl["type"],
+            difficulty=tpl.get("difficulty"),
+            drafted_because=_drafting_reasons(tpl, region),
+        ))
+    # Top up with biome-flavored mystery events from the legacy template pool
+    if len(out) < count:
+        legacy = (_EVENT_TEMPLATES.get(biome) or _EVENT_TEMPLATES["plains"])[:]
+        rng.shuffle(legacy)
+        for title, desc in legacy:
+            if len(out) >= count:
+                break
+            out.append(_make_event(biome, title, desc, event_type="mystery"))
+    return out
+
+
 def _seed_events_for_biome(biome: str, count: int) -> List[Dict]:
-    templates = _EVENT_TEMPLATES.get(biome) or _EVENT_TEMPLATES["plains"]
-    chosen = random.sample(templates, k=min(count, len(templates)))
-    return [_make_event(biome, title, desc) for title, desc in chosen]
+    """Legacy entry-point kept for compatibility — synthesises a stub region
+    with no faction/race data and forwards to the region-aware seeder."""
+    return _seed_events_for_region({"biome": biome}, count)
 
 
 def _make_region(biome: str, name: str, description: str, coord: Dict,
-                 is_starting: bool, events_full: int, events_hint_count: int) -> Dict:
-    hydrated = is_starting
-    events = _seed_events_for_biome(biome, events_full) if hydrated else []
-    hint_templates = (_EVENT_TEMPLATES.get(biome) or _EVENT_TEMPLATES["plains"])[:events_hint_count]
-    hints = [t[0] for t in hint_templates] if not hydrated else []
-    return {
+                 is_starting: bool, events_full: int, events_hint_count: int,
+                 world_factions: Optional[List[Dict]] = None,
+                 character: Optional[Dict] = None,
+                 world: Optional[Dict] = None,
+                 rng: Optional[random.Random] = None) -> Dict:
+    rng = rng or random.Random()
+    world_factions = world_factions or []
+    world = world or {}
+    present_factions = _pick_region_factions(world_factions, biome, is_starting, rng)
+    dominant_races = _pick_region_races(world, character, biome, is_starting, rng)
+    region = {
         "id": f"reg_{uuid4().hex[:8]}",
         "name": name,
         "biome": biome,
@@ -228,17 +422,33 @@ def _make_region(biome: str, name: str, description: str, coord: Dict,
         "x": coord["x"],
         "y": coord["y"],
         "is_starting": is_starting,
-        "hydrated": hydrated,
+        "hydrated": is_starting,
         "visited": is_starting,
-        "hints": hints,
-        "events": events,
+        "hints": [],
+        "events": [],
+        "present_factions": present_factions,
+        "dominant_races": dominant_races,
     }
+    if is_starting:
+        region["events"] = _seed_events_for_region(region, events_full, rng=rng)
+    else:
+        # Hint teasers: just titles from the eligible catalog so the player
+        # can see what's loose in the region before they visit.
+        eligible = filter_eligible(region_tags(region), count=events_hint_count, rng=rng)
+        if eligible:
+            region["hints"] = [t["title"] for t in eligible]
+        else:
+            hint_templates = (_EVENT_TEMPLATES.get(biome) or _EVENT_TEMPLATES["plains"])[:events_hint_count]
+            region["hints"] = [t[0] for t in hint_templates]
+    return region
 
 
 def _template_graph(intent: CampaignIntent, world: Dict, character: Optional[Dict],
                     region_count: int = 6, events_per_region: int = 5) -> Dict:
     """Deterministic fallback graph when the LLM is unavailable."""
     start_biome = _choose_starting_biome(world)
+    rng = random.Random()
+    world_factions = _world_factions(world)
 
     # Starter region: name it after the starting town; reuse its description.
     starting = world.get("startingLocation") or {}
@@ -248,7 +458,7 @@ def _template_graph(intent: CampaignIntent, world: Dict, character: Optional[Dic
     # Pick neighbor biomes: a mix that always includes at least one "travel"
     # biome different from the start.
     pool = [b for b in _DEFAULT_BIOME_POOL if b != start_biome]
-    random.shuffle(pool)
+    rng.shuffle(pool)
     neighbor_biomes = pool[: region_count - 1]
 
     coords = _place_nodes_circle(region_count)
@@ -261,10 +471,14 @@ def _template_graph(intent: CampaignIntent, world: Dict, character: Optional[Dic
         is_starting=True,
         events_full=events_per_region,
         events_hint_count=0,
+        world_factions=world_factions,
+        character=character,
+        world=world,
+        rng=rng,
     ))
     for i, b in enumerate(neighbor_biomes):
         parts = _REGION_NAME_PARTS.get(b) or _REGION_NAME_PARTS["plains"]
-        first, last = random.choice(parts)
+        first, last = rng.choice(parts)
         name = f"{first} {last}".strip() or first or b.title()
         hint = _HINT_TEMPLATES.get(b, "Rumors reach you from beyond the horizon.")
         regions.append(_make_region(
@@ -275,6 +489,10 @@ def _template_graph(intent: CampaignIntent, world: Dict, character: Optional[Dic
             is_starting=False,
             events_full=events_per_region,
             events_hint_count=min(3, events_per_region),
+            world_factions=world_factions,
+            character=character,
+            world=world,
+            rng=rng,
         ))
 
     # Edges: starter connects to every neighbor; neighbors loosely chain.
@@ -323,6 +541,8 @@ async def generate_world_graph(
         starter_desc = (world.get("startingLocation") or {}).get("description", "")
         realm = (world.get("world_core") or {}).get("name", "the realm")
         biome_keys = ", ".join(list_biome_keys())
+        type_keys = ", ".join(EVENT_TYPES.keys())
+        world_factions = _world_factions(world)
 
         prompt = (
             "Design a CAMPAIGN MAP as a small graph of regions for a Dungeons & Dragons 5e campaign. "
@@ -331,6 +551,10 @@ async def generate_world_graph(
             f"Starting region is centered on: {starter_name} — {starter_desc}\n"
             f"Campaign tone: {intent.tone} | focus: {intent.focus} | scope: {intent.scope} | danger: {intent.danger}\n\n"
             f"=== BIOMES (pick from these keys only) ===\n{biome_keys}\n\n"
+            f"=== EVENT TYPES (pick from these keys only) ===\n{type_keys}\n"
+            "  encounter = combat/threat; faction = political plot; cultural = race/culture-tied;\n"
+            "  discovery = find something; mystery = unexplained; hazard = travel/environment;\n"
+            "  lore = history/knowledge; quest = major quest hook.\n\n"
             f"=== REQUIREMENTS ===\n"
             f"- Produce EXACTLY {region_count} regions including the starter.\n"
             f"- The first region in the output array MUST be the starter, with `is_starting=true`,\n"
@@ -338,12 +562,11 @@ async def generate_world_graph(
             f"- The other {region_count - 1} regions should use DIFFERENT biomes where plausible;\n"
             f"  they are NEIGHBORS reachable on foot or short travel. Mix biomes so the map feels varied.\n"
             f"- For each region: name (no apostrophes), biome (one of the keys above),\n"
-            f"  description (1 sentence, grounded, no cliche), and a 'hint' (1 short teaser line of a rumor\n"
-            f"  the player might hear about that region).\n"
+            f"  description (1 sentence, grounded, no cliche), and a 'hint' (1 short teaser line).\n"
             f"- For the STARTER region ONLY, ALSO output {events_per_region} event hooks (quest seeds): each with\n"
             f"  a title (3-6 words, no quotes, no clichés like 'ancient evil'), a 1-sentence description,\n"
-            f"  and a difficulty (easy|medium|hard). Events must be biome-flavored (forest event ≠ desert event),\n"
-            f"  plausible for a level-1 party.\n"
+            f"  a 'type' (one of the event-type keys above), and a difficulty (easy|medium|hard).\n"
+            f"  Distribute event types across the deck — do NOT make all 5 events the same type.\n"
             f"- NO cliches: no 'chosen one', 'ancient evil', 'dark lord', 'prophecy', 'mysterious stranger'.\n"
             f"- HARD-BAN phrases: 'a veil falls', 'darkness stirs', 'whispers of fate'.\n\n"
             "=== OUTPUT (strict JSON only, no code fence, no prose) ===\n"
@@ -352,7 +575,7 @@ async def generate_world_graph(
             "    { \"name\": \"...\", \"biome\": \"<biome_key>\", \"description\": \"...\", \"hint\": \"...\",\n"
             "      \"is_starting\": true,\n"
             "      \"events\": [\n"
-            "        { \"title\": \"...\", \"description\": \"...\", \"difficulty\": \"easy|medium|hard\" }\n"
+            "        { \"title\": \"...\", \"description\": \"...\", \"type\": \"<event_type_key>\", \"difficulty\": \"easy|medium|hard\" }\n"
             "      ]\n"
             "    },\n"
             "    { \"name\": \"...\", \"biome\": \"<biome_key>\", \"description\": \"...\", \"hint\": \"...\",\n"
@@ -389,6 +612,8 @@ async def generate_world_graph(
         if not isinstance(raw_regions, list) or len(raw_regions) < 3:
             return fallback
 
+        rng = random.Random()
+
         # Build regions from AI output, keeping deterministic coords & ids.
         coords = _place_nodes_circle(min(region_count, len(raw_regions)))
         regions: List[Dict] = []
@@ -404,6 +629,17 @@ async def generate_world_graph(
             description = str(r.get("description") or r.get("hint") or "").strip() or starter_desc
             hint = str(r.get("hint") or "").strip()
             coord = coords[i] if i < len(coords) else {"x": 0.5, "y": 0.5}
+
+            # Populate region presence from world factions + heuristics so the
+            # event-type & catalog logic has tags to filter on.
+            present_factions = _pick_region_factions(world_factions, biome, is_starting, rng)
+            dominant_races = _pick_region_races(world, character, biome, is_starting, rng)
+            region_dict_for_tags = {
+                "biome": biome,
+                "present_factions": present_factions,
+                "dominant_races": dominant_races,
+            }
+
             events: List[Dict] = []
             if is_starting:
                 raw_events = r.get("events") or []
@@ -417,18 +653,23 @@ async def generate_world_graph(
                     diff = str(ev.get("difficulty") or "medium").lower()
                     if diff not in {"easy", "medium", "hard"}:
                         diff = "medium"
-                    events.append({
-                        "id": f"evt_{uuid4().hex[:8]}",
-                        "title": title[:60],
-                        "description": desc[:260],
-                        "biome": biome,
-                        "difficulty": diff,
-                        "status": "available",
-                        "tags": ["event", biome],
-                    })
+                    etype = str(ev.get("type") or "").strip().lower()
+                    if etype not in EVENT_TYPES:
+                        etype = "mystery"
+                    events.append(_make_event(
+                        biome=biome,
+                        title=title[:60],
+                        description=desc[:260],
+                        event_type=etype,
+                        difficulty=diff,
+                    ))
                 if len(events) < events_per_region:
-                    # top up with biome-flavored templates
-                    events.extend(_seed_events_for_biome(biome, events_per_region - len(events)))
+                    # top up with catalog-filtered (faction/race-aware) events
+                    events.extend(_seed_events_for_region(
+                        region_dict_for_tags,
+                        events_per_region - len(events),
+                        rng=rng,
+                    ))
 
             regions.append({
                 "id": f"reg_{uuid4().hex[:8]}",
@@ -442,6 +683,8 @@ async def generate_world_graph(
                 "visited": is_starting,
                 "hints": [hint] if hint and not is_starting else [],
                 "events": events,
+                "present_factions": present_factions,
+                "dominant_races": dominant_races,
             })
 
         # Guarantee exactly one starter
@@ -450,7 +693,7 @@ async def generate_world_graph(
             regions[0]["hydrated"] = True
             regions[0]["visited"] = True
             if not regions[0]["events"]:
-                regions[0]["events"] = _seed_events_for_biome(regions[0]["biome"], events_per_region)
+                regions[0]["events"] = _seed_events_for_region(regions[0], events_per_region, rng=rng)
 
         # Edges: starter→each neighbor, plus 60% neighbor chain
         starter = next((r for r in regions if r["is_starting"]), regions[0])
@@ -492,7 +735,23 @@ async def hydrate_region(
         return region
 
     biome = (region.get("biome") or "plains").lower()
-    fallback_events = _seed_events_for_biome(biome, events_count)
+    fallback_events = _seed_events_for_region(region, events_count)
+
+    # Build a faction/race context block so the LLM produces events that
+    # actually involve the entities present in this region.
+    factions = region.get("present_factions") or []
+    races = region.get("dominant_races") or []
+    factions_block = (
+        "Factions present in this region: "
+        + ", ".join(f"{f['name']} ({'/'.join(f.get('archetypes') or [])})"
+                    for f in factions)
+        if factions else "Factions present: none of note."
+    )
+    races_block = (
+        "Dominant races: " + ", ".join(r.title() for r in races)
+        if races else "Dominant races: humans (mixed)."
+    )
+    type_keys = ", ".join(EVENT_TYPES.keys())
 
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
@@ -506,12 +765,16 @@ async def hydrate_region(
             f"Seed {events_count} event hooks for a D&D 5e region the player has just entered.\n\n"
             f"=== REGION ===\nName: {region.get('name')}\nBiome: {biome}\n"
             f"Description: {region.get('description')}\nRealm: {realm}\n"
+            f"{factions_block}\n{races_block}\n"
             f"Campaign tone: {intent.tone} | focus: {intent.focus} | danger: {intent.danger}\n\n"
-            "Each event must feel native to this biome and distinct from the others. "
+            f"=== EVENT TYPES (pick from these keys only) ===\n{type_keys}\n\n"
+            "Distribute event TYPES across the deck (don't make all the same type). "
+            "Tie at LEAST one event to a present faction by name (faction-type) and at "
+            "LEAST one to a dominant race by culture (cultural-type) when those are listed. "
             "No cliches (no 'ancient evil', no 'chosen one'). Level-1 plausible.\n\n"
             "=== OUTPUT (strict JSON) ===\n"
             "{ \"events\": [ { \"title\": \"...\", \"description\": \"...\", "
-            "\"difficulty\": \"easy|medium|hard\" } ] }"
+            "\"type\": \"<event_type_key>\", \"difficulty\": \"easy|medium|hard\" } ] }"
         )
         chat = LlmChat(
             api_key=api_key,
@@ -542,15 +805,16 @@ async def hydrate_region(
             diff = str(ev.get("difficulty") or "medium").lower()
             if diff not in {"easy", "medium", "hard"}:
                 diff = "medium"
-            events.append({
-                "id": f"evt_{uuid4().hex[:8]}",
-                "title": title[:60],
-                "description": desc[:260],
-                "biome": biome,
-                "difficulty": diff,
-                "status": "available",
-                "tags": ["event", biome],
-            })
+            etype = str(ev.get("type") or "").strip().lower()
+            if etype not in EVENT_TYPES:
+                etype = "mystery"
+            events.append(_make_event(
+                biome=biome,
+                title=title[:60],
+                description=desc[:260],
+                event_type=etype,
+                difficulty=diff,
+            ))
         if len(events) < max(3, events_count - 1):
             events = fallback_events
     except Exception as exc:  # noqa: BLE001

@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
-import { Compass, MapPin, Trees, Sun, Mountain, Snowflake, Waves, Droplet, Flame, Building, Sparkle, Moon, Wind, Loader2, Check, X, Scroll } from 'lucide-react';
+import { Compass, MapPin, Trees, Sun, Mountain, Snowflake, Waves, Droplet, Flame, Building, Sparkle, Moon, Wind, Loader2, Check, X, Scroll, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { eventTypeMeta } from '../utils/eventTypes';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -374,6 +375,32 @@ const RegionPanel = ({ region, isCurrent, onVisit, onAccept, onDismiss, busyRegi
         <p className="mt-2 text-xs text-amber-50/85 leading-snug">
           {region.description}
         </p>
+
+        {/* Region presence — factions + dominant races driving the event deck */}
+        {(region.present_factions?.length > 0 || region.dominant_races?.length > 0) && (
+          <div className="mt-2 flex flex-wrap gap-1.5" data-testid="region-presence">
+            {(region.present_factions || []).slice(0, 3).map((f, i) => (
+              <Badge
+                key={`f-${i}`}
+                variant="outline"
+                className="text-[10px] text-purple-100/95 border-purple-300/40 bg-purple-900/25"
+                title={(f.archetypes || []).join(' / ')}
+              >
+                <Users className="h-2.5 w-2.5 mr-1" />
+                {f.name}
+              </Badge>
+            ))}
+            {(region.dominant_races || []).slice(0, 3).map((r, i) => (
+              <Badge
+                key={`r-${i}`}
+                variant="outline"
+                className="text-[10px] text-emerald-100/95 border-emerald-300/40 bg-emerald-900/25"
+              >
+                {r.charAt(0).toUpperCase() + r.slice(1)}
+              </Badge>
+            ))}
+          </div>
+        )}
       </div>
 
       <ScrollArea className="flex-1 min-h-0 p-3">
@@ -453,27 +480,48 @@ const RegionPanel = ({ region, isCurrent, onVisit, onAccept, onDismiss, busyRegi
 const EventCard = ({ event, onAccept, onDismiss, busy }) => {
   const accepted = event.status === 'accepted';
   const diffClass = diffChip[event.difficulty] || diffChip.medium;
+  const meta = eventTypeMeta(event.type);
+  const reasons = event.drafted_because || [];
+
   return (
     <div
-      className={`rounded-md border p-2.5 bg-black/50 ${
-        accepted ? 'border-emerald-500/40' : 'border-amber-700/30'
+      className={`rounded-md p-2.5 bg-stone-950/70 ${meta.borderClass} ${meta.ringClass} ${
+        accepted ? 'opacity-90' : ''
       }`}
       data-testid={`event-card-${event.id}`}
+      data-event-type={event.type}
     >
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h4 className="text-sm font-semibold text-amber-100 truncate">
-              {event.title}
-            </h4>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Badge
+              className={`text-[10px] ${meta.chipBg} ${meta.chipText} border-0 px-1.5 py-0 leading-tight`}
+              data-testid={`event-type-${event.type}`}
+              title={meta.label}
+            >
+              <span className="mr-1" aria-hidden="true">{meta.icon}</span>
+              {meta.label}
+            </Badge>
             <Badge className={`text-[10px] ${diffClass}`}>{event.difficulty}</Badge>
             {accepted && (
               <Badge className="text-[10px] bg-emerald-500 text-black">Quest active</Badge>
             )}
           </div>
-          <p className="text-[11.5px] text-amber-100/75 mt-1 leading-snug">
+          <h4 className={`mt-1.5 text-sm font-semibold truncate ${meta.accent}`}>
+            {event.title}
+          </h4>
+          <p className="text-[11.5px] text-amber-100/80 mt-1 leading-snug">
             {event.description}
           </p>
+          {reasons.length > 0 && (
+            <p
+              className="mt-1.5 text-[10px] italic text-stone-300/70"
+              data-testid="event-drafted-because"
+              title="Why this card was drafted for this region"
+            >
+              <span className="opacity-70">Drafted because:</span> {reasons.join(' · ')}
+            </p>
+          )}
         </div>
       </div>
       {!accepted && (

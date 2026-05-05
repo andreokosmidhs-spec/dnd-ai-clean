@@ -38,6 +38,22 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Typed Event Cards + Region Presence (Feb 2026)
+The world deck now has 8 distinct event types, each with unique color + border styling, drafted from a static catalog filtered by per-region presence (factions + dominant races) so cards stay thematically tied to who actually operates in each region.
+- **Backend `data/event_catalog.py`** (NEW):
+  - 8 `EVENT_TYPES` with color/border/icon: encounter (red, solid-thick) · faction (purple, dashed) · cultural (emerald, double) · discovery (amber, solid-glow) · mystery (indigo, dotted) · hazard (slate, jagged-dashed) · lore (sky, solid-thin) · quest (rose, solid-bold).
+  - ~38-template static catalog spread across the 8 types and 11 biomes. Each template carries `requires` tags (e.g. `faction:criminal`, `race:tiefling`, `race:any-non-human`).
+  - `filter_eligible(region_tags, count)` — subset-match filter that biases toward type variety.
+- **Backend `services/world_graph.py`**:
+  - **Region presence**: each region now carries `present_factions: [{name, description, archetypes}]` and `dominant_races: [...]` fields. Picked at world generation by `_pick_region_factions` (1-2 from world.factions, starter gets up to 3) + `_pick_region_races` (player's race + biome-biased extras). Factions live at `world.setting.factions` in current campaigns; archetype is heuristically inferred from name/description (criminal / merchant / military / religious / scholarly / arcane / smuggler / guild / noble / native).
+  - **Region-aware event seeding**: `_seed_events_for_region` filters the catalog by region tags (biome + factions + races) and picks `count` typed events with type-variety bias. Each card carries `drafted_because: [reasons]` (e.g. "The Black Market Syndicate operates here", "Tiefling community in this region").
+  - **LLM path** updated to ask for `event_type` per event and to top-up via the region-aware seeder; `hydrate_region` (lazy expansion on first visit) gets a faction+race context block so neighbor events involve those entities.
+- **Frontend `utils/eventTypes.js`** (NEW): mirrors the 8 types with Tailwind classes for border + ring + chip styling.
+- **Frontend `components/WorldMapGraph.jsx`**:
+  - Region panel shows two new chip rows: purple Faction badges + emerald Race badges (top of detail card).
+  - Each `EventCard` now uses its type's distinctive left border + colored type chip with icon + accent title color; below the description a small italic "Drafted because: …" line surfaces the reasons the catalog picked this card for this region.
+- **End-to-end verified live (Gate of Emberfall starter)**: All 3 world factions present (Black Market Syndicate · Guild of Scribes · Wardens of Emberfall) + 3 races (Human · Tiefling · Half-elf). Drafted deck spread perfectly across 5 types: Quest Hook · Cultural · Mystery · Faction Plot · Discovery — each with its unique border style.
+
 #### Time-of-Day Tracking (Feb 2026)
 Lightweight, single-integer time-of-day system: each campaign carries a `world_state.clock_hour` (0-23) that's mapped to 9 named periods (Dawn / Morning / Midday / Afternoon / Late Afternoon / Dusk / Evening / Night / Midnight). The DM is fed the current period in its system prompt so narration matches the hour, and the clock auto-advances based on a regex of the player's action.
 - **Backend `services/time_service.py`** (NEW):

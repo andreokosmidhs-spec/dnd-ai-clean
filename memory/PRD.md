@@ -38,6 +38,29 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Time-of-Day Tracking (Feb 2026)
+Lightweight, single-integer time-of-day system: each campaign carries a `world_state.clock_hour` (0-23) that's mapped to 9 named periods (Dawn / Morning / Midday / Afternoon / Late Afternoon / Dusk / Evening / Night / Midnight). The DM is fed the current period in its system prompt so narration matches the hour, and the clock auto-advances based on a regex of the player's action.
+- **Backend `services/time_service.py`** (NEW):
+  - `bucket_for_hour(h)` → `{key, label, icon, hour}` (e.g. `{'morning', 'Morning', '☀️', 9}`).
+  - `time_context_block(h)` → tight DM-prompt section telling the LLM to ground sensory cues in this period (lanterns being lit, market full, grey light, etc.) — never quote the hour as a number.
+  - `estimate_time_advance(player_action, narration)` → 0..8h heuristic: long-rest/sleep keywords = 8h; travel = 3h; thorough/stake-out = 2h; short rest = 1h; default = 0 (chat/glance/single check). No extra LLM call.
+  - `advance_clock(cur, delta)` → wraps mod-24 with a 12h-per-turn safety clamp.
+- **Backend `routers/lean_dm.py`**:
+  - `_build_system_prompt` now takes `clock_hour` and injects `time_context_block` into the DM prompt right after the biome block.
+  - `dm_action`: reads `clock_hour` from campaign, builds the prompt, runs the LLM, then applies `estimate_time_advance` to the player's action + the narration → updates campaign `world_state.clock_hour` → returns `world_state_update: {clock_hour, time_of_day (string key, legacy compat), time_bucket (full object), time_advanced_hours}` so the frontend can display it without breaking legacy code.
+- **Backend `services/storyline_service.py`**:
+  - `draft_initial_scene` and `generate_next_scene` both now read the campaign's clock and inject `time_context_block` into their prompts so storyline scene cards match the same period as the DM.
+  - Each generated beat is tagged with a `time_of_day` object (key/label/icon/hour) for the UI.
+- **Frontend `components/CampaignTopBar.jsx`**:
+  - New compact indigo pill (`data-testid="time-of-day-chip"`) sitting alongside Realm + Quests, showing the icon + label (e.g. `🌆 Dusk`). Tooltip reveals the in-fiction hour for the curious.
+- **Frontend `components/ActiveInvestigationPanel.jsx`**:
+  - Each scene card's header now shows a Time-of-Day badge alongside the Beat counter.
+- **End-to-end verified live**:
+  - Turn 1 ("I glance around the alley") → `time_advanced_hours: 0` — clock holds at 9:00 Morning ☀️.
+  - Turn 2 ("I travel to the docks") → `+3h` → 12:00 Midday 🌞.
+  - Turn 3 ("I take a long rest until morning") → `+8h` → 20:00 Dusk 🌆.
+  - Storyline draft at 9am with hook "a metal latch on a rotting door" → DM grounded the description in morning light naturally; beat tagged `time_of_day: {key:'morning', label:'Morning', icon:'☀️', hour:9}`.
+
 #### Scene-Driven Open-Ended Storylines (Feb 2026)
 Replaced the pre-scripted "draft 3-5 forced-check beats" model with a dynamic scene-loop where the DM generates each next beat based on what the player actually does. Player drives via "What do you do?" textarea — the DM narrates the consequence + new situation, and only requests a check when the action genuinely calls for one.
 - **Backend `services/storyline_service.py`**:

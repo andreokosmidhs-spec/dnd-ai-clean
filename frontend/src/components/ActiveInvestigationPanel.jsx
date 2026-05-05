@@ -264,6 +264,17 @@ const ActiveInvestigationPanel = ({
           <Badge variant="outline" className="text-[11px] border-amber-300/70 text-amber-50 bg-stone-900/80 font-semibold" data-testid="beat-counter">
             Beat {idx + 1} of {beats.length}
           </Badge>
+          {beat.time_of_day && (
+            <Badge
+              variant="outline"
+              className="text-[11px] border-indigo-300/60 text-indigo-100 bg-stone-900/80 font-semibold"
+              data-testid="beat-time-of-day"
+              title={`In-fiction time: ${beat.time_of_day.label}${beat.time_of_day.hour != null ? ` (hour ${beat.time_of_day.hour}/24)` : ''}`}
+            >
+              <span className="mr-1" aria-hidden="true">{beat.time_of_day.icon}</span>
+              {beat.time_of_day.label}
+            </Badge>
+          )}
           <Badge variant="outline" className="text-[11px] border-emerald-300/60 text-emerald-200 bg-stone-900/80 font-semibold">
             {passed} passed
           </Badge>

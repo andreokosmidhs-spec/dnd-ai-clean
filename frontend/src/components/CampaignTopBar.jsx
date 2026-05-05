@@ -23,6 +23,7 @@ const CampaignTopBar = ({
   quests = [],
   onUpdateQuestStatus,
   campaignId,
+  worldState,
 }) => {
   const [realmOpen, setRealmOpen] = useState(false);
   const [questsOpen, setQuestsOpen] = useState(false);
@@ -34,11 +35,23 @@ const CampaignTopBar = ({
   const locationLabel =
     currentLocation || worldBlueprint?.starting_town?.name || null;
   const activeCount = quests.filter((q) => q.status === 'active').length;
+  // Time-of-day chip: prefer the rich `time_bucket` object from the lean DM
+  // response; fall back to legacy string `time_of_day` if that's all we have.
+  const timeBucket = worldState?.time_bucket || (
+    typeof worldState?.time_of_day === 'object' ? worldState.time_of_day : null
+  );
+  const timeLabel = timeBucket?.label || (
+    typeof worldState?.time_of_day === 'string' && worldState.time_of_day
+      ? worldState.time_of_day.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+      : null
+  );
+  const timeIcon = timeBucket?.icon || '🕰️';
 
   const showRealm = !!worldBlueprint;
   const showQuests = !!campaignId;
+  const showTime = !!timeLabel;
 
-  if (!showRealm && !showQuests) return null;
+  if (!showRealm && !showQuests && !showTime) return null;
 
   return (
     <div
@@ -134,6 +147,17 @@ const CampaignTopBar = ({
             </div>
           </SheetContent>
         </Sheet>
+      )}
+
+      {showTime && (
+        <span
+          data-testid="time-of-day-chip"
+          title={timeBucket?.hour != null ? `Hour ${timeBucket.hour}/24 in-fiction` : timeLabel}
+          className="inline-flex items-center gap-1.5 rounded-full border border-indigo-500/40 bg-indigo-950/30 px-3 py-1.5 text-xs font-medium text-indigo-100 shadow-sm"
+        >
+          <span className="text-sm leading-none" aria-hidden="true">{timeIcon}</span>
+          <span className="max-w-[8rem] truncate">{timeLabel}</span>
+        </span>
       )}
     </div>
   );

@@ -1306,6 +1306,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
             quests={quests}
             onUpdateQuestStatus={handleUpdateQuestStatus}
             campaignId={campaignId}
+            worldState={worldState}
           />
         )}
 

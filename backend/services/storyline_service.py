@@ -199,6 +199,11 @@ async def draft_initial_scene(
 
     Returns {title, beats:[scene1], total_dc: scene1.dc}.
     """
+    # Time-of-day grounding for atmospheric scenes.
+    from services.time_service import get_world_clock, time_context_block
+    clock_hour = get_world_clock(campaign)
+    time_block = time_context_block(clock_hour)
+
     fallback_beat = _finalize_beat({
         "title": (hook.get("topic") or "First Sign")[:40].title(),
         "description": (
@@ -221,6 +226,8 @@ async def draft_initial_scene(
 
     api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
     if not api_key:
+        from services.time_service import bucket_for_hour
+        fallback["beats"][0]["time_of_day"] = bucket_for_hour(clock_hour)
         return fallback
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
@@ -255,6 +262,7 @@ async def draft_initial_scene(
             f"{hook.get('text','')}\n"
             f"(topic: {hook.get('topic','')}, suggested verb: {hook.get('verb_hint','examine')})\n\n"
             f"=== RECENT NARRATION CONTEXT ===\n{(narration_context or '')[:600]}\n\n"
+            f"{time_block}\n\n"
             "=== OUTPUT (strict JSON only, no code fence) ===\n"
             "{\n"
             "  \"title\": \"investigation title (3-6 words)\",\n"
@@ -318,9 +326,14 @@ async def draft_initial_scene(
         })
         if not beat["description"]:
             return fallback
+        # Tag the scene with the current time-of-day for the UI.
+        from services.time_service import bucket_for_hour
+        beat["time_of_day"] = bucket_for_hour(clock_hour)
         return {"title": title[:60], "beats": [beat], "total_dc": dc}
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"Initial scene draft failed, using fallback: {exc}")
+        from services.time_service import bucket_for_hour
+        fallback["beats"][0]["time_of_day"] = bucket_for_hour(clock_hour)
         return fallback
 
 
@@ -342,6 +355,11 @@ async def generate_next_scene(
     AND the new situation/tension. Suggested check is included only if it's
     natural — pure narrative beats can omit it.
     """
+    # Time-of-day grounding for atmospheric scenes.
+    from services.time_service import bucket_for_hour, get_world_clock, time_context_block
+    clock_hour = get_world_clock(campaign)
+    time_block = time_context_block(clock_hour)
+
     beats = storyline.get("beats") or []
     # Hard stop after 7 beats — keeps storylines from running away.
     too_long = len(beats) >= 7
@@ -367,6 +385,7 @@ async def generate_next_scene(
     if not api_key:
         if too_long:
             return {"is_final": True, "epilogue": "The trail goes quiet, and the matter resolves into something you can carry forward."}
+        fallback_beat["time_of_day"] = bucket_for_hour(clock_hour)
         return {"is_final": False, "beat": fallback_beat}
 
     try:
@@ -409,6 +428,7 @@ async def generate_next_scene(
             f"Beats so far ({len(beats)}):\n{beats_summary}\n\n"
             "=== PLAYER'S MOST RECENT ACTION ===\n"
             f"{(player_action_summary or '')[:500]}\n\n"
+            f"{time_block}\n\n"
             "=== RULES ===\n"
             f"- Storyline has been running {len(beats)} beat(s). "
             f"{'You SHOULD resolve here unless absolutely critical to continue.' if too_long else 'Aim for 3-5 beats total; resolve only when narratively earned.'}\n"
@@ -500,11 +520,14 @@ async def generate_next_scene(
         })
         # Mark whether a roll is actually suggested for this scene (UI hint)
         beat["roll_optional"] = (dc == 0)
+        # Tag with time-of-day for the UI.
+        beat["time_of_day"] = bucket_for_hour(clock_hour)
         return {"is_final": False, "beat": beat}
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"Next-scene generation failed, using fallback: {exc}")
         if too_long:
             return {"is_final": True, "epilogue": "The trail goes quiet, and what you've gathered is what you'll carry forward."}
+        fallback_beat["time_of_day"] = bucket_for_hour(clock_hour)
         return {"is_final": False, "beat": fallback_beat}
 
 

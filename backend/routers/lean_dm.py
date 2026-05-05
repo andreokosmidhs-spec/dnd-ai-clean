@@ -20,6 +20,14 @@ from services.campaign_service import build_v2_entity_index
 from services.auto_cards import auto_seed_cards_from_narration
 from services.hook_extractor import extract_hooks, detect_engaged_hook
 from services.storyline_service import draft_initial_scene, storyline_to_dict
+from services.time_service import (
+    DEFAULT_CLOCK_HOUR,
+    advance_clock,
+    bucket_for_hour,
+    estimate_time_advance,
+    get_world_clock,
+    time_context_block,
+)
 from utils.entity_mentions import extract_entity_mentions
 
 logger = logging.getLogger(__name__)
@@ -73,7 +81,7 @@ def _format_title(s: str) -> str:
     return str(s or "").replace("_", " ").strip().title()
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int) -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -230,6 +238,7 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict]) -> 
         f"{card_block}\n\n"
         "=== CURRENT BIOME (use for environment details + naturally adjust check difficulty) ===\n"
         f"{biome_block}\n\n"
+        f"{time_context_block(clock_hour)}\n\n"
         "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "
@@ -358,8 +367,9 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             logger.warning(f"Hook engagement check failed: {exc}")
             engaged_hook = None
 
-    # Build LLM prompt
-    system_prompt = _build_system_prompt(campaign, character, cards)
+    # Build LLM prompt — inject current time-of-day for narration grounding.
+    clock_hour = get_world_clock(campaign)
+    system_prompt = _build_system_prompt(campaign, character, cards, clock_hour)
 
     # Call the LLM
     api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
@@ -405,6 +415,24 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         raise HTTPException(status_code=502, detail=f"DM generation failed: {exc}") from exc
 
     now = datetime.now(timezone.utc)
+
+    # Time-of-day advancement — lightweight regex on player action + DM narration.
+    # Each turn moves the campaign clock by 0..8 hours (default 0 for routine
+    # play; rest/travel/thorough actions bump it). Persisted on world_state
+    # so the next turn picks up the new period naturally.
+    advance_h = estimate_time_advance(req.player_action, narration)
+    new_clock_hour = advance_clock(clock_hour, advance_h)
+    if new_clock_hour != clock_hour:
+        try:
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {"$set": {"world_state.clock_hour": new_clock_hour}},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Failed to persist clock_hour: {exc}")
+    time_bucket = bucket_for_hour(new_clock_hour)
+    # Update in-memory campaign so any downstream code (storyline draft) sees it.
+    campaign.setdefault("world_state", {})["clock_hour"] = new_clock_hour
 
     # Extract HOOKS from this DM narration so the next turn can detect
     # engagement and the frontend can render them inline. Cheap regex first;
@@ -533,7 +561,12 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             "hooks": narration_hooks,
             "engaged_hook_id": (engaged_hook or {}).get("id") if engaged_hook else None,
             "storyline": storyline_payload,
-            "world_state_update": {},
+            "world_state_update": {
+                "clock_hour": new_clock_hour,
+                "time_of_day": time_bucket["key"],     # string — legacy compatibility
+                "time_bucket": time_bucket,            # full {key, label, icon, hour} for new UI
+                "time_advanced_hours": advance_h,
+            },
             "player_updates": {},
             "options": [],
         },

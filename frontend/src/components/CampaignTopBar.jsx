@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Globe, Scroll } from 'lucide-react';
+import { Globe, Scroll, Eye } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -47,11 +47,24 @@ const CampaignTopBar = ({
   );
   const timeIcon = timeBucket?.icon || '🕰️';
 
+  // Passive Perception chip — shows the character's PP score + tier so the
+  // player can see at a glance how informative the DM's narration will be.
+  const pp = worldState?.passive_perception || null;
+  const ppLabel = (pp?.tier || '').replace(/^./, (c) => c.toUpperCase());
+  const ppTierColor = {
+    oblivious: 'border-stone-500/50 bg-stone-900/30 text-stone-200',
+    average:   'border-sky-500/40 bg-sky-950/30 text-sky-100',
+    sharp:     'border-cyan-500/50 bg-cyan-950/30 text-cyan-100',
+    keen:      'border-emerald-500/50 bg-emerald-950/30 text-emerald-100',
+    uncanny:   'border-fuchsia-500/60 bg-fuchsia-950/30 text-fuchsia-100',
+  }[pp?.tier] || 'border-sky-500/40 bg-sky-950/30 text-sky-100';
+
   const showRealm = !!worldBlueprint;
   const showQuests = !!campaignId;
   const showTime = !!timeLabel;
+  const showPP = pp && Number.isFinite(pp.score);
 
-  if (!showRealm && !showQuests && !showTime) return null;
+  if (!showRealm && !showQuests && !showTime && !showPP) return null;
 
   return (
     <div
@@ -157,6 +170,24 @@ const CampaignTopBar = ({
         >
           <span className="text-sm leading-none" aria-hidden="true">{timeIcon}</span>
           <span className="max-w-[8rem] truncate">{timeLabel}</span>
+        </span>
+      )}
+
+      {showPP && (
+        <span
+          data-testid="passive-perception-chip"
+          title={
+            `Passive Perception ${pp.score} · ${ppLabel} tier\n` +
+            `10 + WIS mod (${pp.wis_mod >= 0 ? '+' : ''}${pp.wis_mod})` +
+            (pp.proficient ? ` + proficiency (+${pp.prof_bonus})` : ' (no Perception proficiency)') +
+            `\nDM calibrates narration density to this score.`
+          }
+          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm ${ppTierColor}`}
+        >
+          <Eye size={13} className="opacity-90" />
+          <span className="font-semibold">PP {pp.score}</span>
+          <span className="opacity-70">·</span>
+          <span className="text-[11px] tracking-wide">{ppLabel}</span>
         </span>
       )}
     </div>

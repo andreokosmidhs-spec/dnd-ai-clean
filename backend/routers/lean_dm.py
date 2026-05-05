@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from services.campaign_service import build_v2_entity_index
 from services.auto_cards import auto_seed_cards_from_narration
+from services.dnd_rules import compute_passive_perception, passive_perception_block
 from services.hook_extractor import extract_hooks, detect_engaged_hook
 from services.storyline_service import draft_initial_scene, storyline_to_dict
 from services.time_service import (
@@ -239,6 +240,7 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         "=== CURRENT BIOME (use for environment details + naturally adjust check difficulty) ===\n"
         f"{biome_block}\n\n"
         f"{time_context_block(clock_hour)}\n\n"
+        f"{passive_perception_block(character)}\n\n"
         "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "
@@ -369,6 +371,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
 
     # Build LLM prompt — inject current time-of-day for narration grounding.
     clock_hour = get_world_clock(campaign)
+    passive_perception = compute_passive_perception(character)
     system_prompt = _build_system_prompt(campaign, character, cards, clock_hour)
 
     # Call the LLM
@@ -566,6 +569,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
                 "time_of_day": time_bucket["key"],     # string — legacy compatibility
                 "time_bucket": time_bucket,            # full {key, label, icon, hour} for new UI
                 "time_advanced_hours": advance_h,
+                "passive_perception": passive_perception,  # {score, tier, wis_mod, proficient, prof_bonus}
             },
             "player_updates": {},
             "options": [],

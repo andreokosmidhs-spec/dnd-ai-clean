@@ -201,8 +201,10 @@ async def draft_initial_scene(
     """
     # Time-of-day grounding for atmospheric scenes.
     from services.time_service import get_world_clock, time_context_block
+    from services.dnd_rules import passive_perception_block
     clock_hour = get_world_clock(campaign)
     time_block = time_context_block(clock_hour)
+    pp_block = passive_perception_block(character)
 
     fallback_beat = _finalize_beat({
         "title": (hook.get("topic") or "First Sign")[:40].title(),
@@ -263,6 +265,7 @@ async def draft_initial_scene(
             f"(topic: {hook.get('topic','')}, suggested verb: {hook.get('verb_hint','examine')})\n\n"
             f"=== RECENT NARRATION CONTEXT ===\n{(narration_context or '')[:600]}\n\n"
             f"{time_block}\n\n"
+            f"{pp_block}\n\n"
             "=== OUTPUT (strict JSON only, no code fence) ===\n"
             "{\n"
             "  \"title\": \"investigation title (3-6 words)\",\n"
@@ -357,8 +360,10 @@ async def generate_next_scene(
     """
     # Time-of-day grounding for atmospheric scenes.
     from services.time_service import bucket_for_hour, get_world_clock, time_context_block
+    from services.dnd_rules import passive_perception_block
     clock_hour = get_world_clock(campaign)
     time_block = time_context_block(clock_hour)
+    pp_block = passive_perception_block(character)
 
     beats = storyline.get("beats") or []
     # Hard stop after 7 beats — keeps storylines from running away.
@@ -429,6 +434,7 @@ async def generate_next_scene(
             "=== PLAYER'S MOST RECENT ACTION ===\n"
             f"{(player_action_summary or '')[:500]}\n\n"
             f"{time_block}\n\n"
+            f"{pp_block}\n\n"
             "=== RULES ===\n"
             f"- Storyline has been running {len(beats)} beat(s). "
             f"{'You SHOULD resolve here unless absolutely critical to continue.' if too_long else 'Aim for 3-5 beats total; resolve only when narratively earned.'}\n"

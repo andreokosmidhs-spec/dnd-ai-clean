@@ -38,6 +38,18 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Passive Perception–Aware Narration (Feb 2026)
+The DM now reads the character's 5e passive Perception and calibrates how informative the scene narration is. Sharp-eyed characters get more cues + opportunity flags; average characters see the obvious + one modest detail; oblivious characters need active checks for almost everything.
+- **Backend `services/dnd_rules.py`**:
+  - `proficiency_bonus_for_level(level)` — standard 5e PB scale (lvl 1-4: +2, 5-8: +3, …, 17-20: +6).
+  - `compute_passive_perception(character)` → `{score, wis_mod, proficient, prof_bonus, tier}`. Formula = 10 + WIS mod + (PB if proficient in Perception). Tier buckets:
+    - oblivious  (<=10), average (11-13), sharp (14-16), keen (17-19), uncanny (>=20)
+  - `passive_perception_block(character)` — tight DM-prompt section telling the LLM how dense the narration should be for this tier (specific guidance per tier on what cues to include and when to flag opportunities).
+- **Backend `routers/lean_dm.py`**: `_build_system_prompt` injects `passive_perception_block` into the DM prompt right after time-of-day. `world_state_update` in the response now carries `passive_perception: {score, tier, …}` so the UI can display it.
+- **Backend `services/storyline_service.py`**: Both `draft_initial_scene` and `generate_next_scene` inject the same passive-perception block into their prompts so storyline scene cards inherit the same calibration.
+- **Frontend `components/CampaignTopBar.jsx`**: New chip (`data-testid="passive-perception-chip"`) showing **👁️ PP 13 · Average** with tier-tinted color (oblivious=stone, average=sky, sharp=cyan, keen=emerald, uncanny=fuchsia). Tooltip reveals the formula breakdown ("10 + WIS mod (+1) + proficiency (+2)").
+- **End-to-end verified live (avon — WIS 12, Perception-proficient Rogue, PP 13 "average")**: DM narration of Avon scanning rooftops surfaced obvious details (formations, moss, shadows) AND 1-2 modest cues (loose tiles indicating a route, distant scuffle, figure disappearing) — exactly the "average" tier prescription. No active check was needed for those cues; subtler ones still require rolls.
+
 #### Typed Event Cards + Region Presence (Feb 2026)
 The world deck now has 8 distinct event types, each with unique color + border styling, drafted from a static catalog filtered by per-region presence (factions + dominant races) so cards stay thematically tied to who actually operates in each region.
 - **Backend `data/event_catalog.py`** (NEW):

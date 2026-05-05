@@ -58,6 +58,123 @@ def calculate_ability_modifier(ability_score: int) -> int:
     return (ability_score - 10) // 2
 
 
+def proficiency_bonus_for_level(level: int) -> int:
+    """5e proficiency bonus by character level."""
+    try:
+        lvl = int(level)
+    except Exception:  # noqa: BLE001
+        lvl = 1
+    if lvl <= 4:
+        return 2
+    if lvl <= 8:
+        return 3
+    if lvl <= 12:
+        return 4
+    if lvl <= 16:
+        return 5
+    return 6
+
+
+_PERCEPTION_KEYS = {"perception", "Perception", "PERCEPTION"}
+
+
+def compute_passive_perception(character: Dict[str, Any]) -> Dict[str, Any]:
+    """5e passive Perception = 10 + WIS modifier + (prof bonus if proficient).
+
+    Returns {"score": int, "wis_mod": int, "proficient": bool, "prof_bonus": int,
+             "tier": str}. `tier` buckets the score for narration calibration:
+        oblivious  : <=10   — needs explicit checks for almost everything
+        average    : 11-13  — sees the obvious, misses the subtle
+        sharp      : 14-16  — catches one subtle detail per scene
+        keen       : 17-19  — flags hooks proactively, rarely misses leads
+        uncanny    : >=20   — almost nothing escapes their notice
+    """
+    abil = (character or {}).get("abilityScores") or (character or {}).get("ability_scores") or {}
+    # The model uses 'wis' (and 'str'/'dex'/'con'/'int'/'cha') — but ability
+    # scores can also live nested under abilityScores in different shapes.
+    wis = abil.get("wis") or abil.get("WIS") or abil.get("wisdom") or 10
+    try:
+        wis = int(wis)
+    except Exception:  # noqa: BLE001
+        wis = 10
+    wis_mod = calculate_ability_modifier(wis)
+
+    cls = (character or {}).get("class_") or (character or {}).get("class") or {}
+    level = cls.get("level") if isinstance(cls, dict) else 1
+    prof_bonus = proficiency_bonus_for_level(level)
+
+    skill_profs = (cls.get("skillProficiencies") or []) if isinstance(cls, dict) else []
+    proficient = any(str(s).strip() in _PERCEPTION_KEYS for s in skill_profs)
+
+    score = 10 + wis_mod + (prof_bonus if proficient else 0)
+
+    if score <= 10:
+        tier = "oblivious"
+    elif score <= 13:
+        tier = "average"
+    elif score <= 16:
+        tier = "sharp"
+    elif score <= 19:
+        tier = "keen"
+    else:
+        tier = "uncanny"
+
+    return {
+        "score": score,
+        "wis_mod": wis_mod,
+        "proficient": proficient,
+        "prof_bonus": prof_bonus,
+        "tier": tier,
+    }
+
+
+def passive_perception_block(character: Dict[str, Any]) -> str:
+    """Tight DM-prompt section telling the LLM how informative the narration
+    should be relative to this character's passive Perception. Threaded into
+    the lean DM + storyline scene prompts."""
+    pp = compute_passive_perception(character or {})
+    score, tier = pp["score"], pp["tier"]
+    guidance = {
+        "oblivious": (
+            "Narration is bare. Reveal only the obvious — the wagon, the man, "
+            "the fire. Subtle details (faint scent, scuff in the dust, a "
+            "guarded glance) are NOT mentioned unless the player makes an "
+            "active check."
+        ),
+        "average": (
+            "Narration shows the obvious cleanly and one (1) modest cue per "
+            "scene — a footprint at the doorway, a tone in someone's voice, "
+            "a smell that doesn't belong. Subtler clues still need active "
+            "checks."
+        ),
+        "sharp": (
+            "Narration includes the obvious AND 1-2 subtle cues per scene "
+            "(scuff marks, a too-clean alibi, a pulse at the throat). Begin "
+            "to flag opportunities lightly — 'a side door stands ajar', "
+            "'someone here keeps glancing toward the kitchen'."
+        ),
+        "keen": (
+            "Narration is rich. Surface 2-3 subtle cues per scene plus EXPLICIT "
+            "opportunity flags ('the latch is unlocked from the inside', "
+            "'his hands say tired but his eyes say hunting'). Almost nothing "
+            "should escape this character without an active check."
+        ),
+        "uncanny": (
+            "Narration is exhaustive. Surface ALL relevant cues including "
+            "ones a normal person would miss (breath behind a curtain, the "
+            "smell of metal under perfume). Hooks and exits are essentially "
+            "telegraphed — this character's perception is preternatural."
+        ),
+    }[tier]
+    return (
+        "=== PASSIVE PERCEPTION ===\n"
+        f"Character's passive Perception is {score} (tier: {tier}). "
+        f"{guidance}"
+    )
+
+
+
+
 def get_attack_ability_modifier(attacker: Dict[str, Any], weapon_type: str = "melee") -> Tuple[str, int]:
     """
     Get the appropriate ability modifier for an attack.

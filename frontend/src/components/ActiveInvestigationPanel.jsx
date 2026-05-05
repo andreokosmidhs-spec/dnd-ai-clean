@@ -112,6 +112,7 @@ const ActiveInvestigationPanel = ({
   if (!storyline || storyline.status !== 'active' || !beat) return null;
 
   const pressOnAvailable = !storyline.press_on_used;
+  const rollOptional = !!beat.roll_optional;
 
   // -------- API helpers --------
 
@@ -207,6 +208,13 @@ const ActiveInvestigationPanel = ({
       // Don't advance yet — let the player choose: Press On / Push Through / Creative
       setFailPrompt(true);
     }
+  };
+
+  const handleSkip = () => {
+    callResolve({
+      outcome: 'skipped',
+      outcomeText: 'You let the moment pass without forcing it — the scene moves on.',
+    });
   };
 
   const passed = beats.filter((b) => b.status === 'passed').length;
@@ -305,26 +313,43 @@ const ActiveInvestigationPanel = ({
           )}
         </div>
 
-        {/* Action bar */}
+        {/* Action bar — creative approach is the primary path; roll is loose
+            and skip lets the player proceed without forcing a check.
+            Knowledge beats hide skip (the player NEEDS the reveal to advance). */}
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
-            className="h-9 bg-amber-500 hover:bg-amber-400 text-black font-bold"
-            onClick={handleRoll} disabled={busy}
-            data-testid="storyline-roll-btn"
+            className="h-9 bg-fuchsia-500 hover:bg-fuchsia-400 text-black font-bold"
+            onClick={() => setCreativeOpen(true)} disabled={busy}
+            data-testid="storyline-creative-btn"
+            title="Type what you do — the DM will judge and continue the scene"
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Dice5 className="h-4 w-4 mr-1" />}
-            Roll d20{formatMod(mod)}
+            <Wand2 className="h-4 w-4 mr-1" /> What do you do?
           </Button>
           <Button
             size="sm" variant="outline"
-            className="h-9 border-fuchsia-400/70 text-fuchsia-200 bg-fuchsia-950/40 hover:bg-fuchsia-700/30 font-semibold"
-            onClick={() => setCreativeOpen(true)} disabled={busy}
-            data-testid="storyline-creative-btn"
-            title="Type your alternative approach — the DM will judge it"
+            className="h-9 border-amber-400/70 text-amber-100 bg-amber-950/30 hover:bg-amber-700/30"
+            onClick={handleRoll} disabled={busy || rollOptional}
+            data-testid="storyline-roll-btn"
+            title={rollOptional ? 'No check suggested for this scene' : undefined}
           >
-            <Wand2 className="h-4 w-4 mr-1" /> Try Different Approach
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Dice5 className="h-4 w-4 mr-1" />}
+            {rollOptional
+              ? 'No check needed'
+              : (<>Roll d20{formatMod(mod)} <span className="ml-1 text-[10px] uppercase tracking-wider opacity-70">suggested</span></>)
+            }
           </Button>
+          {beat.reveal_type !== 'knowledge' && (
+            <Button
+              size="sm" variant="ghost"
+              className="h-9 text-stone-200 hover:text-amber-50 hover:bg-stone-800/70 border border-stone-600"
+              onClick={handleSkip} disabled={busy}
+              data-testid="storyline-skip-btn"
+              title="Proceed without rolling — the scene moves on"
+            >
+              <ArrowRight className="h-4 w-4 mr-1" /> Skip · Proceed
+            </Button>
+          )}
           <div className="flex-1" />
           <Button
             size="sm" variant="ghost"
@@ -457,11 +482,11 @@ const CreativeApproachDialog = ({ open, beat, busy, text, setText, onSubmit, onC
     <DialogContent className="bg-stone-950 border-2 border-fuchsia-500/50 text-amber-50 max-w-lg" data-testid="creative-approach-dialog">
       <DialogHeader>
         <DialogTitle className="text-fuchsia-200 flex items-center gap-2">
-          <Wand2 className="h-5 w-5" /> Try a Different Approach
+          <Wand2 className="h-5 w-5" /> What do you do?
         </DialogTitle>
         <DialogDescription className="text-amber-100/90 italic font-serif pt-1">
-          The current beat asks you to <span className="text-amber-200 not-italic font-semibold">{beat.task}</span>.
-          Describe how you'd handle it differently — the DM will judge whether it works.
+          Describe your action in this scene. The DM will narrate the outcome and continue the story —
+          a check only triggers if your action genuinely calls for one.
         </DialogDescription>
       </DialogHeader>
 
@@ -469,13 +494,13 @@ const CreativeApproachDialog = ({ open, beat, busy, text, setText, onSubmit, onC
         rows={5}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder='e.g. "Instead of forcing my way past the guard, I offer to share information about the smuggling ring in exchange for safe passage."'
+        placeholder='e.g. "I slip along the eastern wall toward the broken crate, watching for guards through the slats."'
         className="bg-stone-900 border-fuchsia-500/40 text-amber-50 placeholder:text-amber-100/40"
         data-testid="creative-approach-input"
         autoFocus
       />
       <div className="text-[11px] text-amber-100/70">
-        Be specific. The DM rewards inventive thinking; vague plans get partial outcomes.
+        Be specific about HOW you do it. Inventive thinking is rewarded; vague plans land partial outcomes.
       </div>
 
       <div className="flex justify-end gap-2 pt-1">
@@ -489,7 +514,7 @@ const CreativeApproachDialog = ({ open, beat, busy, text, setText, onSubmit, onC
           data-testid="creative-submit-btn"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Wand2 className="h-4 w-4 mr-1" />}
-          Submit Approach
+          Submit Action
         </Button>
       </div>
     </DialogContent>

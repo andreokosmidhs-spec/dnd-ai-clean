@@ -41,8 +41,10 @@ from pydantic import BaseModel
 from models.campaign_models import KnowledgeCard
 from services.storyline_service import (
     advance_storyline,
+    draft_initial_scene,
     draft_storyline,
     generate_complication_beat,
+    generate_next_scene,
     generate_storyline_reward,
     judge_creative_approach,
     storyline_to_dict,
@@ -95,6 +97,43 @@ async def _load_character(character_id: str) -> Optional[Dict]:
     return char
 
 
+def _format_action_summary(
+    beat: Dict,
+    *,
+    outcome: str,
+    roll_total: Optional[int] = None,
+    outcome_text: Optional[str] = None,
+    complication: Optional[str] = None,
+    creative_text: Optional[str] = None,
+    judgment: Optional[str] = None,
+    narration: Optional[str] = None,
+) -> str:
+    """Compact one-paragraph summary of what the player just did + result.
+    Fed to generate_next_scene so the LLM can write a continuation that
+    reflects the actual play."""
+    lines = [
+        f"Beat just resolved: '{beat.get('title','')}' "
+        f"({beat.get('check_type','Investigation')} DC {beat.get('dc',12)})",
+        f"Outcome: {outcome}",
+    ]
+    if creative_text:
+        lines.append(f'Player approach: "{creative_text.strip()[:300]}"')
+        if judgment:
+            lines.append(f"DM judgment: {judgment}")
+        if narration:
+            lines.append(f"DM narration of approach: {narration[:240]}")
+    elif outcome == "skipped":
+        lines.append("Player chose to proceed without rolling.")
+    else:
+        if roll_total is not None:
+            lines.append(f"Roll total: {roll_total} vs DC {beat.get('dc',12)}")
+        if outcome_text:
+            lines.append(f"Detail: {outcome_text[:240]}")
+    if complication:
+        lines.append(f"Complication: {complication[:240]}")
+    return "\n".join(lines)
+
+
 # -------------------- request bodies --------------------
 
 
@@ -142,7 +181,7 @@ async def draft_storyline_endpoint(campaign_id: str, body: DraftStorylineBody):
         "verb_hint": (body.hook_verb or "examine"),
     }
 
-    drafted = await draft_storyline(
+    drafted = await draft_initial_scene(
         campaign=campaign,
         character=character,
         hook=hook,
@@ -152,16 +191,16 @@ async def draft_storyline_endpoint(campaign_id: str, body: DraftStorylineBody):
     now = datetime.now(timezone.utc)
     storyline_id = f"sl_{uuid4().hex[:10]}"
 
-    # Seed a quest KnowledgeCard from the FIRST beat. The card is the player-
-    # facing surface for the storyline in the Quest Log; subsequent beats
-    # update it via on the same card (description summarises 'Beat X of N').
+    # Seed a quest KnowledgeCard from the FIRST beat. Open-ended storylines
+    # show the active scene with no fixed "Beat X of N" since beats are
+    # generated dynamically as the player acts.
     first_beat = (drafted.get("beats") or [{}])[0]
     quest_card = KnowledgeCard(
         type="quest",
         title=drafted.get("title") or "Active Investigation",
         description=(
-            f"{first_beat.get('description','')} (Beat 1 of {len(drafted.get('beats') or [])} — "
-            f"{first_beat.get('check_type','Investigation')} DC {first_beat.get('dc',12)}.)"
+            f"{first_beat.get('description','')} (Active scene — "
+            f"suggested {first_beat.get('check_type','Investigation')} DC {first_beat.get('dc',12)}.)"
         ),
         source="hook-storyline",
         confidence="high",
@@ -184,6 +223,7 @@ async def draft_storyline_endpoint(campaign_id: str, body: DraftStorylineBody):
         "current_beat": 0,
         "beats": drafted["beats"],
         "total_dc": drafted["total_dc"],
+        "open_ended": True,
         "press_on_used": False,
         "complication": None,
         "reward": None,
@@ -401,6 +441,38 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
     else:
         storyline["complication"] = None
 
+    # Open-ended storylines: after resolving the current beat, the DM decides
+    # whether to wrap up OR draft the next scene card based on what happened.
+    if storyline.get("open_ended") and storyline.get("status") != "completed":
+        action_summary = _format_action_summary(
+            cur_beat,
+            outcome=body.outcome,
+            roll_total=body.roll_total,
+            outcome_text=body.outcome_text,
+            complication=complication_text,
+        )
+        try:
+            nxt = await generate_next_scene(
+                campaign=campaign,
+                character=character,
+                storyline=storyline,
+                player_action_summary=action_summary,
+            )
+            if nxt.get("is_final"):
+                storyline["status"] = "completed"
+                storyline["epilogue"] = nxt.get("epilogue")
+            else:
+                new_beat = nxt.get("beat") or {}
+                if new_beat:
+                    beats_list = storyline.get("beats") or []
+                    beats_list.append(new_beat)
+                    storyline["beats"] = beats_list
+                    storyline["current_beat"] = len(beats_list) - 1
+                    # Bump total_dc for reward scaling
+                    storyline["total_dc"] = int(storyline.get("total_dc", 0)) + int(new_beat.get("dc") or 0)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"next-scene generation failed (non-fatal): {exc}")
+
     completed = storyline.get("status") == "completed"
     reward: Optional[Dict] = None
     if completed:
@@ -418,16 +490,29 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
             )
     else:
         # Update the linked quest card description so the Quest Log reflects
-        # the new active beat.
+        # the new active beat. Open-ended storylines drop "Beat X of N" since
+        # the chain grows dynamically.
         quest_card_id = storyline.get("quest_card_id")
         if quest_card_id:
             beats = storyline.get("beats") or []
             cur = int(storyline.get("current_beat") or 0)
             cur_beat_now = beats[cur] if 0 <= cur < len(beats) else {}
-            new_desc = (
-                f"{cur_beat_now.get('description','')} (Beat {cur+1} of {len(beats)} — "
-                f"{cur_beat_now.get('check_type','Investigation')} DC {cur_beat_now.get('dc',12)}.)"
-            )
+            if storyline.get("open_ended"):
+                check_chip = ""
+                if int(cur_beat_now.get("dc") or 0) > 0:
+                    check_chip = (
+                        f" (Active scene — suggested "
+                        f"{cur_beat_now.get('check_type','Investigation')} "
+                        f"DC {cur_beat_now.get('dc',12)}.)"
+                    )
+                else:
+                    check_chip = " (Active scene.)"
+                new_desc = f"{cur_beat_now.get('description','')}{check_chip}"
+            else:
+                new_desc = (
+                    f"{cur_beat_now.get('description','')} (Beat {cur+1} of {len(beats)} — "
+                    f"{cur_beat_now.get('check_type','Investigation')} DC {cur_beat_now.get('dc',12)}.)"
+                )
             await _cards_collection().update_one(
                 {"campaign_id": campaign_id, "id": quest_card_id},
                 {"$set": {"description": new_desc, "updatedAt": datetime.now(timezone.utc)}},
@@ -528,6 +613,38 @@ async def creative_approach_endpoint(
         # Player solved this beat creatively — the carried complication (if any)
         # has been worked around. Clear it.
         storyline["complication"] = None
+
+    # Open-ended storylines: chain into the next dynamically-generated scene.
+    if storyline.get("open_ended") and storyline.get("status") != "completed":
+        action_summary = _format_action_summary(
+            cur_beat,
+            outcome=storyline_outcome,
+            outcome_text=f"Creative approach ({judged_outcome}).",
+            complication=complication_text,
+            creative_text=text,
+            judgment=judged_outcome,
+            narration=narration,
+        )
+        try:
+            nxt = await generate_next_scene(
+                campaign=campaign,
+                character=character,
+                storyline=storyline,
+                player_action_summary=action_summary,
+            )
+            if nxt.get("is_final"):
+                storyline["status"] = "completed"
+                storyline["epilogue"] = nxt.get("epilogue")
+            else:
+                new_beat = nxt.get("beat") or {}
+                if new_beat:
+                    beats_list = storyline.get("beats") or []
+                    beats_list.append(new_beat)
+                    storyline["beats"] = beats_list
+                    storyline["current_beat"] = len(beats_list) - 1
+                    storyline["total_dc"] = int(storyline.get("total_dc", 0)) + int(new_beat.get("dc") or 0)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"next-scene generation (creative path) failed: {exc}")
 
     completed = storyline.get("status") == "completed"
     reward: Optional[Dict] = None

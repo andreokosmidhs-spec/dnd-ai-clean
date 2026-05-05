@@ -179,7 +179,336 @@ def _template_storyline(hook: Dict, intent_focus: str = "Mystery") -> Dict:
     }
 
 
-# -------------------- LLM-driven draft --------------------
+# -------------------- Scene-driven draft (Feb 2026) --------------------
+
+
+async def draft_initial_scene(
+    campaign: Dict,
+    character: Dict,
+    hook: Dict,
+    narration_context: str = "",
+) -> Dict:
+    """Open-ended scene-driven flow.
+
+    Drafts ONLY the FIRST scene card from the engaged hook. The card describes
+    the SCENE the player has stepped into (a result of engaging the hook); a
+    suggested check is included but presented as OPTIONAL — the player can
+    roll, type a creative approach, or skip. Subsequent beats are generated
+    dynamically by `generate_next_scene` based on what the player actually
+    does.
+
+    Returns {title, beats:[scene1], total_dc: scene1.dc}.
+    """
+    fallback_beat = _finalize_beat({
+        "title": (hook.get("topic") or "First Sign")[:40].title(),
+        "description": (
+            f"You step into the matter of {hook.get('topic') or 'the lead'}. "
+            "What looked simple from a distance opens up — the obvious story "
+            "and the real one have begun to disagree."
+        ),
+        "task": f"Take stock of {hook.get('topic') or 'the scene'}",
+        "dc": 12,
+        "check_type": "Investigation",
+        "ability": "INT",
+        "reveal_type": "action",
+        "prompt": "",
+        "targets": [],
+        "status": "active",
+        "outcome_text": None,
+    })
+    fallback_title = f"The {(hook.get('topic') or 'matter').title()[:36]}".rstrip()
+    fallback = {"title": fallback_title, "beats": [fallback_beat], "total_dc": fallback_beat["dc"]}
+
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return fallback
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+        intent = campaign.get("intent") or {}
+        world = campaign.get("world") or {}
+        starting = world.get("startingLocation") or {}
+        identity = character.get("identity") or {}
+        cls = character.get("class") or character.get("class_") or {}
+        bg = character.get("background") or {}
+        hero_name = identity.get("name") or "the hero"
+        class_key = (cls.get("key") or "adventurer").lower()
+        bg_key = (bg.get("key") or "wanderer").lower()
+        location = starting.get("name") or (world.get("starting_town") or {}).get("name") or "the town"
+        realm = (world.get("world_core") or {}).get("name") or "the realm"
+
+        prompt = (
+            "Draft the OPENING SCENE CARD of an open-ended investigation. The player just "
+            "engaged with a hook (e.g. 'I investigate the warehouse'). This card is a SCENE "
+            "the player has stepped into — what they see, hear, smell, and the texture of "
+            "the situation. The card includes a SUGGESTED check (loose; the player can "
+            "roll, propose a creative approach, or skip and just describe what they do). "
+            "Subsequent beats will be drafted dynamically by another call as the scene "
+            "unfolds; you draft only this first card.\n\n"
+            "=== CAMPAIGN ===\n"
+            f"Realm: {realm} | Location: {location}\n"
+            f"Tone: {intent.get('tone','Balanced')} | Focus: {intent.get('focus','Mystery')} | "
+            f"Danger: {intent.get('danger','Medium')}\n\n"
+            "=== HERO ===\n"
+            f"{hero_name} ({class_key}, {bg_key} background)\n\n"
+            "=== HOOK (the player just engaged with this) ===\n"
+            f"{hook.get('text','')}\n"
+            f"(topic: {hook.get('topic','')}, suggested verb: {hook.get('verb_hint','examine')})\n\n"
+            f"=== RECENT NARRATION CONTEXT ===\n{(narration_context or '')[:600]}\n\n"
+            "=== OUTPUT (strict JSON only, no code fence) ===\n"
+            "{\n"
+            "  \"title\": \"investigation title (3-6 words)\",\n"
+            "  \"beat\": {\n"
+            "    \"title\": \"scene title (3-6 words)\",\n"
+            "    \"description\": \"2-4 sentence Mercer-cinematic SCENE the player has stepped into — what they see/hear/smell, what's out of place, what's hanging in the air. Static observer framing (no auto-narrating player choices). For knowledge beats this is the SECRET revelation; for action beats it's the visible scene.\",\n"
+            "    \"task\": \"short imperative — what the player might do here (one phrase)\",\n"
+            "    \"check_type\": \"Investigation|Perception|Insight|Persuasion|Deception|Intimidation|Stealth|Sleight of Hand|Athletics|Arcana|History|Nature|Survival|Religion\",\n"
+            "    \"dc\": 10,\n"
+            "    \"reveal_type\": \"action|knowledge\",\n"
+            "    \"prompt\": \"(knowledge beats only) public-facing tease shown before the roll, no spoilers\",\n"
+            "    \"targets\": [{\"type\": \"npc|faction|location|direction\", \"name\": \"...\"}]\n"
+            "  }\n"
+            "}\n"
+        )
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"storyline-scene1-{uuid4()}",
+            system_message=(
+                "You are a senior D&D campaign designer. You write tight, sensory opening "
+                "scenes with concrete details and a single suggested check. Output strict JSON only."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.lower().startswith("json"):
+                text = text[4:].lstrip()
+        try:
+            data = _json.loads(text)
+        except Exception:
+            s, e = text.find("{"), text.rfind("}")
+            data = _json.loads(text[s:e + 1]) if s != -1 and e > s else {}
+
+        title = (data.get("title") or "").strip() or fallback_title
+        rb = data.get("beat") or {}
+        if not isinstance(rb, dict):
+            return fallback
+        ct = (rb.get("check_type") or "Investigation").strip()
+        if ct not in _VALID_CHECK_TYPES:
+            ct = "Investigation"
+        try:
+            dc = int(rb.get("dc") or 12)
+        except Exception:
+            dc = 12
+        dc = max(8, min(20, dc))
+        beat = _finalize_beat({
+            "title": (rb.get("title") or "First Sign").strip()[:48],
+            "description": (rb.get("description") or "").strip()[:480],
+            "task": (rb.get("task") or "Look closer").strip()[:160],
+            "dc": dc,
+            "check_type": ct,
+            "ability": _VALID_CHECK_TYPES[ct],
+            "reveal_type": (rb.get("reveal_type") or "").strip().lower(),
+            "prompt": (rb.get("prompt") or "").strip()[:200],
+            "targets": _normalize_targets(rb.get("targets")),
+            "status": "active",
+            "outcome_text": None,
+        })
+        if not beat["description"]:
+            return fallback
+        return {"title": title[:60], "beats": [beat], "total_dc": dc}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Initial scene draft failed, using fallback: {exc}")
+        return fallback
+
+
+async def generate_next_scene(
+    campaign: Dict,
+    character: Dict,
+    storyline: Dict,
+    player_action_summary: str,
+) -> Dict:
+    """After the current beat has been resolved (rolled/creative/skipped), the
+    DM decides whether the scene RESOLVES here or whether to draft the NEXT
+    scene card based on what the player actually did.
+
+    Returns one of:
+      {"is_final": True,  "epilogue": "1-2 sentence Mercer epilogue lead-in"}
+      {"is_final": False, "beat": <new_beat_dict>}
+
+    The new beat narrates what just happened (player's action consequences)
+    AND the new situation/tension. Suggested check is included only if it's
+    natural — pure narrative beats can omit it.
+    """
+    beats = storyline.get("beats") or []
+    # Hard stop after 7 beats — keeps storylines from running away.
+    too_long = len(beats) >= 7
+
+    fallback_beat = _finalize_beat({
+        "title": "The Path Forward",
+        "description": (
+            "The thread you pulled has tightened. What was simple a moment ago "
+            "now opens onto a sharper choice — and someone, somewhere, has noticed."
+        ),
+        "task": "Decide your next move",
+        "dc": 12,
+        "check_type": "Insight",
+        "ability": "WIS",
+        "reveal_type": "action",
+        "prompt": "",
+        "targets": [],
+        "status": "active",
+        "outcome_text": None,
+    })
+
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        if too_long:
+            return {"is_final": True, "epilogue": "The trail goes quiet, and the matter resolves into something you can carry forward."}
+        return {"is_final": False, "beat": fallback_beat}
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+        intent = campaign.get("intent") or {}
+        world = campaign.get("world") or {}
+        starting = world.get("startingLocation") or {}
+        identity = (character or {}).get("identity") or {}
+        hero_name = identity.get("name") or "the hero"
+        location = starting.get("name") or (world.get("starting_town") or {}).get("name") or "the town"
+        realm = (world.get("world_core") or {}).get("name") or "the realm"
+
+        beats_summary = "\n".join(
+            f"  Beat {i+1} [{b.get('status','?')}] {b.get('title','')}: "
+            f"{(b.get('outcome_text') or b.get('description',''))[:160]}"
+            for i, b in enumerate(beats)
+        )
+
+        prompt = (
+            "Continue an open-ended investigation scene. The player JUST resolved the "
+            "current beat (rolled, used a creative approach, or skipped). Your job: decide "
+            "whether the scene RESOLVES here, OR draft the NEXT scene card based on what "
+            "the player did.\n\n"
+            "Resolve when: the player has reached a natural stopping point (uncovered the "
+            "truth, escaped, made the deal, walked away with what they came for, OR utterly "
+            "failed to make progress). Otherwise, write the NEXT card.\n\n"
+            "If you draft the next card, it must NARRATE the consequence of what the player "
+            "just did AND the new situation — never restart the scene. Then suggest an "
+            "OPTIONAL check natural to this moment (or omit if pure narrative). The player "
+            "can roll, propose a creative approach, or skip.\n\n"
+            "=== CAMPAIGN ===\n"
+            f"Realm: {realm} | Location: {location}\n"
+            f"Tone: {intent.get('tone','Balanced')} | Focus: {intent.get('focus','Mystery')} | "
+            f"Danger: {intent.get('danger','Medium')}\n\n"
+            f"=== HERO ===\n{hero_name}\n\n"
+            "=== STORYLINE ===\n"
+            f"Title: {storyline.get('title','')}\n"
+            f"Hook: {storyline.get('hook_text','')}\n"
+            f"Beats so far ({len(beats)}):\n{beats_summary}\n\n"
+            "=== PLAYER'S MOST RECENT ACTION ===\n"
+            f"{(player_action_summary or '')[:500]}\n\n"
+            "=== RULES ===\n"
+            f"- Storyline has been running {len(beats)} beat(s). "
+            f"{'You SHOULD resolve here unless absolutely critical to continue.' if too_long else 'Aim for 3-5 beats total; resolve only when narratively earned.'}\n"
+            "- If next card: 2-4 sentences, Mercer-cinematic, second person, present tense, "
+            "  static observer framing. NARRATE the just-played action's consequence + the "
+            "  new situation in the SAME breath.\n"
+            "- Suggested check: include `check_type` and `dc` (10-18) ONLY when natural; set to "
+            "  null for pure narrative transitions.\n"
+            "- Knowledge vs action: knowledge beats hide the description as a secret revelation "
+            "  until the player passes the check. Set `reveal_type` accordingly.\n"
+            "- NO clichés ('fate', 'the gods'). NO recap of earlier beats verbatim.\n"
+            "- Output strict JSON, no code fence.\n\n"
+            "=== OUTPUT (strict JSON only) ===\n"
+            "{\n"
+            "  \"is_final\": false,\n"
+            "  \"epilogue\": \"only when is_final=true: 1-2 sentence Mercer epilogue\",\n"
+            "  \"beat\": {\n"
+            "    \"title\": \"...\",\n"
+            "    \"description\": \"2-4 sentences narrating what just happened + new situation\",\n"
+            "    \"task\": \"short imperative for the moment\",\n"
+            "    \"check_type\": \"Investigation|Perception|... or null\",\n"
+            "    \"dc\": 10,\n"
+            "    \"reveal_type\": \"action|knowledge\",\n"
+            "    \"prompt\": \"(knowledge only) public tease before the roll\",\n"
+            "    \"targets\": [{\"type\": \"npc|faction|location|direction\", \"name\": \"...\"}]\n"
+            "  }\n"
+            "}\n"
+        )
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"storyline-next-{uuid4()}",
+            system_message=(
+                "You are a senior D&D narrator (Mercer-style). You write tight scene cards "
+                "that flow from player choice. Output strict JSON only."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.lower().startswith("json"):
+                text = text[4:].lstrip()
+        try:
+            data = _json.loads(text)
+        except Exception:
+            s, e = text.find("{"), text.rfind("}")
+            data = _json.loads(text[s:e + 1]) if s != -1 and e > s else {}
+
+        is_final = bool(data.get("is_final"))
+        if is_final or too_long:
+            ep = (data.get("epilogue") or "").strip()[:240]
+            if not ep:
+                ep = "The thread you were pulling resolves — for now. The shape of what you've done will travel ahead of you."
+            return {"is_final": True, "epilogue": ep}
+
+        rb = data.get("beat") or {}
+        if not isinstance(rb, dict) or not (rb.get("description") or "").strip():
+            return {"is_final": False, "beat": fallback_beat}
+        ct_raw = (rb.get("check_type") or "").strip()
+        if ct_raw and ct_raw in _VALID_CHECK_TYPES:
+            ct = ct_raw
+            ability = _VALID_CHECK_TYPES[ct]
+        else:
+            # Pure narrative beat — no check. Use a default ability for UI but
+            # mark dc=0 as "no roll suggested".
+            ct = "Insight"
+            ability = "WIS"
+        try:
+            dc = int(rb.get("dc") or 0)
+        except Exception:
+            dc = 0
+        if dc > 0:
+            dc = max(8, min(20, dc))
+        else:
+            dc = 0
+        beat = _finalize_beat({
+            "title": (rb.get("title") or "Next Scene").strip()[:48],
+            "description": (rb.get("description") or "").strip()[:480],
+            "task": (rb.get("task") or "Decide your next move").strip()[:160],
+            "dc": dc if dc > 0 else 12,
+            "check_type": ct,
+            "ability": ability,
+            "reveal_type": (rb.get("reveal_type") or "").strip().lower(),
+            "prompt": (rb.get("prompt") or "").strip()[:200],
+            "targets": _normalize_targets(rb.get("targets")),
+            "status": "active",
+            "outcome_text": None,
+        })
+        # Mark whether a roll is actually suggested for this scene (UI hint)
+        beat["roll_optional"] = (dc == 0)
+        return {"is_final": False, "beat": beat}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Next-scene generation failed, using fallback: {exc}")
+        if too_long:
+            return {"is_final": True, "epilogue": "The trail goes quiet, and what you've gathered is what you'll carry forward."}
+        return {"is_final": False, "beat": fallback_beat}
+
+
+# -------------------- LLM-driven draft (legacy multi-beat) --------------------
 
 
 async def draft_storyline(
@@ -475,6 +804,11 @@ def advance_storyline(storyline: Dict, beat_index: int, outcome: str, outcome_te
     """Mutate `storyline` in place: mark beat `beat_index` with the given outcome,
     activate the next beat, or mark the storyline complete if it was the last beat.
 
+    For OPEN-ENDED storylines (the new scene-driven flow), the caller is
+    responsible for appending the next dynamically-generated beat or marking
+    completion. We just mark the resolved beat and bump `current_beat` past
+    it; status is left 'active' for open-ended chains regardless.
+
     Returns the (mutated) storyline dict for convenience.
     """
     if outcome not in {"passed", "failed", "skipped"}:
@@ -489,11 +823,18 @@ def advance_storyline(storyline: Dict, beat_index: int, outcome: str, outcome_te
         beat["outcome_text"] = outcome_text[:240]
     storyline["updated_at"] = datetime.now(timezone.utc)
 
-    # Activate next pending beat
+    open_ended = bool(storyline.get("open_ended"))
+
+    # Activate next pending beat (legacy multi-beat storylines)
     next_idx = beat_index + 1
     if next_idx < len(beats):
         beats[next_idx]["status"] = "active"
         storyline["current_beat"] = next_idx
+    elif open_ended:
+        # Caller will either append a new beat (current_beat -> last index) or
+        # mark complete. Leave current_beat pointing at the just-resolved beat
+        # so we don't index out of range mid-flight.
+        storyline["current_beat"] = beat_index
     else:
         storyline["status"] = "completed"
         storyline["current_beat"] = beat_index

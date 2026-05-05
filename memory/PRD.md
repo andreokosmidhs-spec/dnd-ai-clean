@@ -38,6 +38,28 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Scene-Driven Open-Ended Storylines (Feb 2026)
+Replaced the pre-scripted "draft 3-5 forced-check beats" model with a dynamic scene-loop where the DM generates each next beat based on what the player actually does. Player drives via "What do you do?" textarea — the DM narrates the consequence + new situation, and only requests a check when the action genuinely calls for one.
+- **Backend `services/storyline_service.py`**:
+  - **New `draft_initial_scene(...)`** — drafts ONLY Beat 1 from the engaged hook. The card is a Mercer-cinematic SCENE the player has stepped into (what they see/hear/smell), with a single OPTIONAL suggested check. Replaces `draft_storyline` for new storylines (legacy multi-beat draft kept for backward compat).
+  - **New `generate_next_scene(campaign, character, storyline, player_action_summary)`** — after the current beat resolves (via roll, creative approach, or skip), the DM judges: resolve the storyline now (returns `is_final: true` + epilogue) OR draft the NEXT scene card (narrates the consequence of the just-played action AND the new situation). Suggested check is optional per scene; `dc=0` with `roll_optional=true` for pure narrative beats. Hard cap of 7 beats.
+  - **`advance_storyline()`** updated: open-ended storylines no longer auto-complete on "last beat" — the caller (router) is responsible for either appending the next dynamic beat or marking complete.
+- **Backend `routers/storylines.py` + `lean_dm.py`**:
+  - `POST /draft` and the engagement-detection auto-draft both now call `draft_initial_scene` and tag the storyline `open_ended: True`.
+  - `POST /resolve` and `POST /creative` chain into `generate_next_scene` for open-ended storylines: append new beat or finalize. Total DC accumulates dynamically for reward scaling.
+  - New `_format_action_summary` helper feeds the LLM a tight one-paragraph view of "Beat just resolved + outcome + roll/creative/skip detail + complication" so the next scene is grounded in actual play.
+  - Quest card description drops "Beat X of N" framing for open-ended storylines.
+- **Frontend `ActiveInvestigationPanel.jsx`**:
+  - Action bar reordered: **"What do you do?"** (fuchsia, primary CTA) → **"Roll d20+X · suggested"** (amber, optional) → **"Skip · Proceed"** (new, action beats only).
+  - Roll button auto-disables and re-labels to "No check needed" when the LLM marked the beat `roll_optional=true`.
+  - Skip button calls `/resolve` with `outcome: "skipped"`; the DM narrates a trivial outcome and generates the next scene.
+  - Creative dialog reframed as "What do you do?" with prompt: "Describe your action in this scene. The DM will narrate the outcome and continue the story — a check only triggers if your action genuinely calls for one."
+- **End-to-end verified live (avon Rogue)**:
+  - Player engaged hook → drafted exactly **1 scene card** ("Investigation at the Warehouse" with mood narration + DC 12 Investigation suggested).
+  - Resolved with `passed/15` → DM generated **Beat 2: "Threshold of Secrets"** ("With a firm grasp, Avon pulls the rotting door open, revealing…") with **Perception** picked as the natural follow-up.
+  - Used creative approach "I quietly slip behind the crates and listen" → DM judged `partial`, narrated the gleam of eyes through the gaps, generated **Beat 3: "Eyes in the Shadows"** with **Stealth** as the natural next check (driven by player's stealth action, not a forced random check).
+- **Tests**: `test_storylines.py` updated — `test_draft_returns_storyline_with_beats` expects 1 beat + `open_ended: True`; new `test_resolve_grows_beats_until_complete` resolves up to 8 times and asserts the chain grows or completes naturally with proper reward shape (8/9 storyline tests pass; 1 pre-existing flaky engagement-matcher test unrelated to this rewrite).
+
 #### Compact Realm + Quests Top Bar (Feb 2026)
 Replaced the chunky inline collapsible `WorldInfoPanel` and `QuestLogPanel` cards with two compact pill buttons in a top bar above the Adventure Log narration. Each opens a right-side slide-over `Sheet` containing the full panel content, freeing ~270-400px of vertical real-estate for the chat.
 - **New `components/CampaignTopBar.jsx`** — renders two pills:

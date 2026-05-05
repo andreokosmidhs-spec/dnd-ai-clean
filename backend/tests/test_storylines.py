@@ -76,8 +76,11 @@ class TestStorylineDraftAndResolve:
         assert sl["status"] == "active"
         assert sl["current_beat"] == 0
         assert isinstance(sl["beats"], list)
-        assert 3 <= len(sl["beats"]) <= 5, f"beat count off: {len(sl['beats'])}"
-        assert isinstance(sl["total_dc"], int) and sl["total_dc"] >= 30
+        # Scene-driven: drafts ONLY the opening scene. Subsequent beats are
+        # generated dynamically by the DM as the player acts.
+        assert len(sl["beats"]) == 1, f"expected 1 opening beat, got: {len(sl['beats'])}"
+        assert sl.get("open_ended") is True
+        assert isinstance(sl["total_dc"], int) and sl["total_dc"] >= 8
         # First beat is active
         assert sl["beats"][0]["status"] == "active"
         # ability+check_type populated
@@ -119,45 +122,42 @@ class TestStorylineDraftAndResolve:
         assert body["id"] == sid
         assert body["campaign_id"] == CAMPAIGN_ID
 
-    def test_resolve_advances_then_completes_with_reward(self, session, drafted):
+    def test_resolve_grows_beats_until_complete(self, session, drafted):
+        """Scene-driven: each /resolve call either appends the next dynamically
+        generated beat OR marks the storyline complete with a reward. Hard cap
+        at 7 beats per generate_next_scene; we resolve up to that many times."""
         sl = drafted["storyline"]
         sid = sl["id"]
-        n_beats = len(sl["beats"])
-        total_dc = sl["total_dc"]
 
-        # Resolve all but the last -> current_beat advances each call
-        for i in range(n_beats - 1):
+        completed = False
+        reward = None
+        for _ in range(8):  # generous upper bound
             r = session.post(
                 f"{BASE_URL}/api/campaigns/{CAMPAIGN_ID}/storylines/{sid}/resolve",
-                json={"outcome": "passed", "outcome_text": f"TEST beat {i+1} cleared"},
-                timeout=60,
+                json={"outcome": "passed", "outcome_text": "TEST cleared"},
+                timeout=120,
             )
             assert r.status_code == 200, r.text
             payload = r.json()
-            assert payload["completed"] is False
-            assert payload["reward"] is None
-            assert payload["storyline"]["current_beat"] == i + 1
+            if payload["completed"]:
+                completed = True
+                reward = payload["reward"]
+                assert payload["storyline"]["status"] == "completed"
+                break
+            # Not yet complete — beats array should have grown
             assert payload["storyline"]["status"] == "active"
+            beats = payload["storyline"]["beats"]
+            # current_beat should point at the newly-appended active beat
+            cb = payload["storyline"]["current_beat"]
+            assert 0 <= cb < len(beats)
+            assert beats[cb]["status"] == "active"
 
-        # Final beat -> completes + returns reward
-        r = session.post(
-            f"{BASE_URL}/api/campaigns/{CAMPAIGN_ID}/storylines/{sid}/resolve",
-            json={"outcome": "passed", "outcome_text": "TEST final"},
-            timeout=90,
-        )
-        assert r.status_code == 200, r.text
-        payload = r.json()
-        assert payload["completed"] is True, payload
-        reward = payload["reward"]
+        assert completed, "Storyline never completed within 8 resolve calls"
         assert isinstance(reward, dict)
-        assert isinstance(reward["xp"], int) and reward["xp"] > 0
-        # XP tracks total_dc roughly; soft floor 60, max 1200, rounded to 25.
-        expected_xp = min(1200, round(max(60, total_dc * 8) / 25) * 25)
-        assert reward["xp"] == expected_xp
+        assert isinstance(reward["xp"], int) and reward["xp"] >= 0
         assert reward["xp"] % 25 == 0
         assert reward.get("title")
         assert reward.get("description")
-        assert payload["storyline"]["status"] == "completed"
 
         # Cannot resolve a completed storyline
         r2 = session.post(
@@ -244,9 +244,11 @@ class TestLeanDMHookEngagement:
         sl = data.get("storyline")
         assert isinstance(sl, dict), f"expected storyline payload, got: {sl}"
         beats = sl.get("beats") or []
-        assert 3 <= len(beats) <= 5, f"beats: {len(beats)}"
+        # Scene-driven: drafts open with ONLY beat 1.
+        assert len(beats) == 1, f"expected 1 opening beat, got: {len(beats)}"
         assert sl.get("status") == "active"
         assert sl.get("current_beat") == 0
+        assert sl.get("open_ended") is True
 
     def test_dm_response_persists_hooks_metadata(self, session):
         # Drive a fresh narration that will surface observable nouns

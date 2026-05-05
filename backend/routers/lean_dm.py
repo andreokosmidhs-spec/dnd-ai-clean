@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from services.campaign_service import build_v2_entity_index
 from services.auto_cards import auto_seed_cards_from_narration
 from services.hook_extractor import extract_hooks, detect_engaged_hook
-from services.storyline_service import draft_storyline, storyline_to_dict
+from services.storyline_service import draft_initial_scene, storyline_to_dict
 from utils.entity_mentions import extract_entity_mentions
 
 logger = logging.getLogger(__name__)
@@ -445,7 +445,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     # can render as an "Active Investigation" panel + quest card.
     if engaged_hook is not None:
         try:
-            drafted = await draft_storyline(
+            drafted = await draft_initial_scene(
                 campaign=campaign,
                 character=character,
                 hook=engaged_hook,
@@ -456,13 +456,14 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             first_beat = (drafted.get("beats") or [{}])[0]
 
             # Seed a quest KnowledgeCard linked to the storyline so the player
-            # sees it in the Quest Log immediately.
+            # sees it in the Quest Log immediately. Open-ended scene-driven
+            # storyline — no fixed "Beat X of N" framing.
             from models.campaign_models import KnowledgeCard
             quest_card = KnowledgeCard(
                 type="quest",
                 title=drafted.get("title") or "Active Investigation",
                 description=(
-                    f"{first_beat.get('description','')} (Beat 1 of {len(drafted.get('beats') or [])} — "
+                    f"{first_beat.get('description','')} (Active scene — suggested "
                     f"{first_beat.get('check_type','Investigation')} DC {first_beat.get('dc',12)}.)"
                 ),
                 source="hook-storyline",
@@ -487,6 +488,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
                 "current_beat": 0,
                 "beats": drafted["beats"],
                 "total_dc": drafted["total_dc"],
+                "open_ended": True,
                 "press_on_used": False,
                 "complication": None,
                 "reward": None,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Globe, Scroll, Eye } from 'lucide-react';
+import { Globe, Scroll, Eye, Flame } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -62,13 +62,27 @@ const CampaignTopBar = ({
     uncanny:   'border-fuchsia-500/60 bg-fuchsia-950/30 text-fuchsia-100',
   }[pp?.tier] || 'border-sky-500/40 bg-sky-950/30 text-sky-100';
 
+  // Chaos meter — escalates color from emerald (calm) → rose (consuming).
+  const chaos = worldState?.chaos || null;
+  const chaosVal = Number.isFinite(chaos?.value) ? chaos.value : null;
+  const chaosTier = chaos?.tier;
+  const chaosTierColor = {
+    calm:       'border-emerald-500/50 bg-emerald-950/30 text-emerald-100',
+    stirring:   'border-lime-500/50 bg-lime-950/30 text-lime-100',
+    agitated:   'border-amber-500/60 bg-amber-950/40 text-amber-100',
+    turbulent:  'border-orange-500/70 bg-orange-950/40 text-orange-100',
+    perilous:   'border-red-500/80 bg-red-950/45 text-red-100 animate-pulse',
+    consuming:  'border-rose-500/90 bg-rose-950/55 text-rose-100 shadow-[0_0_14px_rgba(244,63,94,0.45)] animate-pulse',
+  }[chaosTier?.key] || 'border-emerald-500/50 bg-emerald-950/30 text-emerald-100';
+
   const showRealm = !!worldBlueprint;
   const showQuests = !!campaignId;
   const showTime = !!timeLabel;
   const showPP = pp && Number.isFinite(pp.score);
   const showDeck = !!characterId;
+  const showChaos = chaosVal !== null;
 
-  if (!showRealm && !showQuests && !showTime && !showPP && !showDeck) return null;
+  if (!showRealm && !showQuests && !showTime && !showPP && !showDeck && !showChaos) return null;
 
   return (
     <div
@@ -196,6 +210,27 @@ const CampaignTopBar = ({
           <span className="font-semibold">PP {pp.score}</span>
           <span className="opacity-70">·</span>
           <span className="text-[11px] tracking-wide">{ppLabel}</span>
+        </span>
+      )}
+
+      {showChaos && (
+        <span
+          data-testid="chaos-chip"
+          title={
+            `Chaos ${chaosVal}/100 — ${chaosTier?.label || ''}\n` +
+            `Acting against your Ideal/Bond/Flaw raises this. ` +
+            `At 30+ it can draft a curse card on a violation turn.`
+          }
+          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm ${chaosTierColor}`}
+        >
+          <Flame size={13} className="opacity-90" />
+          <span className="font-semibold">Chaos {chaosVal}</span>
+          {chaosTier?.label && (
+            <>
+              <span className="opacity-70">·</span>
+              <span className="text-[11px] tracking-wide">{chaosTier.label}</span>
+            </>
+          )}
         </span>
       )}
     </div>

@@ -18,8 +18,23 @@ from pydantic import BaseModel
 
 from services.campaign_service import build_v2_entity_index
 from services.auto_cards import auto_seed_cards_from_narration
-from services.character_deck import deck_context_block, seed_deck_for_character, merge_deck
 from services.dnd_rules import compute_passive_perception, passive_perception_block
+from services.roleplay_chaos import (
+    apply_alignment_delta,
+    build_curse_card_payload,
+    chaos_block_for_dm,
+    chaos_tier,
+    evaluate_alignment,
+    get_chaos,
+    roll_for_curse,
+)
+from services.character_deck import (
+    _new_card as _new_deck_card,
+    art_key_for,
+    deck_context_block,
+    seed_deck_for_character,
+    merge_deck,
+)
 from services.hook_extractor import extract_hooks, detect_engaged_hook
 from services.storyline_service import draft_initial_scene, storyline_to_dict
 from services.time_service import (
@@ -83,7 +98,7 @@ def _format_title(s: str) -> str:
     return str(s or "").replace("_", " ").strip().title()
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None) -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0) -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -243,6 +258,7 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{time_context_block(clock_hour)}\n\n"
         f"{passive_perception_block(character)}\n\n"
         f"{deck_context_block(deck or [])}\n\n"
+        f"{chaos_block_for_dm(chaos)}\n\n"
         "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "
@@ -374,6 +390,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     # Build LLM prompt — inject current time-of-day for narration grounding.
     clock_hour = get_world_clock(campaign)
     passive_perception = compute_passive_perception(character)
+    chaos_value = get_chaos(campaign)
 
     # Load (or seed) the player's deck so the DM can read what the character
     # has — race traits, languages, class features, background contacts etc.
@@ -399,7 +416,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         logger.warning(f"Deck load failed (non-fatal): {exc}")
         deck_cards = []
 
-    system_prompt = _build_system_prompt(campaign, character, cards, clock_hour, deck=deck_cards)
+    system_prompt = _build_system_prompt(campaign, character, cards, clock_hour, deck=deck_cards, chaos=chaos_value)
 
     # Call the LLM
     api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
@@ -463,6 +480,62 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     time_bucket = bucket_for_hour(new_clock_hour)
     # Update in-memory campaign so any downstream code (storyline draft) sees it.
     campaign.setdefault("world_state", {})["clock_hour"] = new_clock_hour
+
+    # ===== Roleplay alignment check + chaos meter =====
+    alignment = await evaluate_alignment(character, req.player_action)
+    new_chaos = apply_alignment_delta(chaos_value, alignment.get("severity", 0))
+
+    drafted_curse = None
+    # Only draft a curse on a violation turn (severity > 0) AND when the roll
+    # passes — keeps the punishment scene-bound rather than a steady drip.
+    if alignment.get("severity", 0) > 0 and roll_for_curse(new_chaos):
+        try:
+            payload = build_curse_card_payload(new_chaos)
+            curse_card = _new_deck_card(
+                source=payload["source"],
+                title=payload["title"],
+                description=payload["description"],
+                rarity=payload["rarity"],
+                mechanical=payload["mechanical"],
+                tags=payload.get("tags", ["curse"]),
+            )
+            # Attach saved art if any user has uploaded for this curse before.
+            try:
+                art_doc = await db.card_art_library.find_one({"art_key": curse_card["art_key"]})
+                if art_doc and art_doc.get("data_url"):
+                    curse_card["art_data_url"] = art_doc["data_url"]
+            except Exception:  # noqa: BLE001
+                pass
+            existing_deck = await db.character_decks.find_one({"character_id": req.character_id})
+            if existing_deck:
+                cards_list = existing_deck.get("cards", [])
+                cards_list.append(curse_card)
+                await db.character_decks.update_one(
+                    {"character_id": req.character_id},
+                    {"$set": {"cards": cards_list, "updated_at": datetime.now(timezone.utc)}},
+                )
+            drafted_curse = curse_card
+            # Cool chaos slightly when a curse drafts — the "punishment" lands
+            # so pressure releases (still elevated, but not maxed).
+            new_chaos = max(0, new_chaos - 12)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"curse draft failed (non-fatal): {exc}")
+
+    if new_chaos != chaos_value:
+        try:
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {"$set": {"world_state.chaos": new_chaos}},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Failed to persist chaos: {exc}")
+    chaos_payload = {
+        "value": new_chaos,
+        "delta": new_chaos - chaos_value,
+        "tier": chaos_tier(new_chaos),
+        "alignment": alignment,
+        "drafted_curse": drafted_curse,
+    }
 
     # Extract HOOKS from this DM narration so the next turn can detect
     # engagement and the frontend can render them inline. Cheap regex first;
@@ -597,6 +670,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
                 "time_bucket": time_bucket,            # full {key, label, icon, hour} for new UI
                 "time_advanced_hours": advance_h,
                 "passive_perception": passive_perception,  # {score, tier, wis_mod, proficient, prof_bonus}
+                "chaos": chaos_payload,                # {value, delta, tier, alignment, drafted_curse}
             },
             "player_updates": {},
             "options": [],

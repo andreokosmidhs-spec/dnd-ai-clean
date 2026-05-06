@@ -20,6 +20,7 @@ import DefeatModal from './DefeatModal';
 import { getCheckOutcome, getAbilityModifier, isProficient } from '../utils/dndMechanics';
 import { useTTS } from '../hooks/useTTS';
 import sessionManager from '../state/SessionManager';
+import { toast } from 'sonner';
 import '../styles/adventurePapyrus.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -768,6 +769,25 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
       if (data.world_state_update && Object.keys(data.world_state_update).length > 0) {
         console.log('🗺️ WORLD STATE UPDATE:', data.world_state_update);
         updateWorld(data.world_state_update);
+
+        // Roleplay alignment + chaos meter notifications
+        const chaosInfo = data.world_state_update.chaos;
+        if (chaosInfo) {
+          const align = chaosInfo.alignment || {};
+          if (align.severity > 0 && align.reason) {
+            const tone = align.severity >= 3 ? 'error' : align.severity === 2 ? 'warning' : 'info';
+            const sigil = align.severity >= 3 ? '🩸' : '⚠';
+            const axis = align.axis ? `${align.axis.charAt(0).toUpperCase() + align.axis.slice(1)} broken — ` : '';
+            const msg = `${sigil} ${axis}${align.reason} (Chaos +${chaosInfo.delta})`;
+            if (window.showToast) window.showToast(msg, tone);
+            else toast[tone === 'error' ? 'error' : 'warning'](msg);
+          }
+          if (chaosInfo.drafted_curse) {
+            const c = chaosInfo.drafted_curse;
+            const msg = `☠️ Curse drafted: ${c.title} (${c.rarity}) — ${c.description.slice(0, 100)}…`;
+            toast.error(msg, { duration: 8000 });
+          }
+        }
       }
 
       // P3: Update quests from world_state

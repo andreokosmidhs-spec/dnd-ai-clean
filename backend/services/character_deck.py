@@ -35,7 +35,7 @@ from data.character_features import (
 logger = logging.getLogger(__name__)
 
 # `source` taxonomy — also drives UI grouping.
-SOURCES = ("race", "language", "background", "class",
+SOURCES = ("race", "language", "background", "class", "trait",
            "quest", "curse", "item", "spell", "contact", "reputation")
 
 
@@ -183,6 +183,31 @@ def seed_deck_for_character(character: Dict) -> List[Dict]:
             tags=["background", bg_key],
         ))
 
+    # === IDEAL / BOND / FLAW (trait cards — drive the chaos system) ===
+    bg = (character or {}).get("background") or {}
+    personality = bg.get("personality") or {}
+    trait_specs = [
+        ("ideal", "Ideal", "rare",
+         "Your guiding principle. Acting in line with it keeps your roleplay aligned; betraying it raises Chaos."),
+        ("bond", "Bond", "rare",
+         "What you hold close. Defending or honoring it keeps your roleplay aligned; betraying it raises Chaos."),
+        ("flaw", "Flaw", "rare",
+         "Your defining weakness. Indulging it within reason is your nature; resisting takes effort."),
+    ]
+    for key, label, rarity, helper in trait_specs:
+        text = (personality.get(key) or "").strip()
+        if not text:
+            continue
+        cards.append(_new_card(
+            source="trait",
+            title=f"{label}: {text[:40]}",
+            description=f"{text} — {helper}",
+            rarity=rarity,
+            mechanical="Roleplay anchor · drives Chaos meter",
+            tags=["trait", key, "roleplay"],
+            metadata={"trait_kind": key, "trait_text": text},
+        ))
+
     # === CLASS (level-1 features) ===
     cls_key = _class_key(character)
     for feat in CLASS_FEATURES_LEVEL_1.get(cls_key, []):
@@ -283,6 +308,7 @@ def deck_context_block(deck: List[Dict], max_chars: int = 900) -> str:
         "language": "Languages",
         "background": "Background",
         "class": "Class",
+        "trait": "Roleplay Anchors (Ideal · Bond · Flaw)",
         "quest": "Quest Rewards",
         "curse": "Curses & Afflictions",
         "item": "Notable Items",
@@ -290,7 +316,7 @@ def deck_context_block(deck: List[Dict], max_chars: int = 900) -> str:
         "contact": "Contacts & Allies",
         "reputation": "Reputation",
     }
-    order = ["race", "language", "background", "class", "spell", "item",
+    order = ["race", "language", "background", "trait", "class", "spell", "item",
              "contact", "quest", "reputation", "curse"]
     for src in order:
         if src in grouped:

@@ -38,6 +38,38 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Roleplay Anchors + Chaos Meter + Curse Drafts (Feb 2026)
+The character's Ideal / Bond / Flaw are now first-class deck cards AND drive an always-on chaos meter. Aligned roleplay keeps chaos low; violations raise it. High chaos rolls draft a curse card into the player's deck — concrete narrative consequences for breaking character.
+- **Backend `services/character_deck.py`**:
+  - New deck source: **`trait`**. The seeder reads `character.background.personality.{ideal, bond, flaw}` and emits 3 rare trait cards titled `Ideal: …`, `Bond: …`, `Flaw: …` with descriptions explaining the chaos consequence.
+  - `SOURCES` extended; `deck_context_block` adds a `Roleplay Anchors (Ideal · Bond · Flaw)` section so the DM sees them every turn.
+- **Backend `services/roleplay_chaos.py`** (NEW):
+  - `evaluate_alignment(character, player_action)` — small `gpt-4o-mini` call that returns `{severity 0-3, axis: ideal|bond|flaw|null, reason: short text}`. Conservative — most actions return 0; only clear contradictions return >0. Honest flaw indulgence (a "Sticky fingers" rogue stealing) is severity 0 by design.
+  - `apply_alignment_delta(chaos, severity)` — severity 0 cools chaos by 3; 1/2/3 raise by 4/9/16. Capped 0..100.
+  - `chaos_tier(chaos)` — 6 buckets (Calm → Stirring → Agitated → Turbulent → Perilous → Consuming) for UI coloring.
+  - `roll_for_curse(chaos)` — chance = `chaos / 200` capped at 35%, no roll below chaos 30. Keeps curses scene-bound rather than drip-fed.
+  - `_CURSE_CATALOG` — 12 curse templates (4 common at low chaos, 4 rare, 3 epic, 1 legendary). Descriptions are concrete (Restless Sleep, Witnessed, Hunted by Fate, The Curse of Hollow Sleep, Geas of the Wronged Powers, …) with mechanical effects.
+  - `chaos_block_for_dm(chaos)` — tight prompt block telling the DM to subtly tilt the world's reactions to the character based on chaos tier.
+- **Backend `routers/lean_dm.py`** (after narration):
+  1. `evaluate_alignment` runs against the player's action.
+  2. `apply_alignment_delta` updates chaos.
+  3. If `severity > 0` AND `roll_for_curse` succeeds → mint a curse card into the player's deck (rarity scaled to chaos tier), attach saved art if any, then **cool chaos by 12** ("punishment landed, pressure released").
+  4. Persist new chaos to `world_state.chaos`.
+  5. Inject `chaos_block_for_dm` into the system prompt so future turns reflect the meter.
+  6. Surface in `world_state_update.chaos = {value, delta, tier, alignment, drafted_curse}`.
+- **Frontend `components/CampaignTopBar.jsx`**:
+  - New **🔥 Chaos N · Tier** chip with color escalation: emerald (Calm) → lime (Stirring) → amber (Agitated) → orange (Turbulent) → red+pulse (Perilous) → rose+glow+pulse (Consuming).
+- **Frontend `components/AdventureLogWithDM.jsx`**:
+  - On every turn response, reads `data.world_state_update.chaos`:
+    - Violation toast: red `🩸 Bond broken — <reason> (Chaos +N)`.
+    - Curse draft toast: `☠️ Curse drafted: <title> (rarity) — <description>` for 8s.
+- **End-to-end verified live** (avon Rogue: Honor among thieves / Crew members / Sticky fingers):
+  - Aligned theft turn ("help my crew lift a few coins") → severity 0, chaos 0, no curse.
+  - Crew betrayal #1 → severity 3, axis=bond, chaos 16, "Betraying the crew profoundly violates their bond".
+  - Continued betrayals → chaos climbed 16 → 32 → 48 → 52, tier moved through Stirring → Agitated.
+  - At chaos 52 → curse roll succeeded → **`Hunted by Fate (epic)` minted into deck**, chaos cooled to ~40.
+  - Frontend: red Bond-broken toast appeared, deck section `deck-section-trait` rendered the 3 trait cards, `chaos-chip` updated live.
+
 #### Player-Uploaded Card Art (MTG-Style Frames) (Feb 2026)
 Deck cards now use an MTG-style layout with player-uploaded art in the middle. The title, rarity border, type line, and rules box are auto-generated; the art panel is fully customizable. **Saved art persists across all the player's future characters and campaigns** — once you upload art for "Sneak Attack" or "Criminal Contact", every Rogue or Criminal you'll ever play sees it.
 - **Backend `services/character_deck.py`**:

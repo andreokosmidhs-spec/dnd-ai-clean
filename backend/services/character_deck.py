@@ -61,10 +61,25 @@ def _new_card(*, source: str, title: str, description: str,
         "status": "active",        # active | spent | lost | cleared
         "tags": tags or [],
         "metadata": metadata or {},
+        "art_key": art_key_for(source, title),
+        "art_data_url": None,      # populated by attach_saved_art
         "added_at": datetime.now(timezone.utc),
         "used_at": None,
         "removed_at": None,
     }
+
+
+def art_key_for(source: str, title: str) -> str:
+    """Stable, case-normalized key for the art library so a card's chosen
+    artwork follows the player across characters and campaigns ('Sneak Attack'
+    art reused on every Rogue, 'Criminal Contact' on every Criminal, etc.)."""
+    s = (source or "").strip().lower()
+    t = (title or "").strip().lower()
+    # collapse whitespace + punctuation for stability
+    import re as _re
+    t = _re.sub(r"[^\w\s-]", "", t)
+    t = _re.sub(r"\s+", "-", t)
+    return f"{s}::{t}"
 
 
 # -------------------- seeding --------------------
@@ -212,7 +227,22 @@ def merge_deck(existing: List[Dict], freshly_seeded: List[Dict]) -> List[Dict]:
                 and not freshly_seeded_was_empty(freshly_seeded, card["source"])):
             card["status"] = "lost"
             card["removed_at"] = datetime.now(timezone.utc)
+    # Backfill art_key on any pre-existing cards (added before art support)
+    for card in existing:
+        if not card.get("art_key"):
+            card["art_key"] = art_key_for(card.get("source", ""), card.get("title", ""))
     return existing
+
+
+def attach_saved_art(cards: List[Dict], art_library: Dict[str, str]) -> List[Dict]:
+    """Mutate `cards` in place: for any card whose art_key is in the library,
+    set its art_data_url. `art_library` is a {art_key: data_url} dict."""
+    for card in cards:
+        key = card.get("art_key") or art_key_for(card.get("source", ""), card.get("title", ""))
+        card["art_key"] = key
+        if key in art_library:
+            card["art_data_url"] = art_library[key]
+    return cards
 
 
 def freshly_seeded_was_empty(freshly: List[Dict], source: str) -> bool:

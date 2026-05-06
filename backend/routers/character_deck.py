@@ -20,6 +20,8 @@ from pydantic import BaseModel, Field
 
 from services.character_deck import (
     SOURCES,
+    art_key_for,
+    attach_saved_art,
     deck_context_block,
     merge_deck,
     seed_deck_for_character,
@@ -29,9 +31,26 @@ router = APIRouter(prefix="/api/characters", tags=["character-deck"])
 logger = logging.getLogger(__name__)
 
 
+# Cap on uploaded art size (post-base64). Frontend resizes to ~512px wide JPEG;
+# 600 KB is a generous ceiling that comfortably fits high-quality 512x512.
+_MAX_ART_BYTES = 600 * 1024
+
+
 def _db():
     cli = AsyncIOMotorClient(os.environ["MONGO_URL"])
     return cli[os.environ["DB_NAME"]]
+
+
+async def _load_art_library(db) -> dict:
+    """Pull the {art_key: data_url} library from Mongo. Library is shared
+    across the whole app — once a player picks art for 'Sneak Attack', every
+    Rogue they ever play sees it."""
+    out = {}
+    cursor = db.card_art_library.find({}, {"art_key": 1, "data_url": 1, "_id": 0})
+    async for doc in cursor:
+        if doc.get("art_key") and doc.get("data_url"):
+            out[doc["art_key"]] = doc["data_url"]
+    return out
 
 
 async def _load_character(character_id: str):
@@ -50,17 +69,20 @@ async def _load_character(character_id: str):
 async def _load_or_seed_deck(character) -> List[dict]:
     db = _db()
     char_id = character["id"]
+    art_library = await _load_art_library(db)
     doc = await db.character_decks.find_one({"character_id": char_id})
     if doc and isinstance(doc.get("cards"), list):
         # Re-seed and merge: handles new auto-features after level-up etc.
         fresh = seed_deck_for_character(character)
         merged = merge_deck(doc["cards"], fresh)
+        attach_saved_art(merged, art_library)
         await db.character_decks.update_one(
             {"character_id": char_id},
             {"$set": {"cards": merged, "updated_at": datetime.now(timezone.utc)}},
         )
         return merged
     cards = seed_deck_for_character(character)
+    attach_saved_art(cards, art_library)
     await db.character_decks.insert_one({
         "character_id": char_id,
         "cards": cards,
@@ -180,9 +202,78 @@ async def draw_card(character_id: str, body: DrawCardBody):
         tags=body.tags or [],
     )
     cards = doc.get("cards", [])
+    # If saved art exists for this card's slot, attach it immediately.
+    art_library = await _load_art_library(db)
+    if card.get("art_key") in art_library:
+        card["art_data_url"] = art_library[card["art_key"]]
     cards.append(card)
     await db.character_decks.update_one(
         {"character_id": character_id},
         {"$set": {"cards": cards, "updated_at": datetime.now(timezone.utc)}},
     )
     return {"ok": True, "card": card}
+
+
+# -------------------- Card Art Library --------------------
+
+class CardArtBody(BaseModel):
+    """Either supply `data_url` directly (frontend resizes + base64-encodes
+    JPEG), or provide nothing to clear the saved art."""
+    data_url: Optional[str] = None
+
+
+@router.post("/{character_id}/deck/cards/{card_id}/art")
+async def set_card_art(character_id: str, card_id: str, body: CardArtBody):
+    """Upload (or clear) the art for one deck card.
+
+    The art is keyed by the card's `art_key` (stable hash of source+title) and
+    saved to the global `card_art_library` collection. So once you pick art
+    for 'Sneak Attack', every Rogue you ever play sees it; same for
+    'Criminal Contact' across every Criminal-background character, etc.
+    """
+    db = _db()
+    doc = await db.character_decks.find_one({"character_id": character_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Deck not found")
+    cards = doc.get("cards", [])
+    target = next((c for c in cards if c.get("id") == card_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    art_key = target.get("art_key") or art_key_for(target.get("source", ""), target.get("title", ""))
+    target["art_key"] = art_key
+
+    if body.data_url:
+        if not body.data_url.startswith("data:image/"):
+            raise HTTPException(status_code=400, detail="data_url must be a 'data:image/...' URL")
+        # rough size check on the base64 payload
+        if len(body.data_url) > _MAX_ART_BYTES * 1.4:  # base64 = ~1.37x raw
+            raise HTTPException(status_code=413, detail=f"Art too large (max ~{_MAX_ART_BYTES // 1024} KB)")
+        await db.card_art_library.update_one(
+            {"art_key": art_key},
+            {"$set": {
+                "art_key": art_key,
+                "data_url": body.data_url,
+                "source": target.get("source"),
+                "title": target.get("title"),
+                "updated_at": datetime.now(timezone.utc),
+            }, "$setOnInsert": {"created_at": datetime.now(timezone.utc)}},
+            upsert=True,
+        )
+        target["art_data_url"] = body.data_url
+        # Also update other cards in this deck sharing the same art_key
+        for c in cards:
+            if c.get("art_key") == art_key:
+                c["art_data_url"] = body.data_url
+    else:
+        await db.card_art_library.delete_one({"art_key": art_key})
+        target["art_data_url"] = None
+        for c in cards:
+            if c.get("art_key") == art_key:
+                c["art_data_url"] = None
+
+    await db.character_decks.update_one(
+        {"character_id": character_id},
+        {"$set": {"cards": cards, "updated_at": datetime.now(timezone.utc)}},
+    )
+    return {"ok": True, "art_key": art_key, "card": target}

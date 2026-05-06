@@ -38,6 +38,25 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Player-Uploaded Card Art (MTG-Style Frames) (Feb 2026)
+Deck cards now use an MTG-style layout with player-uploaded art in the middle. The title, rarity border, type line, and rules box are auto-generated; the art panel is fully customizable. **Saved art persists across all the player's future characters and campaigns** — once you upload art for "Sneak Attack" or "Criminal Contact", every Rogue or Criminal you'll ever play sees it.
+- **Backend `services/character_deck.py`**:
+  - New `art_key_for(source, title)` — stable lowercase+slug key (e.g. `class::sneak-attack`, `background::criminal-contact`) so art is shared across all cards with the same identity.
+  - DeckCard normalization includes `art_key` and `art_data_url` fields.
+  - `attach_saved_art(cards, library)` — mutates cards to attach saved data URLs by key.
+- **Backend `routers/character_deck.py`**:
+  - New global `card_art_library` MongoDB collection: `{art_key, data_url, source, title, created_at, updated_at}`.
+  - `_load_art_library(db)` pulls the full {art_key: data_url} dict on every deck fetch.
+  - **`POST /api/characters/{id}/deck/cards/{cardId}/art`** — accepts `{data_url}` (or null to clear). Validates `data:image/...` prefix, enforces ~600 KB cap, upserts into library, propagates the new art to ALL cards in the deck sharing the art_key.
+  - GET deck and POST draw both attach saved art on the way out.
+- **Frontend `components/CharacterDeck.jsx`** (rewritten with MTG-style frame):
+  - Title bar (rarity-colored) with card name + rarity chip.
+  - **5:4 aspect-ratio art panel**: when empty, click to upload (`📷 UPLOAD ART · Saved across every character you play`); when filled, hover reveals Replace + Clear buttons.
+  - Type line ("🪶 Common Race", "📜 Rare Background", etc.) + per-day badge + uses badge + Use button if applicable.
+  - Rules box with description + `⌬ mechanical` line.
+  - **Image processing on the frontend** (`fileToResizedDataUrl`): resizes any uploaded file to 512×512 cover-cropped JPEG @ 0.82 quality before upload (~80-200 KB) so payload stays small regardless of input size.
+- **End-to-end verified**: Sneak Attack art uploaded + persisted across page reloads via the global library; future Rogue characters in new campaigns will inherit the same artwork without re-upload.
+
 #### Character Deck (Identity & Resources) — Phase 1 (Feb 2026)
 The player now has a personal deck of cards built from their character's identity, with rarity tiers, per-day consumables, and DM context injection. Cards auto-seed from race traits, languages, background features, and level-1 class features; the DM reads a compact deck summary every turn to weave features into narration naturally.
 - **Backend `data/character_features.py`** (NEW): catalog mirroring 5e — race traits (Darkvision, Fey Ancestry, Relentless Endurance, Breath Weapon, Hellish Resistance, …), background features (Criminal Contact, Position of Privilege, Researcher, Military Rank, …), level-1 class features for all 12 classes (Sneak Attack, Rage, Spellcasting, Lay on Hands, Bardic Inspiration, Pact Magic, …), and 18 D&D languages — each tagged with rarity (`common` / `rare` / `epic` / `legendary`) and `per_day`/`uses_max` where applicable.

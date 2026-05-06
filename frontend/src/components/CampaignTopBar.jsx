@@ -10,6 +10,7 @@ import {
 import { Badge } from './ui/badge';
 import WorldInfoPanel from './WorldInfoPanel';
 import QuestLogPanel from './QuestLogPanel';
+import CharacterDeck from './CharacterDeck';
 
 /**
  * Compact top-bar with two pill buttons (Realm + Quests). Each opens a
@@ -24,6 +25,8 @@ const CampaignTopBar = ({
   onUpdateQuestStatus,
   campaignId,
   worldState,
+  characterId,
+  characterName,
 }) => {
   const [realmOpen, setRealmOpen] = useState(false);
   const [questsOpen, setQuestsOpen] = useState(false);
@@ -63,8 +66,9 @@ const CampaignTopBar = ({
   const showQuests = !!campaignId;
   const showTime = !!timeLabel;
   const showPP = pp && Number.isFinite(pp.score);
+  const showDeck = !!characterId;
 
-  if (!showRealm && !showQuests && !showTime && !showPP) return null;
+  if (!showRealm && !showQuests && !showTime && !showPP && !showDeck) return null;
 
   return (
     <div
@@ -160,6 +164,10 @@ const CampaignTopBar = ({
             </div>
           </SheetContent>
         </Sheet>
+      )}
+
+      {showDeck && (
+        <CharacterDeck characterId={characterId} characterName={characterName} />
       )}
 
       {showTime && (

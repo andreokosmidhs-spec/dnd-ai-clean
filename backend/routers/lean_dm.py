@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from services.campaign_service import build_v2_entity_index
 from services.auto_cards import auto_seed_cards_from_narration
+from services.character_deck import deck_context_block, seed_deck_for_character, merge_deck
 from services.dnd_rules import compute_passive_perception, passive_perception_block
 from services.hook_extractor import extract_hooks, detect_engaged_hook
 from services.storyline_service import draft_initial_scene, storyline_to_dict
@@ -82,7 +83,7 @@ def _format_title(s: str) -> str:
     return str(s or "").replace("_", " ").strip().title()
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int) -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None) -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -241,6 +242,7 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{biome_block}\n\n"
         f"{time_context_block(clock_hour)}\n\n"
         f"{passive_perception_block(character)}\n\n"
+        f"{deck_context_block(deck or [])}\n\n"
         "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "
@@ -372,7 +374,32 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     # Build LLM prompt — inject current time-of-day for narration grounding.
     clock_hour = get_world_clock(campaign)
     passive_perception = compute_passive_perception(character)
-    system_prompt = _build_system_prompt(campaign, character, cards, clock_hour)
+
+    # Load (or seed) the player's deck so the DM can read what the character
+    # has — race traits, languages, class features, background contacts etc.
+    try:
+        deck_doc = await db.character_decks.find_one({"character_id": req.character_id})
+        _deck_now = datetime.now(timezone.utc)
+        if deck_doc and isinstance(deck_doc.get("cards"), list):
+            fresh = seed_deck_for_character(character)
+            deck_cards = merge_deck(deck_doc["cards"], fresh)
+            await db.character_decks.update_one(
+                {"character_id": req.character_id},
+                {"$set": {"cards": deck_cards, "updated_at": _deck_now}},
+            )
+        else:
+            deck_cards = seed_deck_for_character(character)
+            await db.character_decks.insert_one({
+                "character_id": req.character_id,
+                "cards": deck_cards,
+                "created_at": _deck_now,
+                "updated_at": _deck_now,
+            })
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Deck load failed (non-fatal): {exc}")
+        deck_cards = []
+
+    system_prompt = _build_system_prompt(campaign, character, cards, clock_hour, deck=deck_cards)
 
     # Call the LLM
     api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")

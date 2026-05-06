@@ -38,6 +38,25 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Character Deck (Identity & Resources) — Phase 1 (Feb 2026)
+The player now has a personal deck of cards built from their character's identity, with rarity tiers, per-day consumables, and DM context injection. Cards auto-seed from race traits, languages, background features, and level-1 class features; the DM reads a compact deck summary every turn to weave features into narration naturally.
+- **Backend `data/character_features.py`** (NEW): catalog mirroring 5e — race traits (Darkvision, Fey Ancestry, Relentless Endurance, Breath Weapon, Hellish Resistance, …), background features (Criminal Contact, Position of Privilege, Researcher, Military Rank, …), level-1 class features for all 12 classes (Sneak Attack, Rage, Spellcasting, Lay on Hands, Bardic Inspiration, Pact Magic, …), and 18 D&D languages — each tagged with rarity (`common` / `rare` / `epic` / `legendary`) and `per_day`/`uses_max` where applicable.
+- **Backend `services/character_deck.py`** (NEW):
+  - `seed_deck_for_character(character)` — pulls race / class / background / languages from the character doc and emits normalized DeckCard dicts.
+  - `merge_deck(existing, fresh)` — union by `(source, title)` so re-seeding on every turn is idempotent; auto-source cards that disappear get marked `lost` (audit trail).
+  - `deck_context_block(deck)` — tight one-paragraph summary the DM gets every turn ("Race: Versatile · Languages: Common · Background: Criminal Contact · Class: Sneak Attack (epic) · Expertise · Thieves' Cant"). Calls out epic/legendary rarity, per-day uses, and reminds the LLM to weave them naturally instead of reciting.
+- **Backend `routers/character_deck.py`** (NEW):
+  - `GET  /api/characters/{id}/deck` — auto-seeds + returns the deck + context block.
+  - `POST /api/characters/{id}/deck/cards/{cardId}/use` — decrement uses_remaining or mark spent.
+  - `POST /api/characters/{id}/deck/long-rest` — restore per-day uses.
+  - `POST /api/characters/{id}/deck/draw` — append a new card from a quest/curse/item event (any source from the taxonomy).
+- **Backend `routers/lean_dm.py`**: every turn loads (or seeds) the character's deck, merges with current character state (handles level-up additions), persists, and injects `deck_context_block` into the system prompt right after passive Perception. The DM now reads what the character has every turn.
+- **Frontend `utils/deckRarity.js`** (NEW): rarity → Tailwind chip + border + glow mapping (common=stone, rare=sky+glow, epic=fuchsia+strong-glow, legendary=amber+huge-glow); source → icon + label mapping.
+- **Frontend `components/CharacterDeck.jsx`** (NEW): right-side Sheet opened from a new fuchsia **🪶 Deck ✦ N** pill on the `CampaignTopBar`. Cards are grouped by source (Race / Languages / Background / Class / Spells / Items / Contacts / Rewards / Reputation / Curses), sorted by rarity (legendary first), and rendered with rarity-tinted borders + glows. Per-day cards show `X/Y` uses; `Use` button spends one. **Long Rest** button at the top restores per-day uses with a toast.
+- **End-to-end verified live (avon — Human Rogue Criminal)**:
+  - Auto-seeded deck: 6 cards (Versatile, Common, Criminal Contact, Sneak Attack, Thieves' Cant, Expertise) — every rarity tier visible.
+  - Player turn "I look for thieves cant marks on the alley walls and ask my contact in the syndicate" → DM narration weaves in Thieves' Cant ("subtle blend of lines and curves that signify safe passage and hidden dealings") AND Criminal Contact ("Your contact in the Black Market Syndicate, a wiry figure with a quick smile") — both flowing naturally from the deck context.
+
 #### Passive Perception–Aware Narration (Feb 2026)
 The DM now reads the character's 5e passive Perception and calibrates how informative the scene narration is. Sharp-eyed characters get more cues + opportunity flags; average characters see the obvious + one modest detail; oblivious characters need active checks for almost everything.
 - **Backend `services/dnd_rules.py`**:

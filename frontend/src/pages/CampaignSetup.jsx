@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { useSessionCore } from "../store/useSessionCore";
+import { Eye } from "lucide-react";
+import CampaignDeckPreview from "../components/CampaignDeckPreview";
 
 const CATEGORY_CONFIG = [
   {
@@ -63,6 +65,7 @@ const CampaignSetup = () => {
     ...DEFAULT_INTENT,
     ...campaignIntent,
   }));
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (!activeCharacterId) {
@@ -163,15 +166,34 @@ const CampaignSetup = () => {
           ))}
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex justify-between items-center gap-3 flex-wrap">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setPreviewOpen(true)}
+            disabled={!hasAllSelections}
+            className="border-amber-500/60 text-amber-200 hover:bg-amber-500/10 disabled:opacity-50"
+            data-testid="preview-deck-btn"
+            title="See which event cards your DM will draft from"
+          >
+            <Eye className="h-4 w-4 mr-1.5" />
+            Preview Campaign Deck
+          </Button>
           <Button
             onClick={handleGenerate}
             disabled={!hasAllSelections}
             className="bg-amber-500 text-slate-950 hover:bg-amber-400"
+            data-testid="generate-campaign-btn"
           >
             Generate Campaign
           </Button>
         </div>
+
+        <CampaignDeckPreview
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+          intent={selections}
+        />
       </div>
     </div>
   );

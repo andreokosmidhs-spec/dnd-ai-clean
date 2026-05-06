@@ -448,6 +448,20 @@ async def list_biomes():
     return {"biomes": BIOMES_PUBLIC}
 
 
+@router.get("/deck-preview")
+async def preview_deck(tone: str = "Balanced", focus: str = "Story",
+                       scope: str = "City", danger: str = "Medium"):
+    """Preview the campaign event deck for a given Tone/Focus/Scope/Danger
+    combination. Returns the top 24 catalog templates weighted by intent
+    affinity + per-type counts. Used by the Campaign Setup screen so the
+    player can see what kinds of events will shape their game before
+    locking in their picks."""
+    from data.event_catalog import deck_summary_for_intent
+    return deck_summary_for_intent({
+        "tone": tone, "focus": focus, "scope": scope, "danger": danger,
+    })
+
+
 # ==================== World Graph (Node-graph map) ==========================
 
 async def _ensure_graph(campaign: Dict) -> Dict:

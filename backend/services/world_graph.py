@@ -368,14 +368,15 @@ def _drafting_reasons(template: Dict, region: Dict) -> List[str]:
 
 
 def _seed_events_for_region(region: Dict, count: int,
-                            rng: Optional[random.Random] = None) -> List[Dict]:
-    """Pull `count` events from the catalog filtered by the region's tags. If
-    the catalog can't fill the deck (rare biome + thin presence), top up with
-    biome-default templates so every region still has a deck."""
+                            rng: Optional[random.Random] = None,
+                            intent: Optional[Dict] = None) -> List[Dict]:
+    """Pull `count` events from the catalog filtered by the region's tags +
+    weighted by the campaign's intent. If the catalog can't fill the deck,
+    top up with biome-default templates so every region still has a deck."""
     rng = rng or random.Random()
     biome = region.get("biome") or "plains"
     tags = region_tags(region)
-    eligible = filter_eligible(tags, count=count, rng=rng)
+    eligible = filter_eligible(tags, count=count, rng=rng, intent=intent)
     out: List[Dict] = []
     for tpl in eligible:
         out.append(_make_event(
@@ -408,10 +409,17 @@ def _make_region(biome: str, name: str, description: str, coord: Dict,
                  world_factions: Optional[List[Dict]] = None,
                  character: Optional[Dict] = None,
                  world: Optional[Dict] = None,
+                 intent: Optional[CampaignIntent] = None,
                  rng: Optional[random.Random] = None) -> Dict:
     rng = rng or random.Random()
     world_factions = world_factions or []
     world = world or {}
+    intent_dict = None
+    if intent is not None:
+        try:
+            intent_dict = intent.model_dump() if hasattr(intent, "model_dump") else dict(intent)
+        except Exception:  # noqa: BLE001
+            intent_dict = None
     present_factions = _pick_region_factions(world_factions, biome, is_starting, rng)
     dominant_races = _pick_region_races(world, character, biome, is_starting, rng)
     region = {
@@ -430,11 +438,9 @@ def _make_region(biome: str, name: str, description: str, coord: Dict,
         "dominant_races": dominant_races,
     }
     if is_starting:
-        region["events"] = _seed_events_for_region(region, events_full, rng=rng)
+        region["events"] = _seed_events_for_region(region, events_full, rng=rng, intent=intent_dict)
     else:
-        # Hint teasers: just titles from the eligible catalog so the player
-        # can see what's loose in the region before they visit.
-        eligible = filter_eligible(region_tags(region), count=events_hint_count, rng=rng)
+        eligible = filter_eligible(region_tags(region), count=events_hint_count, rng=rng, intent=intent_dict)
         if eligible:
             region["hints"] = [t["title"] for t in eligible]
         else:
@@ -474,6 +480,7 @@ def _template_graph(intent: CampaignIntent, world: Dict, character: Optional[Dic
         world_factions=world_factions,
         character=character,
         world=world,
+        intent=intent,
         rng=rng,
     ))
     for i, b in enumerate(neighbor_biomes):
@@ -492,6 +499,7 @@ def _template_graph(intent: CampaignIntent, world: Dict, character: Optional[Dic
             world_factions=world_factions,
             character=character,
             world=world,
+            intent=intent,
             rng=rng,
         ))
 
@@ -669,6 +677,7 @@ async def generate_world_graph(
                         region_dict_for_tags,
                         events_per_region - len(events),
                         rng=rng,
+                        intent=intent.model_dump() if intent else None,
                     ))
 
             regions.append({
@@ -693,7 +702,7 @@ async def generate_world_graph(
             regions[0]["hydrated"] = True
             regions[0]["visited"] = True
             if not regions[0]["events"]:
-                regions[0]["events"] = _seed_events_for_region(regions[0], events_per_region, rng=rng)
+                regions[0]["events"] = _seed_events_for_region(regions[0], events_per_region, rng=rng, intent=intent.model_dump() if intent else None)
 
         # Edges: starter→each neighbor, plus 60% neighbor chain
         starter = next((r for r in regions if r["is_starting"]), regions[0])

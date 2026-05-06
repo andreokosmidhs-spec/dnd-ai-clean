@@ -287,6 +287,127 @@ _CATALOG: List[Dict] = [
 ]
 
 
+# -------------------- Intent Affinity --------------------
+# Each event TYPE has a natural fit to the campaign's tone / focus / scope /
+# danger axes. When previewing the "campaign deck" for a given intent we use
+# these affinities to weight which types appear more / fewer.
+# Values are 0..2 multipliers (1 = normal weight, 2 = strongly favored,
+# 0 = excluded / very rare).
+
+TYPE_INTENT_AFFINITY: Dict[str, Dict[str, Dict[str, float]]] = {
+    # tone
+    "tone": {
+        "Grim":     {"encounter": 1.4, "hazard": 1.5, "mystery": 1.3, "faction": 1.2,
+                     "discovery": 0.7, "cultural": 0.6, "lore": 1.0, "quest": 1.0},
+        "Balanced": {"encounter": 1.0, "hazard": 1.0, "mystery": 1.0, "faction": 1.0,
+                     "discovery": 1.0, "cultural": 1.0, "lore": 1.0, "quest": 1.0},
+        "Heroic":   {"encounter": 1.1, "hazard": 0.7, "mystery": 0.9, "faction": 0.9,
+                     "discovery": 1.4, "cultural": 1.2, "lore": 1.1, "quest": 1.4},
+    },
+    # focus
+    "focus": {
+        "Story":       {"faction": 1.5, "lore": 1.4, "quest": 1.5, "cultural": 1.3,
+                        "mystery": 1.1, "discovery": 1.0, "encounter": 0.8, "hazard": 0.6},
+        "Combat":      {"encounter": 2.0, "hazard": 1.2, "faction": 0.9, "quest": 1.0,
+                        "discovery": 0.7, "cultural": 0.5, "mystery": 0.7, "lore": 0.5},
+        "Intrigue":    {"faction": 2.0, "mystery": 1.6, "lore": 1.0, "cultural": 1.0,
+                        "encounter": 0.7, "hazard": 0.6, "discovery": 0.8, "quest": 1.1},
+        "Exploration": {"discovery": 2.0, "hazard": 1.4, "lore": 1.3, "cultural": 1.2,
+                        "mystery": 1.1, "encounter": 1.0, "faction": 0.7, "quest": 1.0},
+    },
+    # scope (already filters via biome too)
+    "scope": {
+        "City":       {"faction": 1.3, "mystery": 1.2, "cultural": 1.2,
+                       "encounter": 1.0, "discovery": 0.8, "hazard": 0.6,
+                       "lore": 1.0, "quest": 1.1},
+        "Wilderness": {"hazard": 1.5, "discovery": 1.4, "encounter": 1.2,
+                       "cultural": 1.0, "mystery": 0.9, "faction": 0.6,
+                       "lore": 0.8, "quest": 1.0},
+        "Dungeon":    {"encounter": 1.6, "discovery": 1.4, "hazard": 1.2,
+                       "mystery": 1.2, "lore": 0.9, "faction": 0.5,
+                       "cultural": 0.4, "quest": 1.0},
+        "Mixed":      {"faction": 1.0, "mystery": 1.0, "cultural": 1.0,
+                       "encounter": 1.0, "discovery": 1.0, "hazard": 1.0,
+                       "lore": 1.0, "quest": 1.0},
+    },
+    # danger
+    "danger": {
+        "Low":    {"encounter": 0.6, "hazard": 0.6, "mystery": 1.0, "faction": 1.0,
+                   "discovery": 1.2, "cultural": 1.3, "lore": 1.1, "quest": 1.0},
+        "Medium": {"encounter": 1.0, "hazard": 1.0, "mystery": 1.0, "faction": 1.0,
+                   "discovery": 1.0, "cultural": 1.0, "lore": 1.0, "quest": 1.0},
+        "High":   {"encounter": 1.5, "hazard": 1.5, "mystery": 1.0, "faction": 1.1,
+                   "discovery": 0.9, "cultural": 0.7, "lore": 0.8, "quest": 1.1},
+    },
+}
+
+# Difficulty bias by danger tier
+DIFFICULTY_BY_DANGER: Dict[str, Dict[str, float]] = {
+    "Low":    {"easy": 2.0, "medium": 1.0, "hard": 0.4},
+    "Medium": {"easy": 1.0, "medium": 1.4, "hard": 1.0},
+    "High":   {"easy": 0.5, "medium": 1.2, "hard": 2.0},
+}
+
+
+def intent_affinity_for(template: Dict, intent: Dict) -> float:
+    """Compute the combined affinity multiplier for a template under a given
+    intent dict {tone, focus, scope, danger}. Multiplies type-affinity across
+    the 4 axes plus a small difficulty kicker."""
+    weight = 1.0
+    etype = template.get("type", "mystery")
+    for axis in ("tone", "focus", "scope", "danger"):
+        v = intent.get(axis)
+        if not v:
+            continue
+        bucket = TYPE_INTENT_AFFINITY.get(axis, {}).get(v, {})
+        weight *= bucket.get(etype, 1.0)
+    # difficulty bias
+    diff = template.get("difficulty", "medium")
+    weight *= DIFFICULTY_BY_DANGER.get(intent.get("danger", "Medium"), {}).get(diff, 1.0)
+    return weight
+
+
+def preview_campaign_deck(intent: Dict, top_n: int = 24) -> List[Dict]:
+    """Return the top-N catalog templates for this intent, sorted by affinity
+    weight then type. Used by the frontend preview button."""
+    scored = []
+    for tpl in _CATALOG:
+        w = intent_affinity_for(tpl, intent)
+        if w <= 0.05:  # effectively excluded
+            continue
+        scored.append((w, tpl))
+    scored.sort(key=lambda x: (-x[0], x[1]["type"], x[1]["title"]))
+    out: List[Dict] = []
+    for w, tpl in scored[:top_n]:
+        out.append({
+            "type": tpl["type"],
+            "title": tpl["title"],
+            "description": tpl["description"],
+            "biomes": tpl.get("biomes") or ["any"],
+            "requires": tpl.get("requires") or [],
+            "difficulty": tpl.get("difficulty", "medium"),
+            "affinity": round(w, 2),
+        })
+    return out
+
+
+def deck_summary_for_intent(intent: Dict) -> Dict:
+    """Return a summary view of the campaign deck under a given intent.
+    Used by the preview button to show counts per type + the top picks."""
+    deck = preview_campaign_deck(intent, top_n=24)
+    counts: Dict[str, int] = {}
+    for c in deck:
+        counts[c["type"]] = counts.get(c["type"], 0) + 1
+    return {
+        "intent": intent,
+        "type_counts": counts,
+        "total_in_deck": len(deck),
+        "total_in_catalog": len(_CATALOG),
+        "cards": deck,
+        "type_metadata": EVENT_TYPES,
+    }
+
+
 # -------------------- Filtering & Selection --------------------
 
 
@@ -314,13 +435,38 @@ def _matches(template: Dict, region_tags: set) -> bool:
 
 
 def filter_eligible(region_tags: set, count: int = 5,
-                    rng: Optional[random.Random] = None) -> List[Dict]:
+                    rng: Optional[random.Random] = None,
+                    intent: Optional[Dict] = None) -> List[Dict]:
     """Return up to `count` templates that pass the region's tags. Distribution
     is biased toward variety: we sample at most one of each `type` until the
-    types run out, then duplicates are allowed."""
+    types run out, then duplicates are allowed.
+
+    When `intent` is provided, eligible candidates are weighted by their
+    intent-affinity score so a Combat-Heroic-High-danger campaign drafts
+    more encounters than a Story-Heroic-Low-danger one."""
     rng = rng or random.Random()
     eligible = [t for t in _CATALOG if _matches(t, region_tags)]
-    rng.shuffle(eligible)
+    if intent:
+        # Weight-aware shuffle: sample without replacement using affinities.
+        weighted = [(intent_affinity_for(t, intent), t) for t in eligible]
+        weighted = [(max(w, 0.01), t) for w, t in weighted]
+        # Probabilistic pick
+        chosen_w: List[Dict] = []
+        pool = weighted[:]
+        while pool and len(chosen_w) < count * 3:
+            total = sum(w for w, _ in pool)
+            r = rng.random() * total
+            acc = 0.0
+            picked_idx = 0
+            for i, (w, _) in enumerate(pool):
+                acc += w
+                if acc >= r:
+                    picked_idx = i
+                    break
+            chosen_w.append(pool.pop(picked_idx)[1])
+        eligible = chosen_w
+    else:
+        rng.shuffle(eligible)
 
     seen_types: set = set()
     chosen: List[Dict] = []

@@ -38,6 +38,24 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Intent-Driven Campaign Deck + Preview Button (Feb 2026)
+The Tone / Focus / Scope / Danger picks on the Campaign Setup screen now actively shape which event templates the DM has available to draft. Each event TYPE (encounter, faction, cultural, etc.) has an affinity weight against each axis, so a Combat-Heroic-City-High game gets a deck heavy on Encounters / Factions / Quests, while a Story-Balanced-Mixed-Medium one leans into Faction / Lore / Quest / Cultural. A new "Preview Campaign Deck" button on the setup screen shows the player exactly what they'll get before committing.
+- **Backend `data/event_catalog.py`**:
+  - New `TYPE_INTENT_AFFINITY` matrix: 4 axes × 3-4 values × 8 event types = ~104 weighted multipliers (0-2 scale).
+  - New `DIFFICULTY_BY_DANGER` table biases card difficulty (Low → easy×2; High → hard×2).
+  - `intent_affinity_for(template, intent)` — multiplies all 4 axis weights × difficulty bias for one template.
+  - `preview_campaign_deck(intent, top_n=24)` — returns the highest-affinity templates with metadata.
+  - `deck_summary_for_intent(intent)` — wraps the preview + per-type counts + catalog totals + EVENT_TYPES metadata.
+  - `filter_eligible(...)` extended to accept `intent` and use weighted sampling instead of plain shuffle.
+- **Backend `services/world_graph.py`**: `_make_region` and `_seed_events_for_region` now accept `intent` and pass it through to `filter_eligible`. Both `_template_graph` (fallback path) and the LLM-enhanced graph builder thread the intent through. Hint titles for unvisited regions also use intent weighting so even the previews on the world map respect the player's picks.
+- **Backend `routers/campaigns.py`**: New `GET /api/campaigns/deck-preview?tone=&focus=&scope=&danger=` endpoint returning the deck summary.
+- **Frontend `components/CampaignDeckPreview.jsx`** (NEW): modal showing the live deck. Auto-refetches when any of the 4 intent picks change. Renders intent chips, per-type composition badges, and the top 24 cards with type-styled borders + difficulty + affinity scores + biome / required-faction-race lines.
+- **Frontend `pages/CampaignSetup.jsx`**: New **👁️ Preview Campaign Deck** button alongside Generate Campaign. Disabled until all 4 picks are selected. Opens the modal in place.
+- **Verified live (Heroic / Combat / City / High)**:
+  - `GET /api/campaigns/deck-preview` → 24 cards, composition: 6 Faction · 5 Encounter · 5 Quest · 4 Hazard · 4 Mystery, top card "Frostbitten Raiders" affinity 6.6 (Hard).
+  - Switched to Story-Balanced-Mixed-Medium → composition shifted to 6 Faction · 5 Quest · 5 Lore · 3 Cultural · 3 Discovery · 2 Mystery (no Encounters/Hazards), confirming intent affinity flows end-to-end.
+  - UI: Click "Preview Campaign Deck" on setup → modal opens with intent chips, type counts, and the affinity-sorted card list with full styling.
+
 #### Roleplay Anchors + Chaos Meter + Curse Drafts (Feb 2026)
 The character's Ideal / Bond / Flaw are now first-class deck cards AND drive an always-on chaos meter. Aligned roleplay keeps chaos low; violations raise it. High chaos rolls draft a curse card into the player's deck — concrete narrative consequences for breaking character.
 - **Backend `services/character_deck.py`**:

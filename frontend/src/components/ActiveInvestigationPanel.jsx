@@ -267,7 +267,7 @@ const ActiveInvestigationPanel = ({
             <div className="text-[11px] uppercase tracking-[0.18em] text-amber-300 font-semibold">
               Investigation
             </div>
-            <div className="text-amber-50 font-bold text-base sm:text-lg truncate" data-testid="storyline-title">
+            <div className="text-amber-50 font-bold text-lg sm:text-xl truncate" data-testid="storyline-title">
               {storyline.title}
             </div>
           </div>
@@ -326,9 +326,9 @@ const ActiveInvestigationPanel = ({
               {ability.toUpperCase()} mod {formatMod(mod)}
             </Badge>
           </div>
-          <div className="text-amber-50 text-sm italic font-serif leading-relaxed">{beat.task}</div>
+          <div className="text-amber-50 text-base italic font-serif leading-relaxed">{beat.task}</div>
           {lastRoll && !lastRoll.passed && (
-            <div className="mt-2 text-[12px] text-rose-200 italic">
+            <div className="mt-2 text-[13px] text-rose-200 italic">
               Last roll: {lastRoll.die}{formatMod(lastRoll.mod)} = {lastRoll.total} vs DC {lastRoll.dc} — failed.
             </div>
           )}
@@ -559,7 +559,7 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
 
   return (
     <div
-      className={`relative shrink-0 w-[230px] sm:w-[250px] rounded-lg border-2 overflow-hidden flex flex-col
+      className={`relative shrink-0 w-[270px] sm:w-[300px] rounded-lg border-2 overflow-hidden flex flex-col
         transition-transform duration-300
         ${isActive
           ? `${hasComplication ? 'border-rose-500/80 shadow-[0_0_24px_rgba(244,63,94,0.45)]' : c.border + ' shadow-xl'} bg-stone-800 scale-[1.04]`
@@ -624,7 +624,7 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
           </div>
         ) : (
           <>
-            <div className="text-amber-50 font-bold text-[15px] leading-tight">
+            <div className="text-amber-50 font-bold text-[17px] leading-tight">
               {beat.title || (resolved ? 'Resolved beat' : 'New scene')}
             </div>
 
@@ -634,7 +634,7 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
             {beat.reveal_type === 'knowledge' && !resolved ? (
               <div className="rounded-md border-2 border-amber-400/70 bg-stone-900 p-3 text-center shadow-inner">
                 <Lock className="h-5 w-5 text-amber-200 mx-auto mb-1.5" />
-                <div className="text-[12.5px] text-amber-50 italic font-serif leading-snug font-medium">
+                <div className="text-[14px] text-amber-50 italic font-serif leading-snug font-medium">
                   {beat.prompt || `Roll ${beat.check_type} (DC ${beat.dc}) to reveal what you can piece together.`}
                 </div>
                 {Array.isArray(beat.targets) && beat.targets.length > 0 && (
@@ -642,7 +642,7 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
                     {beat.targets.slice(0, 3).map((t, ti) => (
                       <span
                         key={ti}
-                        className="px-2 py-0.5 rounded bg-amber-500 border border-amber-300 text-[10px] uppercase tracking-wide text-stone-950 font-bold"
+                        className="px-2 py-0.5 rounded bg-amber-500 border border-amber-300 text-[11px] uppercase tracking-wide text-stone-950 font-bold"
                       >
                         {t.type}
                       </span>
@@ -652,16 +652,16 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
               </div>
             ) : beat.reveal_type === 'knowledge' && beat.status === 'failed' ? (
               <div className="rounded-md border-2 border-rose-400/70 bg-stone-900 p-3">
-                <div className="flex items-center gap-1.5 text-rose-200 text-[10px] uppercase tracking-wider font-bold mb-1">
+                <div className="flex items-center gap-1.5 text-rose-200 text-[11px] uppercase tracking-wider font-bold mb-1">
                   <Lock className="h-3 w-3" /> Sealed Lead
                 </div>
-                <div className="text-[12px] text-amber-50 italic font-serif leading-snug">
+                <div className="text-[14px] text-amber-50 italic font-serif leading-snug">
                   You couldn't piece it together. The lead is now in your deck — find someone who can help.
                 </div>
               </div>
             ) : (
               <div
-                className={`text-[12.5px] text-amber-50 italic font-serif leading-relaxed ${
+                className={`text-[14.5px] text-amber-50 italic font-serif leading-relaxed ${
                   isActive || resolved
                     ? 'overflow-y-auto pr-1 max-h-[260px] sm:max-h-[320px]'
                     : 'line-clamp-6'
@@ -677,7 +677,7 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
             )}
 
             {beat.outcome_text && (
-              <div className="mt-1 text-[11.5px] text-amber-200 border-l-2 border-amber-400/70 pl-2 italic">
+              <div className="mt-1 text-[13px] text-amber-200 border-l-2 border-amber-400/70 pl-2 italic">
                 {beat.outcome_text}
               </div>
             )}

@@ -1598,7 +1598,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                             )}
                           </div>
                         </div>
-                        <div className={`text-sm leading-relaxed ${
+                        <div className={`text-base leading-relaxed ${
                           entry.isWorldBrief ? 'text-amber-50/90 italic font-serif tracking-wide' : 'text-violet-50'
                         }`}>
                           {/* Entity Links + Hooks: parse entity markup AND inline DM hook spans */}
@@ -1653,7 +1653,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                             {entry.messageType === 'say' ? '💬 Say' : entry.messageType === 'dm-question' ? '🎲 DM?' : '⚔️ Action'}
                           </Badge>
                         </div>
-                        <div className="text-cyan-50 text-sm leading-relaxed">
+                        <div className="text-cyan-50 text-base leading-relaxed">
                           {entry.messageType === 'say' ? (
                             <span className="italic">"{entry.text}"</span>
                           ) : entry.messageType === 'dm-question' ? (

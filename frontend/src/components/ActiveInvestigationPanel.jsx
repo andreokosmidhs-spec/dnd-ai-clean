@@ -547,7 +547,13 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
           ? `${hasComplication ? 'border-rose-500/80 shadow-[0_0_24px_rgba(244,63,94,0.45)]' : c.border + ' shadow-xl'} bg-stone-800 scale-[1.04]`
           : sealed
             ? 'border-stone-600 bg-stone-900'
-            : 'border-stone-600 bg-stone-900 opacity-85'}`}
+            : resolved
+              ? `bg-stone-900 ${
+                  beat.status === 'passed' ? 'border-emerald-500/40' :
+                  beat.status === 'failed' ? 'border-rose-500/40' :
+                  'border-amber-500/40'
+                }`
+              : 'border-stone-600 bg-stone-900 opacity-85'}`}
       data-testid={`beat-card-${index}`}
       data-beat-status={beat.status}
       data-has-complication={hasComplication ? '1' : '0'}
@@ -623,12 +629,12 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
               </div>
             ) : (
               <div
-                className={`text-[12.5px] text-amber-100 italic font-serif leading-relaxed ${
-                  isActive
+                className={`text-[12.5px] text-amber-50 italic font-serif leading-relaxed ${
+                  isActive || resolved
                     ? 'overflow-y-auto pr-1 max-h-[260px] sm:max-h-[320px]'
                     : 'line-clamp-6'
                 }`}
-                data-testid={isActive ? 'beat-description-active' : undefined}
+                data-testid={isActive ? 'beat-description-active' : (resolved ? `beat-description-resolved-${index}` : undefined)}
               >
                 {beat.description}
               </div>
@@ -653,11 +659,15 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
       </div>
       {resolved && (
         <div
-          className={`pointer-events-none absolute inset-0 flex items-center justify-center
-            ${beat.status === 'passed' ? 'text-emerald-400/60' :
-              beat.status === 'failed' ? 'text-rose-500/60' : 'text-amber-400/60'}`}
+          className={`pointer-events-none absolute top-1.5 right-1.5 z-10
+            ${beat.status === 'passed' ? 'text-emerald-300' :
+              beat.status === 'failed' ? 'text-rose-300' : 'text-amber-300'}`}
+          data-testid={`beat-resolved-stamp-${beat.status}`}
         >
-          <span className="text-3xl font-black uppercase tracking-widest -rotate-12 border-4 border-current px-3 py-0.5">
+          <span className={`text-[10px] font-black uppercase tracking-widest -rotate-6 inline-block
+            border-2 border-current px-1.5 py-0.5 rounded
+            ${beat.status === 'passed' ? 'bg-emerald-950/80' :
+              beat.status === 'failed' ? 'bg-rose-950/80' : 'bg-amber-950/80'}`}>
             {beat.status}
           </span>
         </div>

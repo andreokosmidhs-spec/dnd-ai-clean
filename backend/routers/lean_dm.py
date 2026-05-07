@@ -612,6 +612,8 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     # can render as an "Active Investigation" panel + quest card.
     if engaged_hook is not None:
         try:
+            # Pass recent cards to ground the storyline in named entities.
+            campaign["_recent_cards"] = cards or []
             drafted = await draft_initial_scene(
                 campaign=campaign,
                 character=character,

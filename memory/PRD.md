@@ -38,6 +38,24 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Story Depth + Resolved Card Readability (Feb 2026)
+Three issues fixed after the user reported a passed Investigation card showing only generic atmospheric prose with no concrete leads, plus the PASSED stamp obscuring the description text.
+
+**1. Concrete Story Facts (backend `services/storyline_service.py`)**
+- New `_world_facts_block(world, cards)` helper compiles a "WORLD FACTS" reference (realm, town, factions, NPCs, plus the 8 most recent active knowledge cards) so the LLM REUSES established names instead of inventing fresh ones every turn.
+- New `_story_fact_rules()` helper produces a hard-rule block that every storyline beat description MUST plant at least 3 of: named NPC + role/location, named place, item history (when/who/value), stakes/reward (concrete numbers), time/circumstance, faction tension. Phrases like "a fragment of thought" / "something more outside" / "whispers in the wind" are explicitly forbidden as empty stand-ins.
+- Both `draft_initial_scene` and `generate_next_scene` prompts now inject the WORLD FACTS block + story-fact requirements + a TARGETS-required clause. Description budget bumped 480 → 800 chars to fit richer content. Beat descriptions now run 3-5 sentences instead of 2-4. System messages updated to forbid empty atmospheric writing.
+- **Routers `storylines.py` + `lean_dm.py`**: every call to `draft_initial_scene` / `generate_next_scene` now loads up to 20 recent active knowledge cards from `campaign_cards` and passes them on `campaign["_recent_cards"]`.
+- **Verified live**: hook *"a faded, wooden sign advertising a lost family heirloom"* now produces:
+  - Opening: *"It details a locket belonging to **Lady Mirelle of House Veillane**, reportedly lost just last week during a chaotic market scramble. The sign promises a reward of **50 gold coins** for its return … Close by, **Marielle the herbalist** peruses her wares…"* — 4 named entities, reward, history, factions in one card.
+  - Next scene after pass: *"…last known to surface at a clandestine gathering hosted by **Old Hadrick at Garrick's Pier**, just a fortnight ago … rumored to hold a map to an ancient treasure, making it a coveted piece for rival factions like **The Iron Watch**, who are now circling around the docks."* — concrete lead (NPC + location) + stakes + faction pressure.
+
+**2. Resolved Card Readability (frontend `ActiveInvestigationPanel.jsx`)**
+- The giant centered "PASSED" stamp watermark (`text-3xl` rotated overlay over the description) was replaced with a small corner badge (`top-1.5 right-1.5`, `text-[10px]`, color-coded background pill) so the revealed text stays fully readable.
+- Resolved cards no longer use `opacity-85` (kept only for unresolved-non-active rows). Border now color-codes the outcome (emerald/rose/amber border tint).
+- Description color brightened `text-amber-100 → text-amber-50` for higher contrast on the dark card.
+- Resolved cards now use the same scrollable `max-h-[260px] sm:max-h-[320px]` overflow as active cards so the player can scroll the full revelation.
+
 #### Robust Hook Engagement — Merged Extractor + Re-extract Fallback (Feb 2026)
 Fixed "I walk to the wooden sign and nothing happens" — players engaging with concrete narrative objects that the regex pass missed (because it stopped at the canonical "Three things draw the eye" enumeration) now correctly draft a storyline.
 - **Backend `services/hook_extractor.py`**:

@@ -117,6 +117,108 @@ def _finalize_beat(beat: Dict) -> Dict:
     return beat
 
 
+def _world_facts_block(world: Dict, cards: Optional[List[Dict]] = None, limit: int = 8) -> str:
+    """Compact reference block of grounded world facts for the LLM to draw on
+    when inventing concrete story details (NPC names, locations, factions,
+    item history, rewards). Pulls factions/rumors/locations from `world` and
+    recent active knowledge cards. Cards are truthier than fresh inventions —
+    we want the storyline to NAME existing entities when possible.
+    """
+    lines: List[str] = []
+    world = world or {}
+
+    # Realm + setting flavor
+    core = world.get("world_core") or {}
+    if core:
+        bits = []
+        if core.get("name"):
+            bits.append(f"realm={core['name']}")
+        if core.get("genre"):
+            bits.append(f"genre={core['genre']}")
+        if core.get("tech"):
+            bits.append(f"tech={core['tech']}")
+        if core.get("magic"):
+            bits.append(f"magic={core['magic']}")
+        if bits:
+            lines.append("World: " + " · ".join(bits))
+
+    # Starting town
+    town = world.get("startingLocation") or world.get("starting_town") or {}
+    if isinstance(town, dict) and town.get("name"):
+        flavor = town.get("flavor") or town.get("description") or ""
+        lines.append(f"Town: {town['name']}{' — ' + str(flavor)[:120] if flavor else ''}")
+
+    # Factions (up to 3)
+    factions = (world.get("setting") or {}).get("factions") or world.get("factions") or []
+    if isinstance(factions, list):
+        for f in factions[:3]:
+            if not isinstance(f, dict):
+                continue
+            name = f.get("name") or f.get("title")
+            if not name:
+                continue
+            mot = f.get("motive") or f.get("agenda") or f.get("description") or ""
+            lines.append(f"Faction: {name}{' — ' + str(mot)[:90] if mot else ''}")
+
+    # Notable NPCs already on the world (from world.npcs or starting_scene)
+    npcs = world.get("npcs") or []
+    if isinstance(npcs, list):
+        for n in npcs[:3]:
+            if not isinstance(n, dict):
+                continue
+            nm = n.get("name")
+            if not nm:
+                continue
+            role = n.get("role") or n.get("description") or ""
+            lines.append(f"NPC: {nm}{' — ' + str(role)[:90] if role else ''}")
+
+    # Recent active knowledge cards (NPCs, locations, factions, leads).
+    # We surface these so the storyline can REUSE established names instead
+    # of inventing new ones every turn.
+    if isinstance(cards, list) and cards:
+        for c in cards[:limit]:
+            if not isinstance(c, dict):
+                continue
+            t = c.get("type")
+            if t not in {"character", "npc", "location", "faction", "lore", "rumor", "lead", "quest"}:
+                continue
+            title = (c.get("title") or "").strip()
+            if not title:
+                continue
+            desc = (c.get("description") or "").strip()
+            lines.append(f"Card[{t}]: {title}{' — ' + desc[:90] if desc else ''}")
+
+    if not lines:
+        return ""
+    return "=== WORLD FACTS (use these names when possible — invent only if needed) ===\n" + "\n".join(lines)
+
+
+def _story_fact_rules() -> str:
+    """Hard rules forcing concrete story facts in every storyline beat.
+    Reused by draft_initial_scene and generate_next_scene."""
+    return (
+        "=== STORY-FACT REQUIREMENTS (non-negotiable — every beat must carry weight) ===\n"
+        "Every scene description MUST plant AT LEAST 3 of the following CONCRETE facts "
+        "(invent grounded specifics — name them, don't gesture at them):\n"
+        "  1. A specific NAMED NPC the player could speak with (first name + role/trade, "
+        "     e.g. 'Marielle the herbalist on Tinker's Lane', 'Old Hadrick at the dock'). "
+        "     Prefer reusing existing names from WORLD FACTS above.\n"
+        "  2. A specific NAMED location to visit (street, shop, district, building — "
+        "     not just 'the docks' or 'a tavern').\n"
+        "  3. ITEM/SUBJECT HISTORY — when was the item lost/stolen, who owned it, what "
+        "     makes it valuable, how old is it, what does it look like in detail.\n"
+        "  4. STAKES/REWARD — concrete numbers when relevant (e.g. '50 gold reward', "
+        "     'a favor from House Veillane', 'safe passage through the Iron Gate').\n"
+        "  5. TIME/CIRCUMSTANCE — when did this happen, what was the weather, who else "
+        "     was nearby, what was the victim/owner doing.\n"
+        "  6. A concrete TENSION — a faction watching, a rival also looking, a deadline.\n"
+        "Forbidden: 'a fragment of thought', 'something more outside', 'whispers in the wind', "
+        "'a strange feeling' — these are empty stand-ins. If you write atmospheric phrases, "
+        "they MUST be tied to a named fact above (e.g. 'the wind off Garrick's Pier carries "
+        "the smell of tar' is fine because it names a real location).\n"
+    )
+
+
 # -------------------- deterministic fallback --------------------
 
 _FALLBACK_BEAT_TEMPLATES = [
@@ -246,6 +348,9 @@ async def draft_initial_scene(
         location = starting.get("name") or (world.get("starting_town") or {}).get("name") or "the town"
         realm = (world.get("world_core") or {}).get("name") or "the realm"
 
+        facts_block = _world_facts_block(world, cards=campaign.get("_recent_cards") or [], limit=8)
+        story_rules = _story_fact_rules()
+
         prompt = (
             "Draft the OPENING SCENE CARD of an open-ended investigation. The player just "
             "engaged with a hook (e.g. 'I investigate the warehouse', 'I read the wooden "
@@ -258,6 +363,7 @@ async def draft_initial_scene(
             f"Realm: {realm} | Location: {location}\n"
             f"Tone: {intent.get('tone','Balanced')} | Focus: {intent.get('focus','Mystery')} | "
             f"Danger: {intent.get('danger','Medium')}\n\n"
+            f"{facts_block}\n\n"
             "=== HERO ===\n"
             f"{hero_name} ({class_key}, {bg_key} background)\n\n"
             "=== HOOK (the player just engaged with this — THE SCENE MUST CENTER ON IT) ===\n"
@@ -281,19 +387,24 @@ async def draft_initial_scene(
             "- Use ambient detail (sounds/smells/light) only AFTER the hook subject is "
             "introduced, and only as texture around it.\n"
             "- For knowledge beats, the 'description' is the secret revelation; for action "
-            "beats it is the visible scene with the hook subject foregrounded.\n\n"
+            "beats it is the visible scene with the hook subject foregrounded. EITHER WAY, "
+            "the description must satisfy the STORY-FACT REQUIREMENTS below.\n\n"
+            f"{story_rules}\n"
+            "=== TARGETS (REQUIRED — do not return [] for knowledge beats) ===\n"
+            "Populate `targets` with the named NPCs / locations / factions you put in the "
+            "description (1-3 entries). The player's deck will mint Lead cards from these.\n\n"
             "=== OUTPUT (strict JSON only, no code fence) ===\n"
             "{\n"
             "  \"title\": \"investigation title (3-6 words, references the hook subject)\",\n"
             "  \"beat\": {\n"
             "    \"title\": \"scene title (3-6 words, references the hook subject)\",\n"
-            "    \"description\": \"2-4 sentence Mercer-cinematic SCENE. FIRST sentence names the hook subject directly. Static observer framing (no auto-narrating player choices).\",\n"
+            "    \"description\": \"3-5 sentence Mercer-cinematic SCENE. FIRST sentence names the hook subject directly. Plant at least 3 concrete story facts (named NPC + named location + history/reward/stakes). Static observer framing.\",\n"
             "    \"task\": \"short imperative aimed at the hook subject (one phrase)\",\n"
             "    \"check_type\": \"Investigation|Perception|Insight|Persuasion|Deception|Intimidation|Stealth|Sleight of Hand|Athletics|Arcana|History|Nature|Survival|Religion\",\n"
             "    \"dc\": 10,\n"
             "    \"reveal_type\": \"action|knowledge\",\n"
             "    \"prompt\": \"(knowledge beats only) public-facing tease shown before the roll, no spoilers\",\n"
-            "    \"targets\": [{\"type\": \"npc|faction|location|direction\", \"name\": \"...\"}]\n"
+            "    \"targets\": [{\"type\": \"npc|faction|location|direction\", \"name\": \"<actual named entity from your description>\"}]\n"
             "  }\n"
             "}\n"
         )
@@ -335,7 +446,7 @@ async def draft_initial_scene(
         dc = max(8, min(20, dc))
         beat = _finalize_beat({
             "title": (rb.get("title") or "First Sign").strip()[:48],
-            "description": (rb.get("description") or "").strip()[:480],
+            "description": (rb.get("description") or "").strip()[:800],
             "task": (rb.get("task") or "Look closer").strip()[:160],
             "dc": dc,
             "check_type": ct,
@@ -423,9 +534,12 @@ async def generate_next_scene(
         location = starting.get("name") or (world.get("starting_town") or {}).get("name") or "the town"
         realm = (world.get("world_core") or {}).get("name") or "the realm"
 
+        facts_block = _world_facts_block(world, cards=campaign.get("_recent_cards") or [], limit=8)
+        story_rules = _story_fact_rules()
+
         beats_summary = "\n".join(
             f"  Beat {i+1} [{b.get('status','?')}] {b.get('title','')}: "
-            f"{(b.get('outcome_text') or b.get('description',''))[:160]}"
+            f"{(b.get('outcome_text') or b.get('description',''))[:200]}"
             for i, b in enumerate(beats)
         )
 
@@ -445,6 +559,7 @@ async def generate_next_scene(
             f"Realm: {realm} | Location: {location}\n"
             f"Tone: {intent.get('tone','Balanced')} | Focus: {intent.get('focus','Mystery')} | "
             f"Danger: {intent.get('danger','Medium')}\n\n"
+            f"{facts_block}\n\n"
             f"=== HERO ===\n{hero_name}\n\n"
             "=== STORYLINE ===\n"
             f"Title: {storyline.get('title','')}\n"
@@ -457,28 +572,40 @@ async def generate_next_scene(
             "=== RULES ===\n"
             f"- Storyline has been running {len(beats)} beat(s). "
             f"{'You SHOULD resolve here unless absolutely critical to continue.' if too_long else 'Aim for 3-5 beats total; resolve only when narratively earned.'}\n"
-            "- If next card: 2-4 sentences, Mercer-cinematic, second person, present tense, "
+            "- If next card: 3-5 sentences, Mercer-cinematic, second person, present tense, "
             "  static observer framing. NARRATE the just-played action's consequence + the "
-            "  new situation in the SAME breath.\n"
+            "  new situation in the SAME breath. NAME the people, places, items, and stakes "
+            "  involved — never gesture at them with phrases like 'something more' or "
+            "  'a fragment of thought'. Reuse names from WORLD FACTS where possible; invent "
+            "  grounded specifics when the world doesn't already have one.\n"
             "- Suggested check: include `check_type` and `dc` (10-18) ONLY when natural; set to "
             "  null for pure narrative transitions.\n"
             "- Knowledge vs action: knowledge beats hide the description as a secret revelation "
-            "  until the player passes the check. Set `reveal_type` accordingly.\n"
-            "- NO clichés ('fate', 'the gods'). NO recap of earlier beats verbatim.\n"
+            "  until the player passes the check. Set `reveal_type` accordingly. The "
+            "  description IS the revelation, so it MUST carry concrete facts the player "
+            "  earned by passing the check (NPC name + location + item history + stakes).\n"
+            "- ESCALATE — each beat must surface a NEW named entity OR a NEW concrete fact "
+            "  the player didn't have before. No restating prior reveals.\n"
+            "- NO clichés ('fate', 'the gods', 'the wind whispers', 'something stirs'). "
+            "  NO recap of earlier beats verbatim.\n"
             "- Output strict JSON, no code fence.\n\n"
+            f"{story_rules}\n"
+            "=== TARGETS (REQUIRED — do not return [] for knowledge beats) ===\n"
+            "Populate `targets` with the named NPCs / locations / factions you put in the "
+            "description (1-3 entries). The player's deck mints Lead cards from these.\n\n"
             "=== OUTPUT (strict JSON only) ===\n"
             "{\n"
             "  \"is_final\": false,\n"
-            "  \"epilogue\": \"only when is_final=true: 1-2 sentence Mercer epilogue\",\n"
+            "  \"epilogue\": \"only when is_final=true: 1-2 sentence Mercer epilogue with named entities\",\n"
             "  \"beat\": {\n"
             "    \"title\": \"...\",\n"
-            "    \"description\": \"2-4 sentences narrating what just happened + new situation\",\n"
+            "    \"description\": \"3-5 sentences narrating consequence + new situation, with at least 3 concrete story facts (named NPC + named location + history/reward/stakes)\",\n"
             "    \"task\": \"short imperative for the moment\",\n"
             "    \"check_type\": \"Investigation|Perception|... or null\",\n"
             "    \"dc\": 10,\n"
             "    \"reveal_type\": \"action|knowledge\",\n"
             "    \"prompt\": \"(knowledge only) public tease before the roll\",\n"
-            "    \"targets\": [{\"type\": \"npc|faction|location|direction\", \"name\": \"...\"}]\n"
+            "    \"targets\": [{\"type\": \"npc|faction|location|direction\", \"name\": \"<actual named entity from your description>\"}]\n"
             "  }\n"
             "}\n"
         )
@@ -487,7 +614,10 @@ async def generate_next_scene(
             session_id=f"storyline-next-{uuid4()}",
             system_message=(
                 "You are a senior D&D narrator (Mercer-style). You write tight scene cards "
-                "that flow from player choice. Output strict JSON only."
+                "that flow from player choice and ALWAYS plant concrete story facts — "
+                "named NPCs, named locations, item history, specific stakes/rewards. "
+                "Empty atmospheric phrases ('a fragment of thought', 'something more') "
+                "are forbidden. Output strict JSON only."
             ),
         )
         chat.with_model("openai", "gpt-4o-mini")
@@ -532,7 +662,7 @@ async def generate_next_scene(
             dc = 0
         beat = _finalize_beat({
             "title": (rb.get("title") or "Next Scene").strip()[:48],
-            "description": (rb.get("description") or "").strip()[:480],
+            "description": (rb.get("description") or "").strip()[:800],
             "task": (rb.get("task") or "Decide your next move").strip()[:160],
             "dc": dc if dc > 0 else 12,
             "check_type": ct,

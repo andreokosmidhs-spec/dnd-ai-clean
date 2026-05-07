@@ -174,6 +174,17 @@ async def draft_storyline_endpoint(campaign_id: str, body: DraftStorylineBody):
     if not character:
         raise HTTPException(status_code=404, detail=f"Character not found: {body.character_id}")
 
+    # Pass recent active knowledge cards so the storyline grounds in existing
+    # NPCs / locations / factions instead of inventing fresh names every turn.
+    try:
+        cards_cursor = _cards_collection().find(
+            {"campaign_id": campaign_id, "status": {"$ne": "failed"}}, {"_id": 0}
+        ).sort("updatedAt", -1).limit(20)
+        recent_cards = await cards_cursor.to_list(length=20)
+        campaign["_recent_cards"] = recent_cards
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Failed to load recent cards for storyline grounding: {exc}")
+
     hook = {
         "id": body.hook_id or f"hook_{uuid4().hex[:8]}",
         "text": body.hook_text.strip(),
@@ -367,6 +378,18 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
     campaign = await _load_campaign(campaign_id)
     character = await _load_character(doc.get("character_id")) or {}
 
+    # Pass recent active knowledge cards so the next-scene generator grounds
+    # in existing NPCs / locations / factions instead of inventing fresh
+    # names every beat.
+    try:
+        cards_cursor = _cards_collection().find(
+            {"campaign_id": campaign_id, "status": {"$ne": "failed"}}, {"_id": 0}
+        ).sort("updatedAt", -1).limit(20)
+        recent_cards = await cards_cursor.to_list(length=20)
+        campaign["_recent_cards"] = recent_cards
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Failed to load recent cards for next-scene grounding: {exc}")
+
     # Decide failure mode (only relevant when outcome == 'failed').
     mode = (body.mode or "").strip().lower()
     is_press_on = (body.outcome == "failed" and mode == "press-on")
@@ -559,6 +582,16 @@ async def creative_approach_endpoint(
 
     campaign = await _load_campaign(campaign_id)
     character = await _load_character(doc.get("character_id")) or {}
+
+    # Ground next-scene generation in existing knowledge cards.
+    try:
+        cards_cursor = _cards_collection().find(
+            {"campaign_id": campaign_id, "status": {"$ne": "failed"}}, {"_id": 0}
+        ).sort("updatedAt", -1).limit(20)
+        recent_cards = await cards_cursor.to_list(length=20)
+        campaign["_recent_cards"] = recent_cards
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Failed to load recent cards for creative-path grounding: {exc}")
 
     judgment = await judge_creative_approach(
         intent=campaign.get("intent") or {},

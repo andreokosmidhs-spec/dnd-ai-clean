@@ -38,6 +38,25 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### "Ask the DM" — Player Feedback Loop for Missed Checks (Feb 2026)
+The DM has been whiffing on social/stealth check requirements (e.g. player tried to lure-and-surprise Kellan but no Stealth check was asked). Players can now train it.
+
+**Backend** (`routers/storylines.py`):
+- New `POST /api/campaigns/{id}/storylines/{slid}/dm-feedback` endpoint. Body: `kind` (missed_check / why_no_check / wrong_check / general), optional `suggested_check`, `suggested_dc`, `player_action`, `note`, `apply_correction` flag.
+- New `_judge_dm_feedback` LLM helper — fair-judge prompt with explicit D&D 5e rules-of-thumb (stealth → vs passive Perception, deception/performance for ruses, intimidation with weapon-draw, etc.). Returns `{agrees_with_player, explanation, should_correct, check_type, dc, dc_reasoning}`.
+- When the judge agrees AND a corrective check is justified AND `apply_correction=true`, a new beat *"Retroactive {Check} check"* is appended to the storyline so the player can actually roll for what they tried. Storyline state is updated atomically.
+- Feedback persisted to a new `campaign_dm_feedback` collection.
+- **Verified live** with the screenshot scenario: feedback `kind=missed_check, action="I pretend not to see Kellan and lure him close to surprise him"` → judge returns `agrees=true, check=Stealth, dc=14, reasoning="Kellan is actively observing the player, warranting a moderate difficulty"`. Corrective beat appended; player can now roll.
+
+**Backend** (`routers/lean_dm.py`):
+- New `recent_feedback` argument plumbed into `_build_system_prompt`. Pulls the 5 most recent agreed-upon judgments and appends a "RECENT PLAYER RULINGS" block to the system prompt: *"When player does '...' require Stealth (DC 14). Why: ..."*. The DM now learns from corrections turn-by-turn instead of repeating the same misses.
+
+**Frontend** (`components/storyline/DMFeedbackButton.jsx` new + `ActiveInvestigationPanel.jsx`):
+- Small "Ask the DM" pill on each active/recently-resolved beat card.
+- Modal with 4 kind cards (Missed check / Why no check / Wrong check / Freeform), action textarea, suggested-check select (16 skills), DC input, freeform note.
+- After submit, the modal pivots to the judgment view: green "DM agrees" or rose "DM holds the call" header, italic reasoning paragraph, and the named ruling chip ("Stealth DC 14 — moderate cover, distracted target").
+- When a correction beat is appended, `onCorrectionApplied(storyline)` callback updates the parent and a success toast fires.
+
 #### MTG-Style Deck Library + New-Card Notifications + Creative-Path Mints (Feb 2026)
 Player flagged that a creative pin during the *"Tension of Truth"* beat exposed a new operative (*Eliarin*) but no card minted, asked for a tighter MTG-portrait deck library matching the reference image, plus a new-card notification badge and a "Return to Game" button. All four ships:
 

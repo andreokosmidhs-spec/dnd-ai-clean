@@ -6,6 +6,7 @@ import { Textarea } from './ui/textarea';
 import { Search, Check, X, Dice5, Loader2, Trophy, Scroll, Lock, RotateCw, ArrowRight, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { abilityMod } from '../utils/hp';
+import { DMFeedbackButton } from './storyline/DMFeedbackButton';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -313,6 +314,9 @@ const ActiveInvestigationPanel = ({
                 isActive={i === idx}
                 complication={i === idx ? storyline.complication : null}
                 pressOnUsed={i === idx ? !!storyline.press_on_used : false}
+                campaignId={campaignId}
+                storylineId={storyline.id}
+                onCorrectionApplied={onUpdate}
               />
             ))}
           </div>
@@ -550,7 +554,7 @@ const CreativeApproachDialog = ({ open, beat, busy, text, setText, onSubmit, onC
   </Dialog>
 );
 
-const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) => {
+const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed, campaignId, storylineId, onCorrectionApplied }) => {
   const c = colorsFor(beat.check_type);
   const tone = STATUS_TONE[beat.status] || STATUS_TONE.pending;
   const sealed = beat.status === 'pending';
@@ -684,6 +688,19 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
           </>
         )}
       </div>
+      {/* "Ask the DM" button — only visible on the active beat or
+          recently-resolved beats so the player can contest a missed check
+          right when it matters. */}
+      {!sealed && campaignId && storylineId && (isActive || resolved) && (
+        <div className="px-2 pb-1.5 flex justify-end">
+          <DMFeedbackButton
+            campaignId={campaignId}
+            storylineId={storylineId}
+            beatIndex={index}
+            onCorrectionApplied={onCorrectionApplied}
+          />
+        </div>
+      )}
       <div
         className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10.5px] uppercase tracking-wider border-t font-bold
           ${sealed ? 'bg-stone-800 border-stone-700 text-stone-300' : 'bg-stone-800 border-stone-600 text-amber-50'}`}

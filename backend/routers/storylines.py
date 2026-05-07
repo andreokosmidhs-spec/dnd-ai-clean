@@ -1298,3 +1298,289 @@ async def mark_all_cards_seen(campaign_id: str):
         {"$set": {"is_new": False}},
     )
     return {"ok": True, "cleared": int(res.modified_count)}
+
+
+
+# ====================================================================
+# DM FEEDBACK — players can contest a missed check or ask the DM why
+# ====================================================================
+
+class DMFeedbackBody(BaseModel):
+    """Payload for the player flagging a DM ruling on a beat.
+
+    kind:
+      - 'missed_check'    : "you should have asked for X check"
+      - 'why_no_check'    : "explain your reasoning"
+      - 'wrong_check'     : "this is the wrong check / DC"
+      - 'general'         : freeform
+    """
+    kind: str
+    suggested_check: Optional[str] = None  # e.g. "Stealth", "Performance", "Intimidation"
+    suggested_dc: Optional[int] = None     # 8-25, optional
+    player_action: Optional[str] = None    # what the player actually tried to do
+    note: Optional[str] = None             # freeform extra context
+    beat_index: Optional[int] = None       # which beat the feedback is about
+    apply_correction: bool = True          # if True and the judge agrees, retro-add a check beat
+
+
+def _feedback_collection():
+    return _get_db()["campaign_dm_feedback"]
+
+
+async def _judge_dm_feedback(
+    *,
+    campaign: Dict,
+    storyline: Dict,
+    beat: Dict,
+    feedback: DMFeedbackBody,
+) -> Dict:
+    """LLM judge that decides whether the player's complaint is valid and,
+    if so, what corrective check the DM should have asked for. Returns:
+      {
+        "agrees_with_player": bool,
+        "explanation": str,        # the DM's reasoning, in-character
+        "should_correct": bool,    # True iff a retro check is justified
+        "check_type": str | None,  # e.g. "Stealth"
+        "dc": int | None,          # 8-20
+        "dc_reasoning": str,       # one-line "why this DC"
+      }
+    """
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return {
+            "agrees_with_player": False,
+            "explanation": "(DM judge unavailable — please retry shortly.)",
+            "should_correct": False,
+            "check_type": None,
+            "dc": None,
+            "dc_reasoning": "",
+        }
+    intent = campaign.get("intent") or {}
+    realm = (campaign.get("world") or {}).get("world_core", {}).get("name", "the realm")
+    sl_title = storyline.get("title") or "the scene"
+    beat_title = beat.get("title") or "the beat"
+    beat_desc = beat.get("description") or ""
+    beat_outcome = beat.get("outcome_text") or ""
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        prompt = (
+            "You are an experienced D&D rules judge reviewing a DM ruling. The player "
+            "is contesting a moment in the scene. Your job: decide if the player has a "
+            "point, explain the reasoning clearly, and if a check IS warranted, name "
+            "the right ability check and DC.\n\n"
+            "=== CAMPAIGN ===\n"
+            f"Realm: {realm} | Tone: {intent.get('tone','heroic')} | Danger: {intent.get('danger','medium')}\n\n"
+            f"=== STORYLINE ===\n{sl_title}\n\n"
+            f"=== BEAT ===\nTitle: {beat_title}\nDescription: {beat_desc[:600]}\n"
+            f"What player did: {beat_outcome[:300]}\n\n"
+            "=== PLAYER FEEDBACK ===\n"
+            f"Type: {feedback.kind}\n"
+            f"Player action they actually attempted: {feedback.player_action or '(not specified)'}\n"
+            f"Suggested check: {feedback.suggested_check or '(none)'}\n"
+            f"Suggested DC: {feedback.suggested_dc if feedback.suggested_dc is not None else '(none)'}\n"
+            f"Note: {feedback.note or '(none)'}\n\n"
+            "=== RULES OF THUMB (apply pragmatically — D&D 5e baseline) ===\n"
+            "- Hidden / unobserved physical action attempting NOT to be seen → STEALTH "
+            "(against passive Perception of observers, or DC 13-15 in moderate cover).\n"
+            "- Distracting / luring / acting a part to mislead → DECEPTION (vs target's "
+            "passive Insight) or PERFORMANCE if it's a public ruse.\n"
+            "- Threatening, weapon-drawn intimidation → INTIMIDATION (vs target's social DC).\n"
+            "- Persuading, pleading, charming → PERSUASION.\n"
+            "- Reading body language / catching lies → INSIGHT.\n"
+            "- Climbing, jumping, breaking grapple → ATHLETICS (or ACROBATICS for finesse).\n"
+            "- Spotting hidden things → PERCEPTION (passive first; active only if searching).\n"
+            "- Recalling lore → ARCANA / HISTORY / NATURE / RELIGION as appropriate.\n"
+            "- A check is NOT needed when the action is automatic (reading a public sign, "
+            "  walking down a street, asking the price), or when failure has no meaningful "
+            "  consequence.\n"
+            "- If the player tried something with stealth/deception cues AND there were "
+            "  in-fiction observers (NPC eyes on them, guards in earshot, a target they're "
+            "  trying to fool), the DM SHOULD have asked for the corresponding check.\n\n"
+            "=== OUTPUT (strict JSON, no code fence) ===\n"
+            "{\n"
+            "  \"agrees_with_player\": true|false,\n"
+            "  \"explanation\": \"1-3 sentence DM explanation. If you agree, name the rule. If you disagree, explain why no check was needed (e.g. action was automatic, or no observer existed).\",\n"
+            "  \"should_correct\": true|false,  // true iff a retro check beat is justified\n"
+            "  \"check_type\": \"Stealth|Deception|Performance|Intimidation|Persuasion|Insight|Athletics|Acrobatics|Perception|Investigation|Sleight of Hand|Arcana|History|Nature|Religion|Survival|null\",\n"
+            "  \"dc\": 12,    // 8-20, null if no check\n"
+            "  \"dc_reasoning\": \"one-line: why this DC (e.g. 'moderate cover, distracted target')\"\n"
+            "}"
+        )
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"dm-feedback-{uuid4()}",
+            system_message=(
+                "You are a fair, experienced D&D rules judge. You side with the player "
+                "when the rules support them and explain clearly. Output strict JSON only."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        s = raw.strip()
+        if s.startswith("```"):
+            s = s.strip("`")
+            if s.lower().startswith("json"):
+                s = s[4:].lstrip()
+        import json as _json
+        try:
+            data = _json.loads(s)
+        except Exception:
+            a, b = s.find("{"), s.rfind("}")
+            data = _json.loads(s[a:b + 1]) if a != -1 and b > a else {}
+        if not isinstance(data, dict):
+            return {
+                "agrees_with_player": False,
+                "explanation": "(Judge returned malformed output — please retry.)",
+                "should_correct": False,
+                "check_type": None,
+                "dc": None,
+                "dc_reasoning": "",
+            }
+        # Normalize
+        ct = data.get("check_type")
+        if ct and str(ct).strip().lower() == "null":
+            ct = None
+        try:
+            dc_val = int(data.get("dc")) if data.get("dc") is not None else None
+            if dc_val is not None:
+                dc_val = max(8, min(20, dc_val))
+        except Exception:
+            dc_val = None
+        return {
+            "agrees_with_player": bool(data.get("agrees_with_player")),
+            "explanation": (data.get("explanation") or "").strip()[:700],
+            "should_correct": bool(data.get("should_correct")),
+            "check_type": ct,
+            "dc": dc_val,
+            "dc_reasoning": (data.get("dc_reasoning") or "").strip()[:200],
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"DM feedback judge failed: {exc}")
+        return {
+            "agrees_with_player": False,
+            "explanation": f"(Judge errored: {exc}.)",
+            "should_correct": False,
+            "check_type": None,
+            "dc": None,
+            "dc_reasoning": "",
+        }
+
+
+@router.post("/{campaign_id}/storylines/{storyline_id}/dm-feedback")
+async def submit_dm_feedback(campaign_id: str, storyline_id: str, body: DMFeedbackBody):
+    """Player contests / queries a DM ruling on a beat. Returns the DM's
+    explanation; if a corrective check is justified AND `apply_correction`
+    is true, optionally appends a corrective check beat and persists the
+    feedback so future DM prompts can learn from it.
+    """
+    sl = await _storylines_collection().find_one(
+        {"campaign_id": campaign_id, "id": storyline_id}, {"_id": 0}
+    )
+    if not sl:
+        raise HTTPException(status_code=404, detail="Storyline not found")
+
+    beats = sl.get("beats") or []
+    if not beats:
+        raise HTTPException(status_code=400, detail="Storyline has no beats")
+
+    # Default to the most recently resolved beat if no index given.
+    idx = body.beat_index
+    if idx is None or idx < 0 or idx >= len(beats):
+        # Find the latest beat that has any outcome the player could contest.
+        idx = max(
+            (i for i, b in enumerate(beats) if (b.get("outcome_text") or b.get("status") in {"passed", "failed", "skipped"})),
+            default=len(beats) - 1,
+        )
+    beat = beats[idx]
+
+    campaign = await _load_campaign(campaign_id)
+    judgment = await _judge_dm_feedback(
+        campaign=campaign, storyline=sl, beat=beat, feedback=body
+    )
+
+    # Persist the feedback so future DM prompts can pull recent corrections.
+    now = datetime.now(timezone.utc)
+    record = {
+        "id": f"fb_{uuid4().hex[:10]}",
+        "campaign_id": campaign_id,
+        "storyline_id": storyline_id,
+        "beat_index": idx,
+        "beat_title": beat.get("title"),
+        "kind": body.kind,
+        "suggested_check": body.suggested_check,
+        "suggested_dc": body.suggested_dc,
+        "player_action": body.player_action,
+        "note": body.note,
+        "judge": judgment,
+        "created_at": now,
+    }
+    try:
+        await _feedback_collection().insert_one(dict(record))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"feedback persist failed: {exc}")
+    record_out = {k: v for k, v in record.items() if k != "_id"}
+    if isinstance(record_out.get("created_at"), datetime):
+        record_out["created_at"] = record_out["created_at"].isoformat()
+
+    # If the judge agrees AND a correction is warranted AND the player asked
+    # us to apply it, append a corrective check beat so the player can
+    # actually roll for what they tried to do.
+    correction_beat: Optional[Dict] = None
+    if (
+        body.apply_correction
+        and judgment.get("should_correct")
+        and judgment.get("check_type")
+        and judgment.get("dc")
+    ):
+        correction_beat = {
+            "title": f"Retroactive {judgment['check_type']} check",
+            "description": (
+                f"You called out the missed beat: '{(body.player_action or 'your stated approach')[:140]}'. "
+                f"The DM agrees and rewinds — roll {judgment['check_type']} (DC {judgment['dc']}) to "
+                f"resolve what you actually attempted. "
+                f"({judgment.get('dc_reasoning','')})"
+            ).strip(),
+            "task": f"Roll {judgment['check_type']} (DC {judgment['dc']})",
+            "check_type": judgment["check_type"],
+            "dc": int(judgment["dc"]),
+            "ability": _ability_for_check(judgment["check_type"]),
+            "reveal_type": "action",
+            "prompt": "",
+            "targets": [],
+            "status": "active",
+            "outcome_text": None,
+            "roll_optional": False,
+            "from_dm_feedback": True,
+        }
+        beats.append(correction_beat)
+        new_idx = len(beats) - 1
+        await _storylines_collection().update_one(
+            {"campaign_id": campaign_id, "id": storyline_id},
+            {"$set": {"beats": beats, "current_beat": new_idx}},
+        )
+        sl["beats"] = beats
+        sl["current_beat"] = new_idx
+
+    return {
+        "ok": True,
+        "judgment": judgment,
+        "feedback_record": record_out,
+        "correction_applied": bool(correction_beat),
+        "storyline": storyline_to_dict(sl),
+    }
+
+
+def _ability_for_check(check: str) -> str:
+    """Map check type to its governing ability (used so the corrective
+    beat can be auto-rolled with the right modifier)."""
+    m = {
+        "Stealth": "dex", "Sleight of Hand": "dex", "Acrobatics": "dex",
+        "Athletics": "str",
+        "Perception": "wis", "Insight": "wis", "Survival": "wis",
+        "Animal Handling": "wis", "Medicine": "wis",
+        "Persuasion": "cha", "Deception": "cha", "Intimidation": "cha",
+        "Performance": "cha",
+        "Investigation": "int", "Arcana": "int", "History": "int",
+        "Nature": "int", "Religion": "int",
+    }
+    return m.get(check, "wis")

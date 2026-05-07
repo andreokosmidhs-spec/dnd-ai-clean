@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException
@@ -98,7 +98,7 @@ def _format_title(s: str) -> str:
     return str(s or "").replace("_", " ").strip().title()
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0) -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None) -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -259,6 +259,28 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         else "(no NPCs with identity sheets in scene — describe new NPCs as silhouettes/voices until interacted with)"
     )
 
+    # Recent player feedback / rulings — when the player has previously
+    # contested a missed check, surface those judgments so the DM applies
+    # the same logic this turn (e.g. "if player attempts to lure unseen,
+    # require Stealth or Deception against the target's passive Insight").
+    feedback_lines: List[str] = []
+    for fb in (recent_feedback or [])[:5]:
+        judge = fb.get("judge") or {}
+        if not judge.get("agrees_with_player"):
+            continue  # only feed back rulings the judge actually agreed with
+        ct = judge.get("check_type")
+        dc = judge.get("dc")
+        action = (fb.get("player_action") or "")[:120]
+        reason = (judge.get("dc_reasoning") or "")[:140]
+        if ct and dc:
+            feedback_lines.append(
+                f"- When player does '{action}': require {ct} (DC {dc}). Why: {reason}"
+            )
+    feedback_block = (
+        "=== RECENT PLAYER RULINGS (apply these going forward — they corrected the DM) ===\n"
+        + ("\n".join(feedback_lines) if feedback_lines else "(no rulings on record)")
+    )
+
     tone = intent.get("tone", "heroic")
 
     return (
@@ -300,6 +322,7 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{passive_perception_block(character)}\n\n"
         f"{deck_context_block(deck or [])}\n\n"
         f"{chaos_block_for_dm(chaos)}\n\n"
+        f"{feedback_block}\n\n"
         "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "
@@ -515,7 +538,23 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         logger.warning(f"Deck load failed (non-fatal): {exc}")
         deck_cards = []
 
-    system_prompt = _build_system_prompt(campaign, character, cards, clock_hour, deck=deck_cards, chaos=chaos_value)
+    # Pull the 5 most recent DM feedback judgments so the DM can learn from
+    # them in this turn — corrections become a "recent player rulings" block
+    # the DM is told to apply going forward.
+    recent_feedback: List[Dict] = []
+    try:
+        cursor = db["campaign_dm_feedback"].find(
+            {"campaign_id": req.campaign_id}, {"_id": 0}
+        ).sort("created_at", -1).limit(5)
+        recent_feedback = await cursor.to_list(length=5)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"feedback load failed (non-fatal): {exc}")
+        recent_feedback = []
+
+    system_prompt = _build_system_prompt(
+        campaign, character, cards, clock_hour,
+        deck=deck_cards, chaos=chaos_value, recent_feedback=recent_feedback,
+    )
 
     # Call the LLM
     api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")

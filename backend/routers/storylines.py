@@ -77,6 +77,10 @@ def _cards_collection():
     return _get_db()["campaign_cards"]
 
 
+def _campaigns_collection():
+    return _get_db()["campaigns"]
+
+
 async def _load_campaign(campaign_id: str) -> Dict:
     db = _get_db()
     campaign = await db.campaigns.find_one({"campaign_id": campaign_id}) or \
@@ -391,6 +395,98 @@ async def _extract_targets_from_description_llm(
         return []
 
 
+async def _generate_npc_identity_sheet(
+    *, name: str, role_snippet: str, campaign: Optional[Dict] = None
+) -> Dict:
+    """LLM-generate a HIDDEN NPC identity sheet so the DM can roleplay this
+    NPC consistently across turns and the player can contest social DCs
+    against grounded numbers. The sheet is stored on the card under
+    `secret_content` and stays redacted from the player UI until specific
+    fields are revealed in fiction.
+
+    Sheet shape (each field independently revealable):
+      stats: {ac, hp, intimidation_dc, persuasion_dc, deception_dc, insight_dc, passive_insight}
+      personality: {trait, ideal, bond, flaw}
+      background: short paragraph
+      mannerisms: [list of 2-3 physical tics / habits]
+      speech_style: short phrase ("clipped, eastern accent, drops r's")
+      secrets: [1-3 hidden facts]
+      allegiances: [factions/people they answer to]
+      current_motivation: what they want from the player THIS scene
+    """
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key or not name:
+        return {}
+    realm = ((campaign or {}).get("world") or {}).get("world_core", {}).get("name", "the realm")
+    starting = ((campaign or {}).get("world") or {}).get("startingLocation", {}).get("name", "the town")
+    tone = ((campaign or {}).get("intent") or {}).get("tone", "balanced")
+    danger = ((campaign or {}).get("intent") or {}).get("danger", "medium")
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        prompt = (
+            f"Generate a HIDDEN NPC identity sheet for **{name}** based on the in-fiction "
+            f"context below. The player has just learned this NPC's name; you are filling in "
+            f"the personal details only the DM sees. Numbers should reflect a {tone} {danger}-"
+            f"danger campaign.\n\n"
+            f"=== CONTEXT (what's already known about this NPC) ===\n{role_snippet}\n\n"
+            f"=== CAMPAIGN ===\nRealm: {realm} | Starting town: {starting}\n\n"
+            "=== OUTPUT (strict JSON, no code fence) ===\n"
+            "{\n"
+            "  \"stats\": {\n"
+            "    \"ac\": 12,\n"
+            "    \"hp\": 18,\n"
+            "    \"intimidation_dc\": 13,  // DC the PC must hit to intimidate them — fearful=10, brave=18\n"
+            "    \"persuasion_dc\": 13,    // DC for talking them around\n"
+            "    \"deception_dc\": 13,     // DC for lying to them (their Insight contest)\n"
+            "    \"insight_dc\": 12,       // DC the PC must hit to read this NPC's lies\n"
+            "    \"passive_insight\": 11   // their default 'lie-detector' threshold\n"
+            "  },\n"
+            "  \"personality\": {\n"
+            "    \"trait\": \"single visible trait — 'twitchy when lying', 'never breaks eye contact'\",\n"
+            "    \"ideal\": \"what they believe in (1 short clause)\",\n"
+            "    \"bond\": \"who/what they care about (1 short clause)\",\n"
+            "    \"flaw\": \"what trips them up (1 short clause)\"\n"
+            "  },\n"
+            "  \"background\": \"1-2 sentence backstory — where they came from, how they ended up here\",\n"
+            "  \"mannerisms\": [\"physical tic 1\", \"speech tic 2\", \"body-language habit 3\"],\n"
+            "  \"speech_style\": \"short descriptor — 'gravelly, clipped, drops r's' or 'sing-song southern lilt'\",\n"
+            "  \"secrets\": [\"hidden fact 1 (something the NPC would never volunteer)\", \"hidden fact 2\"],\n"
+            "  \"allegiances\": [\"named faction or person they actually answer to\"],\n"
+            "  \"current_motivation\": \"what THIS NPC wants from the player THIS scene — not generic, scene-specific\"\n"
+            "}\n"
+            "Make the numbers playable (DCs 9-19). Make the personality and secrets "
+            "specific and useful as roleplay anchors — never generic 'wants gold'."
+        )
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"npc-sheet-{uuid4()}",
+            system_message=(
+                "You are a senior D&D Dungeon Master statting a brand-new NPC. "
+                "You produce concrete, playable, roleplay-ready sheets. Output "
+                "strict JSON only."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        s = raw.strip()
+        if s.startswith("```"):
+            s = s.strip("`")
+            if s.lower().startswith("json"):
+                s = s[4:].lstrip()
+        import json as _json
+        try:
+            data = _json.loads(s)
+        except Exception:
+            a, b = s.find("{"), s.rfind("}")
+            data = _json.loads(s[a:b + 1]) if a != -1 and b > a else {}
+        if not isinstance(data, dict):
+            return {}
+        return data
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"NPC sheet generation failed for {name}: {exc}")
+        return {}
+
+
 async def _mint_target_cards_if_revealed(
     *,
     campaign_id: str,
@@ -458,6 +554,15 @@ async def _mint_target_cards_if_revealed(
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"existing-card preload failed: {exc}")
 
+    # Pull the campaign once so the NPC sheet generator can use it.
+    campaign_for_sheets: Optional[Dict] = None
+    try:
+        campaign_for_sheets = await _campaigns_collection().find_one(
+            {"campaign_id": campaign_id}, {"_id": 0}
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"campaign load for NPC sheets failed: {exc}")
+
     minted: List[Dict] = []
     now = datetime.now(timezone.utc)
     storyline_title = storyline.get("title") or "investigation"
@@ -477,6 +582,24 @@ async def _mint_target_cards_if_revealed(
         snippet = _description_snippet_for(title, revelation, max_len=300)
         if not snippet:
             snippet = f"Mentioned during the {storyline_title}."
+
+        # NPCs get a hidden identity sheet so the DM can roleplay them
+        # consistently and the player can contest social DCs against grounded
+        # numbers. The sheet stays redacted from the player UI until specific
+        # fields are revealed in fiction.
+        secret_content: Optional[Dict] = None
+        revealed_fields: List[str] = ["title", "description"]  # what's already public
+        if card_type == "character":
+            try:
+                secret_content = await _generate_npc_identity_sheet(
+                    name=title,
+                    role_snippet=snippet,
+                    campaign=campaign_for_sheets,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"NPC sheet generation failed inline for {title}: {exc}")
+                secret_content = None
+
         try:
             card = KnowledgeCard(
                 type=card_type,
@@ -498,6 +621,10 @@ async def _mint_target_cards_if_revealed(
                 "campaign_id": campaign_id,
                 "storyline_id": storyline_id,
                 "beat_title": beat.get("title"),
+                # Hidden DM-only sheet (NPC stats / mannerisms / secrets).
+                # Frontend redacts everything except the keys in revealed_fields.
+                "secret_content": secret_content or {},
+                "revealed_fields": revealed_fields,
             }
             await _cards_collection().insert_one(dict(doc))
             out = {k: v for k, v in doc.items() if k != "_id"}

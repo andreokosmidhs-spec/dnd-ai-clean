@@ -11,6 +11,7 @@ import {
 } from '../ui/sheet';
 import { Star, Calendar, Hash, Info, Lock, Unlock, Dice5, Wand2, Loader2 } from 'lucide-react';
 import { CARD_TYPE_CONFIG, getCardFullTitle, getCardTags, getCardFullDetails, normalizeCardType } from './cardTypeConfig';
+import NPCIdentityPanel from './NPCIdentityPanel';
 import { toast } from 'sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -305,6 +306,10 @@ export const CardDetailsDrawer = ({ card, type, isOpen, onClose, isPinned, onTog
               )}
             </div>
           )}
+
+          {/* NPC identity sheet — redacted by default, revealed fields show
+              clearly. Only renders for character cards with a generated sheet. */}
+          <NPCIdentityPanel card={card} />
 
           {/* Metadata section */}
           <div className="border-t border-gray-800 pt-4 mt-4 space-y-3">

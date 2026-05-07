@@ -38,6 +38,29 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### NPC Identity Sheets — Roleplay Anchors + Social-Action Gating + Redacted UI (Feb 2026)
+Player flagged that the DM auto-resolved a knife-to-throat threat without an Intimidation check, and that NPCs felt like puppets without consistent identities. Massive cross-cutting fix:
+
+**1. Hidden NPC Identity Sheets (auto-generated on mint)** — `routers/storylines.py`:
+- New `_generate_npc_identity_sheet` LLM helper. When `_mint_target_cards_if_revealed` mints a `character` card it now ALSO generates a hidden sheet with:
+  - Stats: AC, HP, Intimidation DC, Persuasion DC, Deception DC, Insight DC, passive Insight
+  - Personality: trait, ideal, bond, flaw
+  - Background, mannerisms[], speech_style, secrets[], allegiances[], current_motivation (scene-specific)
+- Sheet is stored on the card under `secret_content`. New `revealed_fields` array tracks what the player has actually learned (defaults to `["title","description"]` — name + role; everything else stays redacted).
+- Verified live: minting *Hester Crane* produces a full sheet with `intimidation_dc: 13`, speech style "rapid-fire, slightly breathless", concrete background and 2 hidden secrets she'll only volunteer under pressure.
+
+**2. DM Roleplay Anchors + Social-Action Gating** — `routers/lean_dm.py::_build_system_prompt`:
+- New "NPC ROLEPLAY ANCHORS" block in the system prompt — pulls each in-deck NPC's hidden sheet (speech style, mannerisms, motive, social DCs, secrets) so the DM can voice them consistently across turns.
+- New rule **4b** "IN-CHARACTER NPC ROLEPLAY (HARD RULE)": once an NPC has a sheet, they MUST stay in character every turn — same speech style, mannerisms, motives. They never volunteer their listed secrets; those must be EXTRACTED via successful Intimidation/Persuasion/Deception/Insight. Multiple NPCs in a scene must have distinct voices.
+- New rule **7b** "SOCIAL-ACTION GATING (HARD RULE)": when the player's input contains threat / weapon-draw / persuasion / deception / insight cues, the DM must NARRATE THE BEAT (NPC's pupils tighten, hand drifts to belt) but NOT auto-resolve the reaction — instead end with a natural prompt for the appropriate ability check. The system layer rolls; the DM narrates fallout next turn. Auto-confessing NPCs without checks is now explicitly forbidden.
+
+**3. Frontend NPC Card with Redacted Fields** — `components/campaignLog/`:
+- New `NPCIdentityPanel.jsx` — renders the secret sheet on NPC card details. Public fields (in `revealed_fields`) show clearly; everything else gets a `blur-[5px]` stencil with a Lock icon overlay and a contextual hint ("Read them to learn this", "Buried deep — extract via skill or pressure").
+- Sections: Personality (trait/ideal/bond/flaw) · Manner (speech/tics/background) · Stats (AC/HP/4 social DCs as a grid) · Allegiances & Secrets.
+- Wired into `CardDetailsDrawer.jsx` above the Metadata section. Only renders for character/npc cards with a generated sheet.
+
+End-to-end verified: minted Hester Crane has all sheet sections filled, only `title`+`description` are visible to the player, the rest blurred behind locks.
+
 #### ESC Pause Menu + Font-Size Settings (Feb 2026)
 Press **Esc** anywhere in-game to open a small pause menu with three options: **Continue · Settings · Go Back to Main Menu**. The Settings entry opens an inline panel with three font-size presets (Comfortable / Large / Extra Large) — applies globally and persists across sessions.
 

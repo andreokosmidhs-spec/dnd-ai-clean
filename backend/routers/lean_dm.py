@@ -221,6 +221,44 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
             setting_lines.append(f"- Current tension: {tension}")
     setting_block = "\n".join(setting_lines) if setting_lines else "(no setting context)"
 
+    # NPC roleplay anchors — pull the hidden identity sheets from any NPC
+    # cards in the player's deck so the DM can voice them consistently and
+    # gate social actions against their actual social DCs. Cap at 6 to keep
+    # the prompt tight; the DM only needs the in-scene crowd, not every NPC
+    # they've ever met.
+    npc_anchor_lines: List[str] = []
+    for c in cards[:24]:
+        if (c.get("type") or "").lower() != "character":
+            continue
+        secret = c.get("secret_content") or {}
+        if not isinstance(secret, dict) or not secret:
+            continue
+        nm = (c.get("title") or "").strip()
+        if not nm:
+            continue
+        stats = secret.get("stats") or {}
+        pers = secret.get("personality") or {}
+        manners = secret.get("mannerisms") or []
+        npc_anchor_lines.append(
+            f"- {nm} — speech: {secret.get('speech_style','plain')}; "
+            f"voice: {pers.get('trait','')}; ideal: {pers.get('ideal','')}; "
+            f"flaw: {pers.get('flaw','')}; mannerisms: {', '.join(manners[:3])}; "
+            f"motive THIS scene: {secret.get('current_motivation','')}; "
+            f"social DCs — Intim {stats.get('intimidation_dc',13)}, "
+            f"Persuasion {stats.get('persuasion_dc',13)}, "
+            f"Deception (against them) {stats.get('deception_dc',13)}, "
+            f"Insight (to read them) {stats.get('insight_dc',12)}; "
+            f"secrets (NEVER reveal unless extracted): {' | '.join((secret.get('secrets') or [])[:2])}; "
+            f"allegiances: {', '.join((secret.get('allegiances') or [])[:2])}"
+        )
+        if len(npc_anchor_lines) >= 6:
+            break
+    npc_anchor_block = (
+        "\n".join(npc_anchor_lines)
+        if npc_anchor_lines
+        else "(no NPCs with identity sheets in scene — describe new NPCs as silhouettes/voices until interacted with)"
+    )
+
     tone = intent.get("tone", "heroic")
 
     return (
@@ -253,6 +291,9 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{closed_lead_block}\n\n"
         "=== OTHER KNOWLEDGE CARDS (weave in only when natural) ===\n"
         f"{card_block}\n\n"
+        "=== NPC ROLEPLAY ANCHORS (DM-only, NEVER reveal verbatim — these are the "
+        "actor's notes for staying in character across turns) ===\n"
+        f"{npc_anchor_block}\n\n"
         "=== CURRENT BIOME (use for environment details + naturally adjust check difficulty) ===\n"
         f"{biome_block}\n\n"
         f"{time_context_block(clock_hour)}\n\n"
@@ -272,12 +313,34 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         "Cut metaphor density by 80% from a typical AI default.\n"
         "4) NPCs are silhouettes/voices/postures until named or interacted with. \"The hooded "
         "figure stiffens\", \"a man's voice cuts through the noise\". Do NOT invent names.\n"
+        "4b) IN-CHARACTER NPC ROLEPLAY (HARD RULE). Once an NPC has an identity sheet "
+        "in the NPC ROLEPLAY ANCHORS block above, they MUST stay in character across "
+        "every turn — same speech style, same mannerisms, same motive. Their decisions "
+        "follow their flaw + bond + current_motivation; they NEVER act 'out of character' "
+        "to advance plot. They never volunteer their listed secrets — those have to be "
+        "EXTRACTED via successful Intimidation/Persuasion/Deception/Insight. Write their "
+        "dialogue with their voice ('clipped, drops r's' = clipped, drops r's), drop "
+        "their physical mannerisms into the prose. If multiple NPCs are present, "
+        "their voices must be DISTINCT from each other.\n"
         "5) TIME, LIGHT, WEATHER do mood work — not adjective stacks.\n"
         f"6) TONE-MATCHED: gritty = short sentences, working-class smells, cold details. "
         f"Heroic = open vistas, no saccharine. Mystery = emphasize what is OUT of place. "
         f"Match {tone} without naming it.\n"
         "7) NO dice talk. No DC numbers. No \"roll a check.\" Describe outcomes naturally — "
         "if the action would fail, narrate the failure with cause-and-effect specifics.\n"
+        "7b) SOCIAL-ACTION GATING (HARD RULE). When the player's action contains "
+        "INTIMIDATION cues (threaten, draw a weapon at an NPC, growl, snarl, "
+        "raise a fist), PERSUASION cues (convince, plead, persuade, talk down, "
+        "flatter, charm), DECEPTION cues (lie, bluff, fake, pretend, pose as), "
+        "or INSIGHT/READ cues (read their face, sense if they're lying), DO NOT "
+        "auto-resolve the NPC's reaction. Instead: narrate ONLY the visible "
+        "BEAT (your dagger catches the lamplight; the man's pupils tighten; his "
+        "hand drifts toward his belt) and END the reply by suggesting the "
+        "appropriate ability check naturally — e.g. 'his eyes flick to the "
+        "blade — what's your tone?' or 'this is a threat held at the edge of a "
+        "blade.' The system layer will roll the check; you narrate the FALLOUT "
+        "in the next turn. Auto-resolving social pressure (NPC instantly "
+        "confesses / believes / bows) without a check breaks the rule.\n"
         "8) APPEARANCE may surface only via (a) physical sensation, (b) a reflection, (c) gear "
         "the hero touches, or (d) someone reacting to them. Never describe the hero's own "
         "face/eyes/build from outside.\n"

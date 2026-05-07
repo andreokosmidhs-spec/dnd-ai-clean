@@ -38,6 +38,23 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### DM Reasoning Chart inside Feedback Modal (Feb 2026)
+Quick-reference quick-glance card embedded at the top of the "Ask the DM" feedback modal so players can self-serve before round-tripping a feedback request.
+- Collapsible panel ("DM Reasoning Chart — what triggers what check") with a sticky-header table mapping 11 common player intents → canonical ability check → typical DC range → notes.
+  - Lure / sneak / hide → **Stealth** 12-15 (vs passive Perception)
+  - Distract / pretend / play a part → **Deception** 10-15 (Performance for public ruses)
+  - Threaten / draw weapon → **Intimidation** 10-18 (NPC social DC)
+  - Convince / charm → **Persuasion** 10-18
+  - Read body language / catch a lie → **Insight** 10-15
+  - Climb / jump / break a grapple → **Athletics** 10-15 (Acrobatics for finesse)
+  - Spot something hidden → **Perception** 10-18 (passive first)
+  - Search for clues, decode → **Investigation** 12-18
+  - Pick a lock / pickpocket → **Sleight of Hand** 12-18
+  - Recall lore → **Arcana / History / Nature / Religion** 10-20
+  - Read a public sign / ask a price → **— no check —** (automatic)
+- Rules pulled directly from the same 5e rules-of-thumb the backend judge uses, so the chart and the LLM ruling agree by design.
+- Footnote: *"If your action matches a row but the DM didn't ask, flag it below."*
+
 #### "Ask the DM" — Player Feedback Loop for Missed Checks (Feb 2026)
 The DM has been whiffing on social/stealth check requirements (e.g. player tried to lure-and-surprise Kellan but no Stealth check was asked). Players can now train it.
 

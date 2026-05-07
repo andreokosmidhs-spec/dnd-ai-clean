@@ -10,7 +10,7 @@ import React, { useState } from 'react';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
-import { Gavel, Loader2, MessageCircleQuestion, Check, X } from 'lucide-react';
+import { Gavel, Loader2, MessageCircleQuestion, Check, X, BookOpen, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -28,6 +28,24 @@ const SUGGESTED_CHECKS = [
   'Sleight of Hand', 'Arcana', 'History', 'Nature', 'Religion', 'Survival',
 ];
 
+// Quick-reference rules chart so players can self-serve when unsure what
+// check applies to their intended action. Pulled directly from the same
+// 5e rules-of-thumb the backend judge applies, so the chart and the
+// LLM ruling agree by design.
+const REASONING_CHART = [
+  { intent: 'Lure / sneak / hide / move unseen', check: 'Stealth',     dc: '12-15 (vs passive Perception)', notes: 'When trying not to be observed by someone watching the area' },
+  { intent: 'Distract / pretend / play a part',  check: 'Deception',   dc: '10-15 (vs passive Insight)',   notes: 'Public ruse → Performance instead' },
+  { intent: 'Threaten / draw weapon / coerce',   check: 'Intimidation', dc: '10-18 (NPC social DC)',         notes: 'Brave or zealous targets sit higher' },
+  { intent: 'Convince / plead / charm',          check: 'Persuasion',  dc: '10-18 (NPC social DC)',         notes: 'Flattery, honest arguments, requests' },
+  { intent: 'Read body language / catch a lie',  check: 'Insight',     dc: '10-15',                          notes: 'Trained liars hit higher DCs' },
+  { intent: 'Climb / jump / break a grapple',    check: 'Athletics',   dc: '10-15',                          notes: 'Acrobatics for finesse moves instead' },
+  { intent: 'Spot something hidden',             check: 'Perception',  dc: '10-18',                          notes: 'Passive first; active only when actively searching' },
+  { intent: 'Search for clues, decode message',  check: 'Investigation', dc: '12-18',                        notes: 'Logic puzzles, hidden compartments' },
+  { intent: 'Pick a lock / pickpocket',          check: 'Sleight of Hand', dc: '12-18',                      notes: 'DC scales with lock quality / target awareness' },
+  { intent: 'Recall lore, identify a thing',     check: 'Arcana / History / Nature / Religion', dc: '10-20', notes: 'Pick the domain matching the subject' },
+  { intent: 'Read a public sign, ask the price', check: '— no check —', dc: '—',                              notes: 'Automatic; no DC needed' },
+];
+
 export const DMFeedbackButton = ({ campaignId, storylineId, beatIndex, onCorrectionApplied }) => {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState('missed_check');
@@ -37,10 +55,11 @@ export const DMFeedbackButton = ({ campaignId, storylineId, beatIndex, onCorrect
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [judgment, setJudgment] = useState(null);
+  const [chartOpen, setChartOpen] = useState(false);
 
   const reset = () => {
     setKind('missed_check'); setCheck(''); setDc(''); setAction(''); setNote('');
-    setJudgment(null); setBusy(false);
+    setJudgment(null); setBusy(false); setChartOpen(false);
   };
 
   const submit = async () => {
@@ -112,6 +131,68 @@ export const DMFeedbackButton = ({ campaignId, storylineId, beatIndex, onCorrect
 
           {!judgment ? (
             <div className="space-y-4">
+              {/* DM Reasoning Chart — collapsible quick-reference so the
+                  player can self-serve before reaching for the feedback
+                  loop. The rules below match the backend judge's rules-of-
+                  thumb verbatim, so the chart and the LLM ruling agree. */}
+              <div className="rounded-lg border-2 border-amber-500/30 bg-stone-900/60 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setChartOpen((o) => !o)}
+                  className="w-full flex items-center justify-between px-3 py-2 hover:bg-stone-800/60 transition-colors"
+                  data-testid="reasoning-chart-toggle"
+                >
+                  <span className="flex items-center gap-2 text-amber-50 font-bold text-sm">
+                    <BookOpen className="h-4 w-4 text-amber-300" />
+                    DM Reasoning Chart
+                    <span className="text-[10px] font-normal text-stone-400 italic ml-1">
+                      what triggers what check
+                    </span>
+                  </span>
+                  <ChevronDown
+                    className={`h-4 w-4 text-amber-300 transition-transform ${chartOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {chartOpen && (
+                  <div
+                    className="border-t border-amber-500/20 max-h-[260px] overflow-y-auto"
+                    data-testid="reasoning-chart-body"
+                  >
+                    <table className="w-full text-[11.5px]">
+                      <thead className="bg-stone-950 sticky top-0">
+                        <tr className="text-left">
+                          <th className="px-3 py-1.5 text-amber-300 font-bold uppercase tracking-wider text-[10px]">When you try to…</th>
+                          <th className="px-3 py-1.5 text-amber-300 font-bold uppercase tracking-wider text-[10px]">Roll</th>
+                          <th className="px-3 py-1.5 text-amber-300 font-bold uppercase tracking-wider text-[10px]">Typical DC</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {REASONING_CHART.map((row, i) => (
+                          <tr
+                            key={i}
+                            className={`border-t border-stone-800 ${i % 2 === 0 ? 'bg-stone-900/40' : 'bg-stone-950/40'}`}
+                          >
+                            <td className="px-3 py-1.5 text-amber-50">
+                              <div>{row.intent}</div>
+                              <div className="text-[10px] text-stone-400 italic mt-0.5">{row.notes}</div>
+                            </td>
+                            <td className="px-3 py-1.5 text-amber-200 font-bold whitespace-nowrap">
+                              {row.check}
+                            </td>
+                            <td className="px-3 py-1.5 text-stone-300 whitespace-nowrap">
+                              {row.dc}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="px-3 py-2 text-[10px] text-stone-500 italic bg-stone-950/60 border-t border-stone-800">
+                      Quick reference — the DM judge uses these same rules. If your action matches a row but the DM didn't ask, flag it below.
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Kind picker */}
               <div className="space-y-1.5">
                 <div className="text-[10px] uppercase tracking-wider text-amber-300 font-bold">

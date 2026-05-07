@@ -38,6 +38,21 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### ESC Pause Menu + Font-Size Settings (Feb 2026)
+Press **Esc** anywhere in-game to open a small pause menu with three options: **Continue · Settings · Go Back to Main Menu**. The Settings entry opens an inline panel with three font-size presets (Comfortable / Large / Extra Large) — applies globally and persists across sessions.
+
+- **`contexts/FontSizeContext.jsx`** (new) — three-preset provider (1.0 / 1.15 / 1.30 scale). Sets `--app-font-scale` CSS variable + `data-font-size` attr on `<html>` and adjusts the root font-size so all rem-based Tailwind text classes scale cleanly. Persisted to `localStorage` under `rpg-font-size-preset`. Defaults to `comfortable`.
+- **`components/GameEscapeMenu.jsx`** (new) — paused overlay with backdrop-blur + amber-edged stone-950 panel.
+  - **Continue** (emerald, primary) → resumes the scene.
+  - **Settings** → swaps to inline panel listing the 3 presets, each rendering a live italic-serif preview of *"The wooden sign hangs at eye level, ink still wet…"* at the chosen scale and a percentage chip (100 / 115 / 130).
+  - **Main Menu** (rose-edged) → confirm dialog ("Your campaign is auto-saved on the server"), then triggers `startNewGame()` to flip `gameState` back to the main menu.
+  - Click backdrop, X icon, or press Esc again to dismiss. Back chevron returns from Settings → root.
+  - All buttons carry `data-testid` slugs (`escape-menu-continue-btn`, `escape-menu-settings-btn`, `escape-menu-main-menu-btn`, `escape-menu-fontsize-{key}`).
+- **`App.js`** — wraps app tree in `<FontSizeProvider>` (above `GameStateProvider`) so the scale is live everywhere from boot.
+- **`components/RPGGame.jsx`** — added `escMenuOpen` state + a global `keydown` listener that toggles it on Esc *only while `gameState === 'playing'`*. Listener is inert while typing in inputs/textareas/contentEditable so the chat box keeps native blur-on-Esc behavior. Renders `<GameEscapeMenu>` at the bottom of the in-game tree.
+
+Lint clean.
+
 #### Smart DC Gating — Public Info vs Hidden Knowledge (Feb 2026)
 Player flagged that reading a public sign should never require a DC roll — only hidden meanings/deductions deserve gating. Fixed across the storyline pipeline:
 - **`services/storyline_service.py::_story_fact_rules`** — added Rule #6: a clear DM decision tree the LLM must follow.

@@ -13,6 +13,7 @@ import { mockData } from '../data/mockData';
 import { useGameState } from '../contexts/GameStateContext';
 import { generateWorldBlueprint, createCharacter, getLastCampaign } from '../api/rpgClient';
 import sessionManager from '../state/SessionManager';
+import GameEscapeMenu from './GameEscapeMenu';
 import { checkLevelUp, getLevelFromXP, getXPForNextLevel } from '../data/levelingData';
 import { useSessionCore } from '../store/useSessionCore';
 import { raceData as RACE_DATA } from '../data/raceData';
@@ -97,6 +98,8 @@ const RPGGame = () => {
   
   // gameState tracks only the main menu vs. in-game experience; new campaigns now flow through CharacterCreationV2.
   const [gameState, setGameState] = useState('main-menu'); // main-menu, playing
+  // ESC pause menu — only meaningful in-game.
+  const [escMenuOpen, setEscMenuOpen] = useState(false);
   const [character, setCharacter] = useState(null);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [worldData, setWorldData] = useState(mockData.world);
@@ -143,6 +146,28 @@ const RPGGame = () => {
       }
     }
   }, []);
+
+  // ESC opens the in-game pause menu when actively playing. We toggle so a
+  // second ESC closes it (standard game UX). Ignore ESC while we're on the
+  // main menu — the user has nothing to pause out of.
+  useEffect(() => {
+    if (gameState !== 'playing') return;
+    const handler = (e) => {
+      if (e.key !== 'Escape') return;
+      // If the user is mid-typing in an input/textarea, let ESC blur first
+      // and don't open the menu — common chat-input expectation.
+      const tag = (e.target && e.target.tagName) || '';
+      const editable = (e.target && e.target.isContentEditable) || false;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || editable) {
+        return;
+      }
+      e.preventDefault();
+      setEscMenuOpen((open) => !open);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [gameState]);
+
 
   // SESSION-CORE BRIDGE: Detect when new flow has a ready campaign
   // This bridges the new CharacterCreationV2 → CampaignGenerate flow into RPGGame
@@ -1160,6 +1185,16 @@ const RPGGame = () => {
           </div>
         )}
       </div>
+
+      {/* ESC pause menu — Continue · Settings · Main Menu */}
+      <GameEscapeMenu
+        open={escMenuOpen}
+        onClose={() => setEscMenuOpen(false)}
+        onMainMenu={() => {
+          setEscMenuOpen(false);
+          startNewGame();
+        }}
+      />
     </div>
   );
 };

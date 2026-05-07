@@ -13,6 +13,7 @@ import RPGGame from "./components/RPGGame";
 import Toast from "./components/Toast";
 import FeedbackButton from "./components/FeedbackButton";
 import { GameStateProvider } from "./contexts/GameStateContext";
+import { FontSizeProvider } from "./contexts/FontSizeContext";
 import { useDungeonStore } from "./store/useDungeonStore";
 import { useSessionCore } from "./store/useSessionCore";
 import CampaignSetup from "./pages/CampaignSetup";
@@ -109,38 +110,40 @@ function App() {
 
   return (
     <div className="App">
-      <GameStateProvider>
-        <BrowserRouter>
-          <Routes>
-            {/* Root now lands on the legacy Main Menu (RPGGame entry) */}
-            <Route path="/" element={<MainMenuPage />} />
+      <FontSizeProvider>
+        <GameStateProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* Root now lands on the legacy Main Menu (RPGGame entry) */}
+              <Route path="/" element={<MainMenuPage />} />
 
-            {/* New Character Creation V2 Wizard */}
-            <Route path="/character-v2" element={<CharacterCreationV2 />} />
+              {/* New Character Creation V2 Wizard */}
+              <Route path="/character-v2" element={<CharacterCreationV2 />} />
 
-            {/* Load existing V2 characters */}
-            <Route path="/characters" element={<CharactersList />} />
-            <Route path="/characters/:characterId" element={<CharacterPreview />} />
-            <Route path="/characters/:characterId/edit" element={<CharacterEdit />} />
+              {/* Load existing V2 characters */}
+              <Route path="/characters" element={<CharactersList />} />
+              <Route path="/characters/:characterId" element={<CharacterPreview />} />
+              <Route path="/characters/:characterId/edit" element={<CharacterEdit />} />
 
-            {/* Campaign setup and draft generation placeholder */}
-            <Route path="/campaign-setup" element={<CampaignSetup />} />
-            <Route path="/campaign-generate" element={<CampaignGenerate />} />
+              {/* Campaign setup and draft generation placeholder */}
+              <Route path="/campaign-setup" element={<CampaignSetup />} />
+              <Route path="/campaign-generate" element={<CampaignGenerate />} />
 
-            {/* Legacy CharacterCreation component is retained in the repo but no longer routed; V2 is canonical. */}
+              {/* Legacy CharacterCreation component is retained in the repo but no longer routed; V2 is canonical. */}
 
-            {/* Old game/adventure flow (keep for existing campaigns) */}
-            <Route path="/adventure" element={<AdventureRoute />} />
-            <Route path="/game" element={<AdventureRoute />} />
+              {/* Old game/adventure flow (keep for existing campaigns) */}
+              <Route path="/adventure" element={<AdventureRoute />} />
+              <Route path="/game" element={<AdventureRoute />} />
 
-            {/* DEV ONLY: Preview CampaignLogPanel without adventure flow */}
-            {/* TODO: Remove before production release */}
-            <Route path="/dev/campaign-log" element={<DevCampaignLogPreview />} />
-          </Routes>
-          <FeedbackButton />
-        </BrowserRouter>
-        <Toast />
-      </GameStateProvider>
+              {/* DEV ONLY: Preview CampaignLogPanel without adventure flow */}
+              {/* TODO: Remove before production release */}
+              <Route path="/dev/campaign-log" element={<DevCampaignLogPreview />} />
+            </Routes>
+            <FeedbackButton />
+          </BrowserRouter>
+          <Toast />
+        </GameStateProvider>
+      </FontSizeProvider>
     </div>
   );
 }

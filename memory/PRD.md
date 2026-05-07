@@ -38,6 +38,30 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### MTG-Style Deck Library + New-Card Notifications + Creative-Path Mints (Feb 2026)
+Player flagged that a creative pin during the *"Tension of Truth"* beat exposed a new operative (*Eliarin*) but no card minted, asked for a tighter MTG-portrait deck library matching the reference image, plus a new-card notification badge and a "Return to Game" button. All four ships:
+
+**1. Backend — creative-outcome entity extraction (`routers/storylines.py`)**
+- `_mint_target_cards_if_revealed` now extracts entities from BOTH the beat description AND `outcome_text` (where creative approaches deposit fresh names like *Eliarin*).
+- LLM extraction now ALWAYS runs against the merged text and merges with explicit `targets[]`, deduped case-insensitively. Backfills for empty target lists, augments for non-empty ones.
+- Newly-minted cards are stamped `is_new: true` so the frontend can highlight them.
+- **Verified live**: replaying the screenshot's beat (Kellan + creative pin → Eliarin) now mints **4 cards**: Guild of Shadows (faction), Kellan (npc, full identity sheet, speech "quick stuttering"), Eliarin (npc, full identity sheet, speech "nervous yet earnest"), Emberfall Watch (location). All `is_new: true`.
+
+**2. Backend — new-card seen endpoints (`routers/storylines.py`)**
+- `POST /api/campaigns/{id}/cards/{cardId}/seen` — clear is_new on first hover (idempotent).
+- `POST /api/campaigns/{id}/cards/seen-all` — bulk-clear when player closes the deck library.
+
+**3. Frontend — uniform MTG-portrait deck library (`components/campaignLog/KnowledgeCard.jsx` rewritten)**
+- Every card now uses an `aspect-[5/7]` portrait shape with a 4-section MTG layout: type-strip header (color-coded by card type) → art well (uses `image_url` or a gradient with the type icon) → type-line title → italic-serif body with truncated description, origin, tags.
+- Grid bumped from 1/2/3/4 cols to 2/3/4/5/6/7 — matches the reference screenshot's tight, uniform library.
+- New-card highlight: emerald ring + 24px green glow + "NEW" corner ribbon, all clear instantly on `mouseenter` (local state) AND POST /seen (server). Glow uses a subtle pulse.
+- Pinned cards keep their yellow star.
+- Card art well respects `image_url` so player-uploaded character art displays edge-to-edge.
+
+**4. Frontend — new-card counter badge + Return-to-Game button**
+- `AdventureLogWithDM.jsx`: Campaign Log button now sports a pulsing emerald `+N` badge showing the count of unseen new cards. Listens to `rpg:cards-refreshed` + `rpg:cards-seen` events for live updates.
+- `CampaignLogPanel.jsx`: fixed-position **Return to Game** button (amber, bottom-right) — `fixed bottom-6 right-6`, calls `onClose` so the existing minimize gesture is one click away.
+
 #### NPC Identity Sheets — Roleplay Anchors + Social-Action Gating + Redacted UI (Feb 2026)
 Player flagged that the DM auto-resolved a knife-to-throat threat without an Intimidation check, and that NPCs felt like puppets without consistent identities. Massive cross-cutting fix:
 

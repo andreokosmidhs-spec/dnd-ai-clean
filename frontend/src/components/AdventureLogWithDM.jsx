@@ -57,6 +57,37 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   
   // Campaign Log Panel state
   const [showCampaignLog, setShowCampaignLog] = useState(false);
+  // Count of newly-minted cards the player hasn't hovered yet — drives the
+  // glowing badge on the "Campaign Log" button. Refreshes whenever a new
+  // storyline-target mint broadcasts the `rpg:cards-refreshed` event, when
+  // a card is hovered/seen, and once on mount.
+  const [newCardCount, setNewCardCount] = useState(0);
+
+  useEffect(() => {
+    if (!campaignId) return;
+    let cancelled = false;
+    const fetchCount = () => {
+      fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/log/cards`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (cancelled || !d) return;
+          const cards = Array.isArray(d) ? d : (d?.cards || []);
+          const n = cards.filter((c) => c && c.is_new).length;
+          setNewCardCount(n);
+        })
+        .catch(() => {});
+    };
+    fetchCount();
+    const onRefresh = () => fetchCount();
+    const onSeen = () => setNewCardCount((n) => Math.max(0, n - 1));
+    window.addEventListener('rpg:cards-refreshed', onRefresh);
+    window.addEventListener('rpg:cards-seen', onSeen);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('rpg:cards-refreshed', onRefresh);
+      window.removeEventListener('rpg:cards-seen', onSeen);
+    };
+  }, [campaignId]);
 
   // Active investigation (multi-beat storyline). It is set ONLY when the
   // player's action engages a hook in this session — never auto-restored from
@@ -1338,10 +1369,19 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
             <Button
               onClick={() => setShowCampaignLog(true)}
               variant="outline"
-              className="w-full bg-orange-600/10 border-orange-600/30 hover:bg-orange-600/20 text-orange-400 hover:text-orange-300"
+              className="relative w-full bg-orange-600/10 border-orange-600/30 hover:bg-orange-600/20 text-orange-400 hover:text-orange-300"
+              data-testid="campaign-log-open-btn"
             >
               <BookOpen className="h-4 w-4 mr-2" />
               Campaign Log
+              {newCardCount > 0 && (
+                <span
+                  className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] px-1.5 rounded-full bg-emerald-500 text-stone-950 text-[11px] font-black flex items-center justify-center border-2 border-stone-950 shadow-[0_0_12px_rgba(16,185,129,0.7)] animate-pulse"
+                  data-testid="campaign-log-new-count"
+                >
+                  +{newCardCount}
+                </span>
+              )}
             </Button>
           </div>
         )}

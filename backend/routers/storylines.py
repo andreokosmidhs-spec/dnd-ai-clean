@@ -518,7 +518,12 @@ async def _mint_target_cards_if_revealed(
     elif outcome != "passed":
         return []
     revelation = (beat.get("description") or "").strip()
-    if not revelation:
+    # Creative approaches deposit new names ("Eliarin, an operative…") in
+    # outcome_text, NOT description — so include that too when extracting
+    # entities so the deck mints fresh contact cards from a successful gambit.
+    outcome_text = (beat.get("outcome_text") or "").strip()
+    extraction_text = (revelation + ("\n\n" + outcome_text if outcome_text else "")).strip()
+    if not extraction_text:
         return []
 
     raw_targets = beat.get("targets") or []
@@ -531,13 +536,22 @@ async def _mint_target_cards_if_revealed(
         if et in _ENTITY_TYPE_TO_CARD_TYPE and nm and nm.lower() not in _ENTITY_BLOCKLIST:
             targets.append({"type": et, "name": nm})
 
-    # Fallback: LLM extracts entities from the description text
-    if not targets:
-        try:
-            targets = await _extract_targets_from_description_llm(revelation, max_targets=4)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"fallback target extraction failed: {exc}")
-            targets = []
+    # ALWAYS run the LLM extractor on the FULL extraction_text (description +
+    # outcome_text) so creative-approach names like "Eliarin" land in the
+    # deck. Merge with explicit beat targets, dedup by case-insensitive
+    # type+name match. This catches both fresh entities AND backfills when
+    # beat.targets[] is empty.
+    try:
+        llm_targets = await _extract_targets_from_description_llm(extraction_text, max_targets=5)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"target extraction (LLM) failed: {exc}")
+        llm_targets = []
+    seen_pairs = {(t["type"], t["name"].lower()) for t in targets}
+    for lt in llm_targets:
+        key = (lt["type"], lt["name"].lower())
+        if key not in seen_pairs:
+            targets.append(lt)
+            seen_pairs.add(key)
 
     if not targets:
         return []
@@ -579,7 +593,7 @@ async def _mint_target_cards_if_revealed(
         if label in existing_labels:
             continue
         existing_labels.add(label)  # avoid dupes within same call
-        snippet = _description_snippet_for(title, revelation, max_len=300)
+        snippet = _description_snippet_for(title, extraction_text, max_len=300)
         if not snippet:
             snippet = f"Mentioned during the {storyline_title}."
 
@@ -625,6 +639,10 @@ async def _mint_target_cards_if_revealed(
                 # Frontend redacts everything except the keys in revealed_fields.
                 "secret_content": secret_content or {},
                 "revealed_fields": revealed_fields,
+                # Newly-minted cards glow with a highlight border in the deck
+                # library until the player hovers/opens them. The frontend
+                # clears this flag via PATCH after first hover.
+                "is_new": True,
             }
             await _cards_collection().insert_one(dict(doc))
             out = {k: v for k, v in doc.items() if k != "_id"}
@@ -1254,3 +1272,29 @@ async def unseal_lead(campaign_id: str, card_id: str, body: UnsealLeadBody):
         "narration": narration,
         "card": updated,
     }
+
+
+
+@router.post("/{campaign_id}/cards/{card_id}/seen")
+async def mark_card_seen(campaign_id: str, card_id: str):
+    """Clear the `is_new` highlight from a card. Called by the deck UI on
+    first hover so the new-card glow only shows until the player notices it.
+    Idempotent — no-op for cards that were already seen.
+    """
+    res = await _cards_collection().update_one(
+        {"campaign_id": campaign_id, "id": card_id, "is_new": True},
+        {"$set": {"is_new": False}},
+    )
+    return {"ok": True, "cleared": bool(res.modified_count)}
+
+
+@router.post("/{campaign_id}/cards/seen-all")
+async def mark_all_cards_seen(campaign_id: str):
+    """Bulk-clear all new-card highlights for a campaign — used by the
+    'mark all read' button or when the player closes the deck library.
+    """
+    res = await _cards_collection().update_many(
+        {"campaign_id": campaign_id, "is_new": True},
+        {"$set": {"is_new": False}},
+    )
+    return {"ok": True, "cleared": int(res.modified_count)}

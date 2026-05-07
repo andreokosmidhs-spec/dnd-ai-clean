@@ -472,11 +472,11 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
       </div>
       
       {/* Content */}
-      <div className="overflow-y-auto h-[calc(100vh-180px)] px-6 py-6">
-        <div className="max-w-7xl mx-auto">
+      <div className="overflow-y-auto h-[calc(100vh-180px)] px-6 py-6 pb-24">
+        <div className="max-w-[1600px] mx-auto">
           {loading || leadsLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {[...Array(8)].map((_, i) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3">
+              {[...Array(14)].map((_, i) => (
                 <SkeletonCard key={i} />
               ))}
             </div>
@@ -493,7 +493,7 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
           ) : filteredCards.length === 0 ? (
             <EmptyState type={activeFilter} />
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3" data-testid="deck-library-grid">
               {filteredCards.map((card, idx) => (
                 card._type === 'leads' ? (
                   <LeadCard 
@@ -514,6 +514,7 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
                     onSelect={handleSelectCard}
                     isSelected={selectedCard?.id === card.id && drawerOpen}
                     isPinned={isPinned(card.id)}
+                    campaignId={campaignId}
                   />
                 )
               ))}
@@ -521,6 +522,17 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
           )}
         </div>
       </div>
+
+      {/* Return-to-Game button — fixed to the bottom-right of the deck library
+          so it's always reachable without scrolling. Mirrors the "minimize"
+          gesture the player intuited from the screenshot. */}
+      <Button
+        onClick={onClose}
+        className="fixed bottom-6 right-6 z-50 bg-amber-600 hover:bg-amber-500 text-stone-950 font-bold border-2 border-amber-300 shadow-[0_0_24px_rgba(245,158,11,0.45)] h-12 px-5"
+        data-testid="deck-library-return-btn"
+      >
+        ← Return to Game
+      </Button>
       
       {/* Card Details Drawer */}
       <CardDetailsDrawer

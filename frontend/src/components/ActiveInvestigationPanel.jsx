@@ -113,7 +113,10 @@ const ActiveInvestigationPanel = ({
   if (!storyline || storyline.status !== 'active' || !beat) return null;
 
   const pressOnAvailable = !storyline.press_on_used;
-  const rollOptional = !!beat.roll_optional;
+  // Roll is optional when:
+  //   - the LLM explicitly marked the beat `roll_optional` (no natural check), OR
+  //   - the beat's DC is 0 (action beat with public/visible content — no roll needed).
+  const rollOptional = !!beat.roll_optional || Number(beat.dc) <= 0;
 
   // -------- API helpers --------
 
@@ -359,13 +362,21 @@ const ActiveInvestigationPanel = ({
           </Button>
           {beat.reveal_type !== 'knowledge' && (
             <Button
-              size="sm" variant="ghost"
-              className="h-9 text-stone-200 hover:text-amber-50 hover:bg-stone-800/70 border border-stone-600"
+              size="sm"
+              variant={rollOptional ? 'default' : 'ghost'}
+              className={
+                rollOptional
+                  ? 'h-9 bg-emerald-600 hover:bg-emerald-500 text-stone-950 font-bold border border-emerald-300'
+                  : 'h-9 text-stone-200 hover:text-amber-50 hover:bg-stone-800/70 border border-stone-600'
+              }
               onClick={handleSkip} disabled={busy}
               data-testid="storyline-skip-btn"
-              title="Proceed without rolling — the scene moves on"
+              title={rollOptional
+                ? 'No check needed — continue the scene'
+                : 'Proceed without rolling — the scene moves on'}
             >
-              <ArrowRight className="h-4 w-4 mr-1" /> Skip · Proceed
+              <ArrowRight className="h-4 w-4 mr-1" />
+              {rollOptional ? 'Continue' : 'Skip · Proceed'}
             </Button>
           )}
           <div className="flex-1" />
@@ -586,11 +597,23 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
           ${sealed ? 'bg-stone-800 border-stone-700 text-stone-300' : 'bg-stone-700 border-stone-500 text-amber-50 font-semibold'}`}
       >
         <span className="font-bold">{sealed ? `Beat ${index + 1}` : beat.check_type}</span>
-        <span className={`px-1.5 py-0.5 rounded border font-bold ${
-          sealed ? 'border-stone-500 text-stone-200 bg-stone-900' : c.chip
-        }`}>
-          DC {beat.dc}
-        </span>
+        {sealed ? (
+          <span className="px-1.5 py-0.5 rounded border font-bold border-stone-500 text-stone-200 bg-stone-900">
+            DC {beat.dc}
+          </span>
+        ) : (Number(beat.dc) > 0 && !beat.roll_optional) ? (
+          <span className={`px-1.5 py-0.5 rounded border font-bold ${c.chip}`}>
+            DC {beat.dc}
+          </span>
+        ) : (
+          <span
+            className="px-1.5 py-0.5 rounded border font-bold border-emerald-400/70 text-emerald-100 bg-emerald-950/60"
+            title="No roll required — the information is openly visible"
+            data-testid="beat-no-roll-chip"
+          >
+            OPEN
+          </span>
+        )}
       </div>
       <div className="flex-1 px-3 py-3 flex flex-col gap-2">
         {sealed ? (

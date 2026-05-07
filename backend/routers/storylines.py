@@ -398,16 +398,28 @@ async def _mint_target_cards_if_revealed(
     beat: Dict,
     outcome: str,
 ) -> List[Dict]:
-    """When a knowledge beat is revealed (passed or partial via creative path),
-    auto-mint Knowledge Cards for each named entity in `beat.targets[]`
-    (or fall back to extracting them from the description). NPCs become
-    'character' cards, locations become 'location' cards, factions become
-    'faction' cards. Skips entities the campaign already has a card for
+    """When a beat resolves with `passed` OR `skipped` (knowledge OR action —
+    public reveals like reading a sign also reveal named entities, even when
+    no roll was needed), auto-mint Knowledge Cards for each named entity in
+    `beat.targets[]` (or fall back to extracting them from the description).
+    NPCs become 'character' cards, locations become 'location' cards, factions
+    become 'faction' cards. Skips entities the campaign already has a card for
     (case-insensitive type+title match) so we don't pollute the deck on
     every re-reveal.
     Returns the list of newly-minted card dicts.
     """
-    if outcome != "passed":
+    # Mint on:
+    #   - passed (any beat): the player earned the reveal
+    #   - skipped (action beats with dc<=0 or roll_optional): the description
+    #     was already public/visible, the player just confirmed they've read it.
+    # Skipping a knowledge beat (which gates the description behind a roll)
+    # should NOT mint targets — the player chose not to engage.
+    if outcome == "skipped":
+        if (beat.get("reveal_type") or "") == "knowledge":
+            return []
+        if int(beat.get("dc") or 0) > 0 and not beat.get("roll_optional"):
+            return []
+    elif outcome != "passed":
         return []
     revelation = (beat.get("description") or "").strip()
     if not revelation:
@@ -670,19 +682,20 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"lead card mint failed (non-fatal): {exc}")
-        # Also auto-mint Knowledge Cards for every named entity revealed
-        # (NPCs, locations, factions). Only on a clean pass — failed leads
-        # stay sealed and don't expose the entities.
-        if body.outcome == "passed":
-            try:
-                target_cards = await _mint_target_cards_if_revealed(
-                    campaign_id=campaign_id,
-                    storyline=storyline,
-                    beat=cur_beat,
-                    outcome=body.outcome,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(f"target card mint failed (non-fatal): {exc}")
+    # Auto-mint Knowledge Cards for every named entity revealed (NPCs,
+    # locations, factions). Fires on a clean PASS for any beat, OR on SKIP
+    # for action beats whose description was already public (no roll gating).
+    # Failed leads stay sealed.
+    if body.outcome in {"passed", "skipped"}:
+        try:
+            target_cards = await _mint_target_cards_if_revealed(
+                campaign_id=campaign_id,
+                storyline=storyline,
+                beat=cur_beat,
+                outcome=body.outcome,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"target card mint failed (non-fatal): {exc}")
 
     # If failed (and not press-on), produce a fail-forward complication so the
     # Adventure Log gets a narrative beat tying the failure to the story.

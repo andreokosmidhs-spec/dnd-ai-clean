@@ -38,6 +38,25 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Smart DC Gating — Public Info vs Hidden Knowledge (Feb 2026)
+Player flagged that reading a public sign should never require a DC roll — only hidden meanings/deductions deserve gating. Fixed across the storyline pipeline:
+- **`services/storyline_service.py::_story_fact_rules`** — added Rule #6: a clear DM decision tree the LLM must follow.
+  - **NO ROLL** (`reveal_type='action'`, `dc=0`, description openly visible): reading a public sign or notice, observing what's openly displayed, hearing open speech, reading a tavern menu, asking a merchant their price.
+  - **CHECK NEEDED** (`reveal_type='knowledge'`, dc 10-18): deciphering coded text, reading body language (Insight), spotting a hidden compartment, recalling lore (History), eavesdropping unnoticed (Stealth), tracking marks (Survival).
+  - "When in doubt, default to NO ROLL — making players roll for things they could just READ kills momentum."
+- **`_finalize_beat`** — now keeps `targets[]` for action beats too (so a public sign reveal still auto-mints the named NPC/location/faction cards). Previously stripped them as "knowledge-only".
+- **`draft_initial_scene` + `generate_next_scene`** — JSON output spec annotated so the LLM knows `dc=0` means no roll. Initial-scene path now preserves `dc=0` instead of clamping to 12. Both paths set `roll_optional=true` when `dc==0`.
+- **`routers/storylines.py::_mint_target_cards_if_revealed`** — now mints on `outcome=passed` for any beat AND on `outcome=skipped` for action beats with `dc<=0` or `roll_optional` (the description was already public; clicking Continue means "I read it"). Knowledge-beat skips still mint nothing — the player chose not to engage.
+- **Frontend `ActiveInvestigationPanel.jsx`**:
+  - Card type-row chip now renders **"OPEN"** (emerald) instead of "DC 0" when no roll is needed.
+  - Bottom-bar primary CTA changes from "Skip · Proceed" (ghost) to **"Continue"** (solid emerald) when the beat is `roll_optional`.
+  - `rollOptional` now also returns true when `beat.dc <= 0`, in addition to the explicit `beat.roll_optional` flag.
+
+**Verified live**:
+- Hook *"a faded wooden sign about a lost heirloom"* → `reveal_type: action`, `dc: 0`, `roll_optional: True`, full sign text in description, task "Read the sign", 3 targets. Player clicks Continue → 3 cards auto-mint.
+- Hook *"subtle scratches on the brickwork"* → `reveal_type: action`, dc: 0 — observation is free; the deeper deduction about what the map means becomes the next gated beat.
+- Direct unit test: skipping an action-beat (dc=0) with targets mints 2 cards; skipping a knowledge-beat (dc=14) mints 0 (gated content stays gated).
+
 #### Auto-Mint Knowledge Cards from Storyline Reveals (Feb 2026)
 When you pass a knowledge beat, every named entity the DM revealed (NPCs, locations, factions) is now auto-pinned to your Knowledge Deck — no manual "Remember this" required. So after passing the wooden-sign Investigation, the deck immediately gains:
 - Character card → **Hester Crane** ("Inquiries to Hester Crane at the Anvil & Cup, by the south gate, before sundown.")

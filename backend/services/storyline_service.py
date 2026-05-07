@@ -105,15 +105,17 @@ def _finalize_beat(beat: Dict) -> Dict:
     if rt not in {"action", "knowledge"}:
         rt = _infer_reveal_type(beat.get("check_type") or "")
     beat["reveal_type"] = rt
+    # Targets are kept regardless of reveal_type — action beats with public
+    # reveals (reading a sign, observing what's in plain sight) ALSO name
+    # entities the deck should auto-mint as Knowledge Cards.
+    beat["targets"] = beat.get("targets") or []
     if rt == "knowledge":
         # Default prompt if the LLM didn't supply one
         if not (beat.get("prompt") or "").strip():
             beat["prompt"] = f"Roll {beat.get('check_type','Investigation')} (DC {beat.get('dc',12)}) to reveal what you can piece together."
-        beat["targets"] = beat.get("targets") or []
     else:
-        # action beats don't need prompt/targets
+        # action beats don't need a roll prompt
         beat["prompt"] = ""
-        beat["targets"] = []
     return beat
 
 
@@ -228,7 +230,24 @@ def _story_fact_rules() -> str:
         "   gate, hours after midday'.\n"
         "5) END WITH A DIRECTIONAL CHOICE. The last sentence should plant a concrete "
         "   next move the player can act on right now (a person to find, a door to "
-        "   open, a route to take), not vague urgency.\n\n"
+        "   open, a route to take), not vague urgency.\n"
+        "6) DECIDE — IS A CHECK ACTUALLY NEEDED? Use a DC check ONLY when the player "
+        "   is trying to extract HIDDEN information that requires effort, training, "
+        "   or a careful read. DO NOT lock public, openly-posted, or plain-visible "
+        "   information behind a roll.\n"
+        "   • NO ROLL (set `reveal_type='action'`, `dc=0`, and put the full content "
+        "     in `description` openly): reading a public sign or notice, observing "
+        "     what's openly displayed, hearing what someone is openly saying, "
+        "     looking at an open ledger, reading the menu of a tavern, walking up "
+        "     to a stall and asking the merchant their price.\n"
+        "   • CHECK NEEDED (`reveal_type='knowledge'`, dc 10-18, description is the "
+        "     gated revelation): deciphering coded or foreign text, reading body "
+        "     language for a tell (Insight), spotting a hidden compartment "
+        "     (Investigation), recalling lore about a crest (History), catching a "
+        "     whispered conversation (Perception against ambient noise), eavesdropping "
+        "     unnoticed (Stealth), tracking marks on the cobblestones (Survival).\n"
+        "   When in doubt, default to NO ROLL — making players roll for things they "
+        "   could just READ kills momentum.\n\n"
         "=== STORY-FACT REQUIREMENTS (every beat must carry weight) ===\n"
         "Every scene description MUST plant AT LEAST 4 of these CONCRETE facts, all "
         "sourced per rule #2 above:\n"
@@ -435,8 +454,8 @@ async def draft_initial_scene(
             "    \"description\": \"4-7 sentence Mercer-cinematic SCENE in second person POV. FIRST sentence names the hook subject directly. If the hook is a sign/notice/letter, INCLUDE THE LITERAL POSTED TEXT in quotes. Plant ≥4 concrete story facts (named contact + named place + item detail + reward + APPLICATION ROUTE saying where to claim it / who to ask for / when). Static observer framing — no psychic memories.\",\n"
             "    \"task\": \"short imperative aimed at the hook subject (one phrase)\",\n"
             "    \"check_type\": \"Investigation|Perception|Insight|Persuasion|Deception|Intimidation|Stealth|Sleight of Hand|Athletics|Arcana|History|Nature|Survival|Religion\",\n"
-            "    \"dc\": 10,\n"
-            "    \"reveal_type\": \"action|knowledge\",\n"
+            "    \"dc\": 0,  // 0 = no roll needed (public/visible info — rule #6); else 10-18\n"
+            "    \"reveal_type\": \"action|knowledge\",  // 'action' for public reveals (description shown openly); 'knowledge' ONLY when description is gated behind the roll\n"
             "    \"prompt\": \"(knowledge beats only) public-facing tease shown before the roll, no spoilers\",\n"
             "    \"targets\": [{\"type\": \"npc|faction|location|direction\", \"name\": \"<actual named entity from your description>\"}]\n"
             "  }\n"
@@ -477,10 +496,13 @@ async def draft_initial_scene(
         if ct not in _VALID_CHECK_TYPES:
             ct = "Investigation"
         try:
-            dc = int(rb.get("dc") or 12)
+            dc = int(rb.get("dc") or 0)
         except Exception:
-            dc = 12
-        dc = max(8, min(20, dc))
+            dc = 0
+        # Allow dc=0 to mean "no roll required" (public/visible info). When a
+        # roll IS suggested, clamp into the playable 8-20 range.
+        if dc > 0:
+            dc = max(8, min(20, dc))
         beat = _finalize_beat({
             "title": (rb.get("title") or "First Sign").strip()[:48],
             "description": (rb.get("description") or "").strip()[:1100],
@@ -496,6 +518,8 @@ async def draft_initial_scene(
         })
         if not beat["description"]:
             return fallback
+        # If the LLM left dc=0, the roll is optional — UI renders an "OPEN" chip.
+        beat["roll_optional"] = (dc == 0)
         # Tag the scene with the current time-of-day for the UI.
         from services.time_service import bucket_for_hour
         beat["time_of_day"] = bucket_for_hour(clock_hour)
@@ -639,8 +663,8 @@ async def generate_next_scene(
             "    \"description\": \"4-7 sentences in second person POV — what the player sees/hears/reads right now. Source every fact in-fiction (quoted posted text, named bystander remarks, observable maker's marks). Plant ≥4 concrete story facts including a NAMED CONTACT to act on + APPLICATION ROUTE (where/who/when to claim or follow up).\",\n"
             "    \"task\": \"short imperative for the moment\",\n"
             "    \"check_type\": \"Investigation|Perception|... or null\",\n"
-            "    \"dc\": 10,\n"
-            "    \"reveal_type\": \"action|knowledge\",\n"
+            "    \"dc\": 0,  // 0 = no roll needed (rule #6); else 10-18\n"
+            "    \"reveal_type\": \"action|knowledge\",  // 'action' = description shown openly; 'knowledge' ONLY when content is gated by the roll\n"
             "    \"prompt\": \"(knowledge only) public tease before the roll\",\n"
             "    \"targets\": [{\"type\": \"npc|faction|location|direction\", \"name\": \"<actual named entity from your description>\"}]\n"
             "  }\n"
@@ -704,7 +728,7 @@ async def generate_next_scene(
             "title": (rb.get("title") or "Next Scene").strip()[:48],
             "description": (rb.get("description") or "").strip()[:1100],
             "task": (rb.get("task") or "Decide your next move").strip()[:160],
-            "dc": dc if dc > 0 else 12,
+            "dc": dc,  # keep 0 when no roll is suggested — the UI renders "OPEN"
             "check_type": ct,
             "ability": ability,
             "reveal_type": (rb.get("reveal_type") or "").strip().lower(),

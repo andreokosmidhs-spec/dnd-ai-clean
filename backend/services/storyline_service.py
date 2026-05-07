@@ -194,28 +194,62 @@ def _world_facts_block(world: Dict, cards: Optional[List[Dict]] = None, limit: i
 
 
 def _story_fact_rules() -> str:
-    """Hard rules forcing concrete story facts in every storyline beat.
-    Reused by draft_initial_scene and generate_next_scene."""
+    """Hard rules forcing POV-anchored, realistic exposition in every storyline
+    beat. Reused by draft_initial_scene and generate_next_scene. The DM should
+    think like a real DM running a session at the table — read signs aloud,
+    name the people you talk to, give the player concrete directions to act on.
+    """
     return (
-        "=== STORY-FACT REQUIREMENTS (non-negotiable — every beat must carry weight) ===\n"
-        "Every scene description MUST plant AT LEAST 3 of the following CONCRETE facts "
-        "(invent grounded specifics — name them, don't gesture at them):\n"
-        "  1. A specific NAMED NPC the player could speak with (first name + role/trade, "
-        "     e.g. 'Marielle the herbalist on Tinker's Lane', 'Old Hadrick at the dock'). "
-        "     Prefer reusing existing names from WORLD FACTS above.\n"
-        "  2. A specific NAMED location to visit (street, shop, district, building — "
-        "     not just 'the docks' or 'a tavern').\n"
-        "  3. ITEM/SUBJECT HISTORY — when was the item lost/stolen, who owned it, what "
-        "     makes it valuable, how old is it, what does it look like in detail.\n"
-        "  4. STAKES/REWARD — concrete numbers when relevant (e.g. '50 gold reward', "
-        "     'a favor from House Veillane', 'safe passage through the Iron Gate').\n"
-        "  5. TIME/CIRCUMSTANCE — when did this happen, what was the weather, who else "
-        "     was nearby, what was the victim/owner doing.\n"
-        "  6. A concrete TENSION — a faction watching, a rival also looking, a deadline.\n"
-        "Forbidden: 'a fragment of thought', 'something more outside', 'whispers in the wind', "
-        "'a strange feeling' — these are empty stand-ins. If you write atmospheric phrases, "
-        "they MUST be tied to a named fact above (e.g. 'the wind off Garrick's Pier carries "
-        "the smell of tar' is fine because it names a real location).\n"
+        "=== POV EXPOSITION RULES (think like a real DM at the table) ===\n"
+        "1) WRITE FROM THE PLAYER'S POV. Use second-person — 'you see', 'you read', "
+        "   'you hear', 'you can make out'. Describe ONLY what the character can "
+        "   perceive RIGHT NOW with their senses + any prior knowledge they actually "
+        "   have. FORBIDDEN: 'a memory ignites within you', 'you somehow know', "
+        "   'fate whispers', 'destiny stirs', 'a flash of insight reveals' — the "
+        "   character is not psychic and does not have unearned knowledge.\n"
+        "2) SOURCE EVERY FACT. Every concrete fact you reveal must come from an "
+        "   IN-FICTION source the player can point to: the literal text on the sign, "
+        "   an inscription on an item, a snatch of overheard conversation, a known "
+        "   bystander's offhand remark, the maker's mark, the watermark on a letter, "
+        "   a merchant's whisper, an existing knowledge card. Cite the source in the "
+        "   prose ('the inscription reads…', 'the herbalist mutters…', 'the seal is "
+        "   stamped with the crest of …').\n"
+        "3) READ POSTED TEXT ALOUD. When the hook is a sign, notice, poster, scroll, "
+        "   letter, ledger, inscription, or any written object — INCLUDE THE LITERAL "
+        "   POSTED TEXT in quotes (block-quoted, with the speaker/poster named). Real "
+        "   medieval signage style: brief, practical, names a contact and a place. "
+        "   Example: 'The placard reads: \"REWARD — 50 gp for the safe return of a "
+        "   silver locket, House Veillane crest. Inquiries to Hester Crane at the "
+        "   Anvil & Cup, south gate, before sundown.\"'\n"
+        "4) ANSWER THE 'HOW DO I CLAIM THIS?' QUESTION. If the scene involves a "
+        "   bounty/quest/reward, the description MUST tell the player WHERE to go, "
+        "   WHO to ask for, and WHEN — by name and address. Not 'somewhere in the "
+        "   docks' but 'Hester Crane, posting clerk at the Anvil & Cup, by the south "
+        "   gate, hours after midday'.\n"
+        "5) END WITH A DIRECTIONAL CHOICE. The last sentence should plant a concrete "
+        "   next move the player can act on right now (a person to find, a door to "
+        "   open, a route to take), not vague urgency.\n\n"
+        "=== STORY-FACT REQUIREMENTS (every beat must carry weight) ===\n"
+        "Every scene description MUST plant AT LEAST 4 of these CONCRETE facts, all "
+        "sourced per rule #2 above:\n"
+        "  A. NAMED CONTACT to act on right now — first name + role + WHERE to find "
+        "     them ('Hester Crane, posting clerk, at the Anvil & Cup tavern by the "
+        "     south gate'). Reuse names from WORLD FACTS when possible.\n"
+        "  B. NAMED PLACE — a specific street, shop, district, or building (not "
+        "     'the docks' but 'Garrick's Pier' or 'the south gate market').\n"
+        "  C. ITEM/SUBJECT DETAIL — what the item literally looks like, who made it, "
+        "     the maker's mark, when it was lost/stolen, what the sign claims.\n"
+        "  D. STAKES/REWARD — concrete numbers ('50 gp', 'a writ of safe passage'), "
+        "     when applicable.\n"
+        "  E. APPLICATION ROUTE — sentence telling the player exactly how to claim "
+        "     the reward / take the job / get the next clue.\n"
+        "  F. TENSION/RIVAL — someone else who is also watching or also looking, "
+        "     anchored in observable cues (a hooded figure also reading the sign, "
+        "     guards watching the queue).\n"
+        "FORBIDDEN PHRASES: 'a fragment of thought', 'something more outside', "
+        "'whispers in the wind', 'a strange feeling', 'fate', 'the gods', "
+        "'destiny', 'a flash of memory', 'you somehow sense'. If you write "
+        "atmospheric language, it MUST be sensory and tied to a named fact.\n"
     )
 
 
@@ -398,7 +432,7 @@ async def draft_initial_scene(
             "  \"title\": \"investigation title (3-6 words, references the hook subject)\",\n"
             "  \"beat\": {\n"
             "    \"title\": \"scene title (3-6 words, references the hook subject)\",\n"
-            "    \"description\": \"3-5 sentence Mercer-cinematic SCENE. FIRST sentence names the hook subject directly. Plant at least 3 concrete story facts (named NPC + named location + history/reward/stakes). Static observer framing.\",\n"
+            "    \"description\": \"4-7 sentence Mercer-cinematic SCENE in second person POV. FIRST sentence names the hook subject directly. If the hook is a sign/notice/letter, INCLUDE THE LITERAL POSTED TEXT in quotes. Plant ≥4 concrete story facts (named contact + named place + item detail + reward + APPLICATION ROUTE saying where to claim it / who to ask for / when). Static observer framing — no psychic memories.\",\n"
             "    \"task\": \"short imperative aimed at the hook subject (one phrase)\",\n"
             "    \"check_type\": \"Investigation|Perception|Insight|Persuasion|Deception|Intimidation|Stealth|Sleight of Hand|Athletics|Arcana|History|Nature|Survival|Religion\",\n"
             "    \"dc\": 10,\n"
@@ -412,11 +446,14 @@ async def draft_initial_scene(
             api_key=api_key,
             session_id=f"storyline-scene1-{uuid4()}",
             system_message=(
-                "You are a senior D&D campaign designer. You write tight, sensory opening "
-                "scenes anchored ON THE LITERAL HOOK SUBJECT the player just engaged with — "
-                "the scene foregrounds that subject in its first sentence and the suggested "
-                "task is a verb phrase aimed at it. Generic ambient setpieces are forbidden "
-                "as openings. Output strict JSON only."
+                "You are a senior D&D Dungeon Master running a live session at the "
+                "table. You write tight, sensory opening scenes anchored on the literal "
+                "hook subject, FROM THE PLAYER'S POV. When the hook is a sign or notice, "
+                "you READ THE LITERAL POSTED TEXT ALOUD in the description. You always "
+                "tell the player exactly where to go, who to ask for, and when. Empty "
+                "atmospheric phrases ('a fragment of thought', 'a flash of memory', "
+                "'fate stirs') are forbidden — every fact must be sourced in-fiction. "
+                "Output strict JSON only."
             ),
         )
         chat.with_model("openai", "gpt-4o-mini")
@@ -446,7 +483,7 @@ async def draft_initial_scene(
         dc = max(8, min(20, dc))
         beat = _finalize_beat({
             "title": (rb.get("title") or "First Sign").strip()[:48],
-            "description": (rb.get("description") or "").strip()[:800],
+            "description": (rb.get("description") or "").strip()[:1100],
             "task": (rb.get("task") or "Look closer").strip()[:160],
             "dc": dc,
             "check_type": ct,
@@ -599,7 +636,7 @@ async def generate_next_scene(
             "  \"epilogue\": \"only when is_final=true: 1-2 sentence Mercer epilogue with named entities\",\n"
             "  \"beat\": {\n"
             "    \"title\": \"...\",\n"
-            "    \"description\": \"3-5 sentences narrating consequence + new situation, with at least 3 concrete story facts (named NPC + named location + history/reward/stakes)\",\n"
+            "    \"description\": \"4-7 sentences in second person POV — what the player sees/hears/reads right now. Source every fact in-fiction (quoted posted text, named bystander remarks, observable maker's marks). Plant ≥4 concrete story facts including a NAMED CONTACT to act on + APPLICATION ROUTE (where/who/when to claim or follow up).\",\n"
             "    \"task\": \"short imperative for the moment\",\n"
             "    \"check_type\": \"Investigation|Perception|... or null\",\n"
             "    \"dc\": 10,\n"
@@ -613,11 +650,14 @@ async def generate_next_scene(
             api_key=api_key,
             session_id=f"storyline-next-{uuid4()}",
             system_message=(
-                "You are a senior D&D narrator (Mercer-style). You write tight scene cards "
-                "that flow from player choice and ALWAYS plant concrete story facts — "
-                "named NPCs, named locations, item history, specific stakes/rewards. "
-                "Empty atmospheric phrases ('a fragment of thought', 'something more') "
-                "are forbidden. Output strict JSON only."
+                "You are a senior D&D Dungeon Master running a live session at the "
+                "table. You write scene cards FROM THE PLAYER'S POV — second person, "
+                "what they see/hear/read RIGHT NOW. You source every fact in-fiction "
+                "(quoting posted text, citing the bystander who said it, naming the "
+                "maker's mark on the item). You tell the player exactly where to go, "
+                "who to find by name, and how to claim rewards. Empty phrases like "
+                "'a fragment of thought', 'a flash of memory', or 'fate stirs' are "
+                "forbidden — the character is not psychic. Output strict JSON only."
             ),
         )
         chat.with_model("openai", "gpt-4o-mini")
@@ -662,7 +702,7 @@ async def generate_next_scene(
             dc = 0
         beat = _finalize_beat({
             "title": (rb.get("title") or "Next Scene").strip()[:48],
-            "description": (rb.get("description") or "").strip()[:800],
+            "description": (rb.get("description") or "").strip()[:1100],
             "task": (rb.get("task") or "Decide your next move").strip()[:160],
             "dc": dc if dc > 0 else 12,
             "check_type": ct,

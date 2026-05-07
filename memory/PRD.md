@@ -38,6 +38,18 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### POV-Anchored Storyline Exposition (Feb 2026)
+Player reported the DM was fact-dumping in third person ("Lady Selene of Emberfall, noble known for her battles…", "the locket holds the key to an ancient map…") instead of running the table like a real DM — read the sign aloud, name who's recruiting, tell the player where to go to claim the bounty. Major prompt rewrite in `services/storyline_service.py::_story_fact_rules`:
+- **Rule 1 — POV exposition**: descriptions must use second-person ("you see / read / hear"). Forbidden phrases now explicit: "a memory ignites", "a flash of insight", "you somehow know", "fate stirs". The character is not psychic.
+- **Rule 2 — Source every fact**: every claim must be tied to an in-fiction source the player can point to (literal text on the sign, an inscription, an overheard remark, a known bystander).
+- **Rule 3 — Read posted text aloud**: when the hook is a sign/notice/letter/scroll/inscription, the description MUST include the literal posted text in quotes, written like real medieval signage with a contact + place + deadline.
+- **Rule 4 — Answer "how do I claim this?"**: every bounty/quest must tell the player WHERE to go, WHO to ask for, and WHEN — by name and address.
+- **Rule 5 — End with a directional choice**: last sentence plants a concrete next move, not vague urgency.
+- Story-fact requirements raised from 3-of-6 to 4-of-6 with a hard "APPLICATION ROUTE" requirement.
+- Description budgets: 800 → 1100 chars to fit the literal sign-text quote.
+- System messages rewritten to frame the LLM as "a senior D&D Dungeon Master running a live session at the table" instead of generic narrator.
+- **Verified live**: hook *"a faded, wooden sign about a lost family heirloom"* now opens with: *"You read it aloud: 'REWARD — 50 gp for the safe return of a lost family heirloom, intricately designed locket. Inquiries to **Hester Crane, posting clerk at the Anvil & Cup, by the south gate, before sundown**.' … To claim the reward and gather more details, you must head to Hester Crane at the Anvil & Cup by the south gate before sundown."* Task: *"Visit Hester Crane"*. Next-scene after a passed roll keeps the sign quote, names the patron at the Anvil & Cup, and ends with *"Head to the Anvil & Cup and ask for Hester Crane."*
+
 #### Investigation Panel Contrast Pass (Feb 2026)
 Player reported the active Insight beat's locked-prompt panel and target chips were unreadable on the dark theme (low-opacity amber on dim stone backgrounds). Pass-through fix in `ActiveInvestigationPanel.jsx`:
 - **Locked knowledge prompt** — was `border-dashed border-amber-500/50 bg-stone-950/60` with `text-amber-200/95`. Now solid `border-2 border-amber-400/70 bg-stone-900` with `text-amber-50` (max brightness).

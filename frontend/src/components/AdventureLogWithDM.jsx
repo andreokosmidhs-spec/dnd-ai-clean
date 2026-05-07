@@ -1409,6 +1409,48 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                 return next;
               });
             }}
+            onTargetCardsMinted={(cards) => {
+              if (!Array.isArray(cards) || cards.length === 0) return;
+              // Adventure-Log beat that lists the auto-pinned entities so the
+              // player sees their deck just grew.
+              const lines = cards
+                .map((c) => `• ${(c.type || 'card').toUpperCase()} — ${c.title}`)
+                .join('\n');
+              const text =
+                `New cards added to your Knowledge Deck:\n${lines}\n\n` +
+                `These names dropped during the investigation. Pull them up from the deck whenever you're ready to act on them.`;
+              const msg = {
+                type: 'dm', text, message: text,
+                timestamp: Date.now(),
+                isCinematic: false,
+                source: 'cards-auto-minted',
+                meta: { count: cards.length, titles: cards.map((c) => c.title) },
+              };
+              setMessages((prev) => {
+                const next = [...prev, msg].slice(-200);
+                if (sessionId) {
+                  try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+                }
+                return next;
+              });
+              // Toast so the chip pop is unmissable.
+              try {
+                window.showToast &&
+                  window.showToast(
+                    `+${cards.length} card${cards.length === 1 ? '' : 's'} added to your deck`,
+                    'success'
+                  );
+              } catch {}
+              // Broadcast a refresh event so any open Knowledge Deck / Campaign
+              // Log panel can re-fetch and surface the new cards immediately.
+              try {
+                window.dispatchEvent(
+                  new CustomEvent('rpg:cards-refreshed', {
+                    detail: { campaignId, source: 'storyline-target', cards },
+                  })
+                );
+              } catch {}
+            }}
             onComplete={(sl, reward) => {
               setActiveStoryline(null);
               setShowRewardModal(reward);

@@ -30,8 +30,9 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from uuid import uuid4
 
 from bson import ObjectId
@@ -272,6 +273,232 @@ async def get_storyline(campaign_id: str, storyline_id: str):
     return storyline_to_dict(doc)
 
 
+_ENTITY_TYPE_TO_CARD_TYPE = {
+    "npc": "character",
+    "character": "character",
+    "person": "character",
+    "location": "location",
+    "place": "location",
+    "faction": "faction",
+    "guild": "faction",
+    "house": "faction",
+}
+
+
+_ENTITY_BLOCKLIST = {
+    "you", "your", "the", "a", "an", "this", "that", "and", "or", "but", "is",
+    "are", "was", "were", "be", "been", "being", "to", "of", "in", "on", "at",
+    "by", "for", "with", "from", "as", "it", "its", "they", "them", "their",
+}
+
+
+def _entity_label(entity_type: str, name: str) -> str:
+    """Normalize an entity name for case-insensitive de-duplication."""
+    return f"{(entity_type or '').strip().lower()}::{(name or '').strip().lower()}"
+
+
+def _description_snippet_for(name: str, description: str, max_len: int = 240) -> str:
+    """Pick the sentence(s) from `description` that mention `name` so the
+    auto-minted card carries the most relevant context. Falls back to a
+    leading slice of the description if no sentence directly names the entity.
+    """
+    text = (description or "").strip()
+    if not text:
+        return ""
+    name_low = (name or "").strip().lower()
+    if not name_low:
+        return text[:max_len].strip()
+    # Split by sentence-ending punctuation
+    import re as _re
+    sentences = _re.split(r"(?<=[.!?])\s+", text)
+    matched = [s.strip() for s in sentences if name_low in s.lower()]
+    if matched:
+        joined = " ".join(matched)
+        return joined[:max_len].strip()
+    return text[:max_len].strip()
+
+
+async def _extract_targets_from_description_llm(
+    description: str, max_targets: int = 4
+) -> List[Dict]:
+    """Cheap LLM fallback when the storyline beat returned `targets: []` but
+    the description clearly names entities. Returns a normalized list of
+    {type, name} entries (npc | location | faction). Empty on any failure.
+    """
+    text = (description or "").strip()
+    if not text:
+        return []
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return []
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        prompt = (
+            "Extract up to "
+            f"{max_targets} NAMED ENTITIES from the D&D scene below — proper nouns "
+            "the player has now learned by name. Each entity must be one of: "
+            "npc (a person), location (a place), or faction (a guild/house/order). "
+            "Names must appear verbatim in the text. Skip generic nouns like "
+            "'the merchant', 'a guard', 'the tavern' — only entities with proper "
+            "names. Cap at top "
+            f"{max_targets}.\n\n"
+            "=== SCENE ===\n"
+            f"{text}\n\n"
+            "=== OUTPUT (strict JSON, no code fence) ===\n"
+            "{\"entities\": ["
+            "{\"type\": \"npc|location|faction\", \"name\": \"<verbatim proper noun>\"}"
+            "]}\n"
+            "Return {\"entities\": []} if there are no proper-name entities."
+        )
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"target-extract-{uuid4()}",
+            system_message=(
+                "You are a precise scene parser. You return only proper-noun "
+                "entities verbatim. Output strict JSON only."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        s = raw.strip()
+        if s.startswith("```"):
+            s = s.strip("`")
+            if s.lower().startswith("json"):
+                s = s[4:].lstrip()
+        import json as _json
+        try:
+            data = _json.loads(s)
+        except Exception:
+            a, b = s.find("{"), s.rfind("}")
+            data = _json.loads(s[a:b + 1]) if a != -1 and b > a else {}
+        out: List[Dict] = []
+        for e in (data.get("entities") or [])[:max_targets]:
+            if not isinstance(e, dict):
+                continue
+            t = (e.get("type") or "").strip().lower()
+            n = (e.get("name") or "").strip()
+            if t not in {"npc", "location", "faction"}:
+                continue
+            if not n or n.lower() in _ENTITY_BLOCKLIST:
+                continue
+            # Verbatim check — must appear in the description
+            if n.lower() not in text.lower():
+                continue
+            out.append({"type": t, "name": n[:80]})
+        return out
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"target extraction (LLM) failed: {exc}")
+        return []
+
+
+async def _mint_target_cards_if_revealed(
+    *,
+    campaign_id: str,
+    storyline: Dict,
+    beat: Dict,
+    outcome: str,
+) -> List[Dict]:
+    """When a knowledge beat is revealed (passed or partial via creative path),
+    auto-mint Knowledge Cards for each named entity in `beat.targets[]`
+    (or fall back to extracting them from the description). NPCs become
+    'character' cards, locations become 'location' cards, factions become
+    'faction' cards. Skips entities the campaign already has a card for
+    (case-insensitive type+title match) so we don't pollute the deck on
+    every re-reveal.
+    Returns the list of newly-minted card dicts.
+    """
+    if outcome != "passed":
+        return []
+    revelation = (beat.get("description") or "").strip()
+    if not revelation:
+        return []
+
+    raw_targets = beat.get("targets") or []
+    targets: List[Dict] = []
+    for t in raw_targets:
+        if not isinstance(t, dict):
+            continue
+        et = (t.get("type") or "").strip().lower()
+        nm = (t.get("name") or "").strip()
+        if et in _ENTITY_TYPE_TO_CARD_TYPE and nm and nm.lower() not in _ENTITY_BLOCKLIST:
+            targets.append({"type": et, "name": nm})
+
+    # Fallback: LLM extracts entities from the description text
+    if not targets:
+        try:
+            targets = await _extract_targets_from_description_llm(revelation, max_targets=4)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"fallback target extraction failed: {exc}")
+            targets = []
+
+    if not targets:
+        return []
+
+    # Pre-load existing card titles for de-dup
+    existing_labels = set()
+    try:
+        cur = _cards_collection().find(
+            {"campaign_id": campaign_id, "type": {"$in": ["character", "location", "faction"]}},
+            {"_id": 0, "type": 1, "title": 1},
+        )
+        async for c in cur:
+            existing_labels.add(_entity_label(c.get("type", ""), c.get("title", "")))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"existing-card preload failed: {exc}")
+
+    minted: List[Dict] = []
+    now = datetime.now(timezone.utc)
+    storyline_title = storyline.get("title") or "investigation"
+    storyline_id = storyline.get("id")
+
+    for t in targets[:4]:
+        card_type = _ENTITY_TYPE_TO_CARD_TYPE.get(t["type"])
+        if not card_type:
+            continue
+        title = t["name"].strip()
+        if not title:
+            continue
+        label = _entity_label(card_type, title)
+        if label in existing_labels:
+            continue
+        existing_labels.add(label)  # avoid dupes within same call
+        snippet = _description_snippet_for(title, revelation, max_len=300)
+        if not snippet:
+            snippet = f"Mentioned during the {storyline_title}."
+        try:
+            card = KnowledgeCard(
+                type=card_type,
+                title=title[:80],
+                description=snippet,
+                source="storyline-target",
+                confidence="medium",
+                tags=[
+                    "auto-minted",
+                    "from-storyline",
+                    storyline_title.lower(),
+                    f"target-{t['type']}",
+                ],
+                status="active",
+                updatedAt=now,
+            )
+            doc = {
+                **card.model_dump(),
+                "campaign_id": campaign_id,
+                "storyline_id": storyline_id,
+                "beat_title": beat.get("title"),
+            }
+            await _cards_collection().insert_one(dict(doc))
+            out = {k: v for k, v in doc.items() if k != "_id"}
+            if isinstance(out.get("updatedAt"), datetime):
+                out["updatedAt"] = out["updatedAt"].isoformat()
+            minted.append(out)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"target card mint failed for {title}: {exc}")
+            continue
+
+    return minted
+
+
 async def _mint_lead_card_if_knowledge(
     *,
     campaign_id: str,
@@ -432,6 +659,7 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
     # Knowledge-beat reward: mint a "lead" knowledge card. Passed = revealed;
     # failed = sealed (player can later try to unseal it).
     lead_card: Optional[Dict] = None
+    target_cards: List[Dict] = []
     if body.outcome in {"passed", "failed"}:
         try:
             lead_card = await _mint_lead_card_if_knowledge(
@@ -442,6 +670,19 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"lead card mint failed (non-fatal): {exc}")
+        # Also auto-mint Knowledge Cards for every named entity revealed
+        # (NPCs, locations, factions). Only on a clean pass — failed leads
+        # stay sealed and don't expose the entities.
+        if body.outcome == "passed":
+            try:
+                target_cards = await _mint_target_cards_if_revealed(
+                    campaign_id=campaign_id,
+                    storyline=storyline,
+                    beat=cur_beat,
+                    outcome=body.outcome,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"target card mint failed (non-fatal): {exc}")
 
     # If failed (and not press-on), produce a fail-forward complication so the
     # Adventure Log gets a narrative beat tying the failure to the story.
@@ -553,6 +794,7 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
         "complication": complication_text,
         "reward": reward,
         "lead": lead_card,
+        "target_cards": target_cards,
     }
 
 
@@ -617,6 +859,7 @@ async def creative_approach_endpoint(
 
     # Knowledge-beat reward via creative path: same minting rules.
     lead_card: Optional[Dict] = None
+    target_cards: List[Dict] = []
     try:
         lead_card = await _mint_lead_card_if_knowledge(
             campaign_id=campaign_id,
@@ -627,6 +870,17 @@ async def creative_approach_endpoint(
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"lead card mint via creative failed: {exc}")
+    # Auto-mint Knowledge Cards for revealed entities on a creative pass.
+    if storyline_outcome == "passed":
+        try:
+            target_cards = await _mint_target_cards_if_revealed(
+                campaign_id=campaign_id,
+                storyline=storyline,
+                beat=cur_beat,
+                outcome=storyline_outcome,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"target card mint via creative failed: {exc}")
 
     complication_text: Optional[str] = None
     if storyline_outcome == "failed":
@@ -707,6 +961,7 @@ async def creative_approach_endpoint(
         "complication": complication_text,  # only when judged_outcome == 'failed'
         "reward": reward,
         "lead": lead_card,
+        "target_cards": target_cards,
     }
 
 

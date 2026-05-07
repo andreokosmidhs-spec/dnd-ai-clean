@@ -38,6 +38,29 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Auto-Mint Knowledge Cards from Storyline Reveals (Feb 2026)
+When you pass a knowledge beat, every named entity the DM revealed (NPCs, locations, factions) is now auto-pinned to your Knowledge Deck — no manual "Remember this" required. So after passing the wooden-sign Investigation, the deck immediately gains:
+- Character card → **Hester Crane** ("Inquiries to Hester Crane at the Anvil & Cup, by the south gate, before sundown.")
+- Location card → **Anvil & Cup** (same sentence as context)
+- Faction card → **House Veillane** ("The locket bears the House Veillane crest.")
+
+Implementation:
+- **Backend `routers/storylines.py`** — new `_mint_target_cards_if_revealed` helper:
+  - Reads `beat.targets[]` (npc | location | faction) and maps to KnowledgeCard types `character / location / faction`.
+  - Picks the most relevant sentence from the revelation as each card's description.
+  - De-dupes against existing cards by case-insensitive type+title match.
+  - LLM fallback (`_extract_targets_from_description_llm`) catches scenes where the LLM forgot to populate `targets[]` — extracts proper-noun NPCs/places/factions verbatim from the description.
+  - Cards tagged `source: "storyline-target"`, `auto-minted`, `from-storyline`, `<storyline-title>`.
+- Wired into both the `/resolve` (roll path) and `/creative` endpoints. Only fires on `outcome=passed` — failed leads stay sealed and don't expose the entities.
+- Response payload now includes `target_cards: [...]` so the frontend can surface them.
+
+Frontend wiring:
+- **`ActiveInvestigationPanel.jsx`** — new `onTargetCardsMinted` callback prop fired when the response includes target cards.
+- **`AdventureLogWithDM.jsx`** — handler logs an Adventure-Log beat listing the new cards by type/title, fires a success toast (`+N cards added to your deck`), and broadcasts a `rpg:cards-refreshed` window event so any open panel picks up the change immediately.
+- **`CampaignLogPanel.jsx`** — listens for `rpg:cards-refreshed` and reloads via `loadAllData()` so the Knowledge Deck displays the freshly-pinned cards in real time.
+
+E2E verified: hook → engagement → opening scene → roll passes → API returns `lead` + `target_cards: 3` → all 3 persist in `campaign_cards` collection with `source=storyline-target`. Re-running the same beat dedupes to 0 new mints.
+
 #### POV-Anchored Storyline Exposition (Feb 2026)
 Player reported the DM was fact-dumping in third person ("Lady Selene of Emberfall, noble known for her battles…", "the locket holds the key to an ancient map…") instead of running the table like a real DM — read the sign aloud, name who's recruiting, tell the player where to go to claim the bounty. Major prompt rewrite in `services/storyline_service.py::_story_fact_rules`:
 - **Rule 1 — POV exposition**: descriptions must use second-person ("you see / read / hear"). Forbidden phrases now explicit: "a memory ignites", "a flash of insight", "you somehow know", "fate stirs". The character is not psychic.

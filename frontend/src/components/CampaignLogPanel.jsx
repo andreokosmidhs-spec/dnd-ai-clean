@@ -290,6 +290,18 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
   useEffect(() => {
     loadAllData();
   }, [loadAllData]);
+
+  // Live refresh when the storyline auto-mints new cards (NPCs / locations /
+  // factions revealed by passing a knowledge beat).
+  useEffect(() => {
+    const handler = (e) => {
+      if (!campaignId) return;
+      if (e?.detail?.campaignId && e.detail.campaignId !== campaignId) return;
+      loadAllData();
+    };
+    window.addEventListener('rpg:cards-refreshed', handler);
+    return () => window.removeEventListener('rpg:cards-refreshed', handler);
+  }, [campaignId, loadAllData]);
   
   // Combine cards with leads
   const allCardsWithLeads = useMemo(() => {

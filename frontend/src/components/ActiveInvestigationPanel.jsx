@@ -74,6 +74,7 @@ const ActiveInvestigationPanel = ({
   onComplication,    // fired when the backend returns a complication beat
   onCreativeNarration, // fired when a creative approach lands a narration
   onLeadMinted,      // fired when a knowledge beat mints a Lead card (revealed or sealed)
+  onTargetCardsMinted, // fired when a knowledge beat auto-mints Knowledge Cards for named entities
 }) => {
   const [busy, setBusy] = useState(false);
   const [lastRoll, setLastRoll] = useState(null);  // { die, mod, total, dc, passed }
@@ -139,6 +140,9 @@ const ActiveInvestigationPanel = ({
       const data = await res.json();
       if (data.complication && onComplication) onComplication(data.complication, data.storyline);
       if (data.lead && onLeadMinted) onLeadMinted(data.lead);
+      if (Array.isArray(data.target_cards) && data.target_cards.length > 0 && onTargetCardsMinted) {
+        onTargetCardsMinted(data.target_cards);
+      }
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);
       } else {
@@ -176,6 +180,9 @@ const ActiveInvestigationPanel = ({
         onComplication(data.complication, data.storyline);
       }
       if (data.lead && onLeadMinted) onLeadMinted(data.lead);
+      if (Array.isArray(data.target_cards) && data.target_cards.length > 0 && onTargetCardsMinted) {
+        onTargetCardsMinted(data.target_cards);
+      }
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);
       } else {

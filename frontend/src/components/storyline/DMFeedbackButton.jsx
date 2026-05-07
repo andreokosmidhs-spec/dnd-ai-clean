@@ -7,9 +7,9 @@
  * turns apply the same logic.
  */
 import React, { useState } from 'react';
-import { Button } from '../components/ui/button';
-import { Textarea } from '../components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
+import { Button } from '../ui/button';
+import { Textarea } from '../ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Gavel, Loader2, MessageCircleQuestion, Check, X, BookOpen, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 

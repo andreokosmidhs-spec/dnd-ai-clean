@@ -261,13 +261,13 @@ const ActiveInvestigationPanel = ({
               {storyline.title}
             </div>
           </div>
-          <Badge variant="outline" className="text-[11px] border-amber-300/70 text-amber-50 bg-stone-900/80 font-semibold" data-testid="beat-counter">
+          <Badge variant="outline" className="text-[11px] border-amber-300 text-amber-50 bg-stone-800 font-bold" data-testid="beat-counter">
             Beat {idx + 1} of {beats.length}
           </Badge>
           {beat.time_of_day && (
             <Badge
               variant="outline"
-              className="text-[11px] border-indigo-300/60 text-indigo-100 bg-stone-900/80 font-semibold"
+              className="text-[11px] border-indigo-300 text-indigo-50 bg-stone-800 font-bold"
               data-testid="beat-time-of-day"
               title={`In-fiction time: ${beat.time_of_day.label}${beat.time_of_day.hour != null ? ` (hour ${beat.time_of_day.hour}/24)` : ''}`}
             >
@@ -275,10 +275,10 @@ const ActiveInvestigationPanel = ({
               {beat.time_of_day.label}
             </Badge>
           )}
-          <Badge variant="outline" className="text-[11px] border-emerald-300/60 text-emerald-200 bg-stone-900/80 font-semibold">
+          <Badge variant="outline" className="text-[11px] border-emerald-300 text-emerald-100 bg-stone-800 font-bold">
             {passed} passed
           </Badge>
-          <Badge variant="outline" className="text-[11px] border-rose-300/60 text-rose-200 bg-stone-900/80 font-semibold">
+          <Badge variant="outline" className="text-[11px] border-rose-300 text-rose-100 bg-stone-800 font-bold">
             {failed} failed
           </Badge>
           <Button
@@ -576,10 +576,10 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
 
       <div
         className={`flex items-center justify-between px-2.5 py-1.5 text-[11px] uppercase tracking-wider border-b
-          ${sealed ? 'bg-stone-800 border-stone-700 text-stone-300' : 'bg-stone-700/80 border-stone-600 text-amber-100'}`}
+          ${sealed ? 'bg-stone-800 border-stone-700 text-stone-300' : 'bg-stone-700 border-stone-500 text-amber-50 font-semibold'}`}
       >
         <span className="font-bold">{sealed ? `Beat ${index + 1}` : beat.check_type}</span>
-        <span className={`px-1.5 py-0.5 rounded border font-semibold ${
+        <span className={`px-1.5 py-0.5 rounded border font-bold ${
           sealed ? 'border-stone-500 text-stone-200 bg-stone-900' : c.chip
         }`}>
           DC {beat.dc}
@@ -594,23 +594,25 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
           </div>
         ) : (
           <>
-            <div className="text-amber-50 font-bold text-[14px] leading-tight">{beat.title}</div>
+            <div className="text-amber-50 font-bold text-[15px] leading-tight">
+              {beat.title || (resolved ? 'Resolved beat' : 'New scene')}
+            </div>
 
             {/* Knowledge beats: HIDE the description until the beat is resolved.
                 Show the public-facing prompt + lock instead so the player
                 doesn't see the answer before they roll. */}
             {beat.reveal_type === 'knowledge' && !resolved ? (
-              <div className="rounded-md border border-dashed border-amber-500/50 bg-stone-950/60 p-2.5 text-center">
-                <Lock className="h-5 w-5 text-amber-300/80 mx-auto mb-1" />
-                <div className="text-[11.5px] text-amber-200/95 italic font-serif leading-snug">
+              <div className="rounded-md border-2 border-amber-400/70 bg-stone-900 p-3 text-center shadow-inner">
+                <Lock className="h-5 w-5 text-amber-200 mx-auto mb-1.5" />
+                <div className="text-[12.5px] text-amber-50 italic font-serif leading-snug font-medium">
                   {beat.prompt || `Roll ${beat.check_type} (DC ${beat.dc}) to reveal what you can piece together.`}
                 </div>
                 {Array.isArray(beat.targets) && beat.targets.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap justify-center gap-1">
+                  <div className="mt-2 flex flex-wrap justify-center gap-1.5">
                     {beat.targets.slice(0, 3).map((t, ti) => (
                       <span
                         key={ti}
-                        className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-[10px] uppercase tracking-wide text-amber-100"
+                        className="px-2 py-0.5 rounded bg-amber-500 border border-amber-300 text-[10px] uppercase tracking-wide text-stone-950 font-bold"
                       >
                         {t.type}
                       </span>
@@ -619,11 +621,11 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
                 )}
               </div>
             ) : beat.reveal_type === 'knowledge' && beat.status === 'failed' ? (
-              <div className="rounded-md border border-dashed border-rose-500/50 bg-stone-950/60 p-2.5">
-                <div className="flex items-center gap-1.5 text-rose-300 text-[10px] uppercase tracking-wider font-bold mb-1">
+              <div className="rounded-md border-2 border-rose-400/70 bg-stone-900 p-3">
+                <div className="flex items-center gap-1.5 text-rose-200 text-[10px] uppercase tracking-wider font-bold mb-1">
                   <Lock className="h-3 w-3" /> Sealed Lead
                 </div>
-                <div className="text-[11.5px] text-amber-100/85 italic font-serif leading-snug">
+                <div className="text-[12px] text-amber-50 italic font-serif leading-snug">
                   You couldn't piece it together. The lead is now in your deck — find someone who can help.
                 </div>
               </div>
@@ -636,7 +638,11 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
                 }`}
                 data-testid={isActive ? 'beat-description-active' : (resolved ? `beat-description-resolved-${index}` : undefined)}
               >
-                {beat.description}
+                {beat.description || (
+                  resolved
+                    ? <span className="not-italic text-amber-200/80">— {beat.outcome_text || 'No revelation recorded.'}</span>
+                    : ''
+                )}
               </div>
             )}
 
@@ -649,13 +655,13 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
         )}
       </div>
       <div
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10.5px] uppercase tracking-wider border-t font-semibold
-          ${sealed ? 'bg-stone-800 border-stone-700 text-stone-300' : 'bg-stone-900 border-stone-700 text-amber-100'}`}
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10.5px] uppercase tracking-wider border-t font-bold
+          ${sealed ? 'bg-stone-800 border-stone-700 text-stone-300' : 'bg-stone-800 border-stone-600 text-amber-50'}`}
       >
         <span className={`w-2 h-2 rounded-full ${tone.dot}`} />
         <span>{tone.label}</span>
         <div className="flex-1" />
-        <span className="text-stone-300">{index + 1}/{total}</span>
+        <span className="text-amber-100/90">{index + 1}/{total}</span>
       </div>
       {resolved && (
         <div

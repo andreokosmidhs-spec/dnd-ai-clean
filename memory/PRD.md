@@ -38,6 +38,16 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Investigation Panel Contrast Pass (Feb 2026)
+Player reported the active Insight beat's locked-prompt panel and target chips were unreadable on the dark theme (low-opacity amber on dim stone backgrounds). Pass-through fix in `ActiveInvestigationPanel.jsx`:
+- **Locked knowledge prompt** — was `border-dashed border-amber-500/50 bg-stone-950/60` with `text-amber-200/95`. Now solid `border-2 border-amber-400/70 bg-stone-900` with `text-amber-50` (max brightness).
+- **Target chips** (LOCATION/FACTION/NPC pills) — were ghost pills `bg-amber-500/20 text-amber-100`. Now solid `bg-amber-500 text-stone-950 font-bold` so they pop like Wizards-of-the-Coast set symbols.
+- **Card type header strip** (INVESTIGATION/INSIGHT) — bumped to `bg-stone-700 text-amber-50 font-semibold` for stronger separation from the body.
+- **Card title** — size bumped 14px → 15px.
+- **Card status footer row** — bumped from `text-amber-100` to `text-amber-50 font-bold`.
+- **Modal header badges** (Beat counter, time-of-day, passed/failed counts) — opacity removed, full-saturation borders, `font-bold`.
+- **Empty-description fallback** — when a resolved beat has no description (rare LLM gap), the card now shows the outcome text in a muted "—" line instead of rendering a blank body.
+
 #### Story Depth + Resolved Card Readability (Feb 2026)
 Three issues fixed after the user reported a passed Investigation card showing only generic atmospheric prose with no concrete leads, plus the PASSED stamp obscuring the description text.
 

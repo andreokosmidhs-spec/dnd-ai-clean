@@ -43,17 +43,18 @@ export function rarityMeta(r) {
 }
 
 export const SOURCE_META = {
-  race:       { label: 'Race',          icon: '🪶', color: 'text-emerald-300' },
-  language:   { label: 'Languages',     icon: '🗣️', color: 'text-cyan-300' },
-  background: { label: 'Background',    icon: '📜', color: 'text-amber-300' },
-  trait:      { label: 'Roleplay',      icon: '🎭', color: 'text-pink-300' },
-  class:      { label: 'Class',         icon: '⚔️', color: 'text-rose-300' },
-  spell:      { label: 'Spells',        icon: '✨', color: 'text-violet-300' },
-  item:       { label: 'Items',         icon: '🎒', color: 'text-yellow-300' },
-  contact:    { label: 'Contacts',      icon: '🤝', color: 'text-blue-300' },
-  quest:      { label: 'Rewards',       icon: '🏆', color: 'text-amber-200' },
-  reputation: { label: 'Reputation',    icon: '⚜️', color: 'text-indigo-300' },
-  curse:      { label: 'Curses',        icon: '☠️', color: 'text-red-400' },
+  race:        { label: 'Race',          icon: '🪶', color: 'text-emerald-300' },
+  language:    { label: 'Languages',     icon: '🗣️', color: 'text-cyan-300' },
+  background:  { label: 'Background',    icon: '📜', color: 'text-amber-300' },
+  trait:       { label: 'Roleplay',      icon: '🎭', color: 'text-pink-300' },
+  class:       { label: 'Class',         icon: '⚔️', color: 'text-rose-300' },
+  proficiency: { label: 'Proficiencies', icon: '🎯', color: 'text-teal-300' },
+  spell:       { label: 'Spells',        icon: '✨', color: 'text-violet-300' },
+  item:        { label: 'Items',         icon: '🎒', color: 'text-yellow-300' },
+  contact:     { label: 'Contacts',      icon: '🤝', color: 'text-blue-300' },
+  quest:       { label: 'Rewards',       icon: '🏆', color: 'text-amber-200' },
+  reputation:  { label: 'Reputation',    icon: '⚜️', color: 'text-indigo-300' },
+  curse:       { label: 'Curses',        icon: '☠️', color: 'text-red-400' },
 };
 
 export function sourceMeta(src) {
@@ -62,6 +63,6 @@ export function sourceMeta(src) {
 
 // Display order for sources in the deck modal.
 export const SOURCE_ORDER = [
-  'race', 'language', 'background', 'trait', 'class',
+  'race', 'language', 'background', 'trait', 'class', 'proficiency',
   'spell', 'item', 'contact', 'quest', 'reputation', 'curse',
 ];

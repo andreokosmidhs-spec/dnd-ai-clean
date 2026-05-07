@@ -289,5 +289,68 @@ LANGUAGE_INFO: Dict[str, Dict] = {
 }
 
 
+# Class-level proficiencies (armor / weapons / tools / saving throws). These
+# differ from `CLASS_FEATURES_LEVEL_1` — they're the static prof grants every
+# member of the class shares.
+CLASS_PROFICIENCIES: Dict[str, Dict[str, List[str]]] = {
+    "Barbarian":  {"armor": ["Light Armor", "Medium Armor", "Shields"], "weapons": ["Simple Weapons", "Martial Weapons"], "tools": [], "saves": ["Strength", "Constitution"]},
+    "Bard":       {"armor": ["Light Armor"], "weapons": ["Simple Weapons", "Hand Crossbow", "Longsword", "Rapier", "Shortsword"], "tools": ["3 Musical Instruments"], "saves": ["Dexterity", "Charisma"]},
+    "Cleric":     {"armor": ["Light Armor", "Medium Armor", "Shields"], "weapons": ["Simple Weapons"], "tools": [], "saves": ["Wisdom", "Charisma"]},
+    "Druid":      {"armor": ["Light Armor", "Medium Armor", "Shields (non-metal)"], "weapons": ["Clubs", "Daggers", "Darts", "Javelins", "Maces", "Quarterstaffs", "Scimitars", "Sickles", "Slings", "Spears"], "tools": ["Herbalism Kit"], "saves": ["Intelligence", "Wisdom"]},
+    "Fighter":    {"armor": ["All Armor", "Shields"], "weapons": ["Simple Weapons", "Martial Weapons"], "tools": [], "saves": ["Strength", "Constitution"]},
+    "Monk":       {"armor": [], "weapons": ["Simple Weapons", "Shortswords"], "tools": ["1 Artisan Tool or Musical Instrument"], "saves": ["Strength", "Dexterity"]},
+    "Paladin":    {"armor": ["All Armor", "Shields"], "weapons": ["Simple Weapons", "Martial Weapons"], "tools": [], "saves": ["Wisdom", "Charisma"]},
+    "Ranger":     {"armor": ["Light Armor", "Medium Armor", "Shields"], "weapons": ["Simple Weapons", "Martial Weapons"], "tools": [], "saves": ["Strength", "Dexterity"]},
+    "Rogue":      {"armor": ["Light Armor"], "weapons": ["Simple Weapons", "Hand Crossbow", "Longsword", "Rapier", "Shortsword"], "tools": ["Thieves' Tools"], "saves": ["Dexterity", "Intelligence"]},
+    "Sorcerer":   {"armor": [], "weapons": ["Daggers", "Darts", "Slings", "Quarterstaffs", "Light Crossbows"], "tools": [], "saves": ["Constitution", "Charisma"]},
+    "Warlock":    {"armor": ["Light Armor"], "weapons": ["Simple Weapons"], "tools": [], "saves": ["Wisdom", "Charisma"]},
+    "Wizard":     {"armor": [], "weapons": ["Daggers", "Darts", "Slings", "Quarterstaffs", "Light Crossbows"], "tools": [], "saves": ["Intelligence", "Wisdom"]},
+}
+
+
+# Starting equipment per class (default flavor pack). Items are common-rarity
+# and seeded as deck cards under the `item` source.
+CLASS_STARTING_EQUIPMENT: Dict[str, Dict] = {
+    "Barbarian":  {"gold": 50,  "items": ["Greataxe", "Handaxe (2)", "Javelin (4)", "Explorer's Pack", "Leather Armor"]},
+    "Bard":       {"gold": 100, "items": ["Rapier", "Dagger", "Lute", "Leather Armor", "Diplomat's Pack"]},
+    "Cleric":     {"gold": 100, "items": ["Mace", "Shield", "Scale Mail", "Light Crossbow", "Crossbow Bolts (20)", "Priest's Pack", "Holy Symbol"]},
+    "Druid":      {"gold": 50,  "items": ["Wooden Shield", "Scimitar", "Leather Armor", "Explorer's Pack", "Druidic Focus"]},
+    "Fighter":    {"gold": 100, "items": ["Longsword", "Shield", "Chain Mail", "Light Crossbow", "Crossbow Bolts (20)", "Dungeoneer's Pack"]},
+    "Monk":       {"gold": 25,  "items": ["Shortsword", "Dart (10)", "Dungeoneer's Pack"]},
+    "Paladin":    {"gold": 100, "items": ["Longsword", "Shield", "Chain Mail", "Javelin (5)", "Priest's Pack", "Holy Symbol"]},
+    "Ranger":     {"gold": 75,  "items": ["Longbow", "Arrows (20)", "Two Shortswords", "Scale Mail", "Explorer's Pack"]},
+    "Rogue":      {"gold": 100, "items": ["Rapier", "Shortbow", "Arrows (20)", "Dagger (2)", "Leather Armor", "Burglar's Pack", "Thieves' Tools"]},
+    "Sorcerer":   {"gold": 75,  "items": ["Light Crossbow", "Crossbow Bolts (20)", "Dagger (2)", "Component Pouch", "Dungeoneer's Pack"]},
+    "Warlock":    {"gold": 50,  "items": ["Light Crossbow", "Crossbow Bolts (20)", "Dagger (2)", "Leather Armor", "Component Pouch", "Scholar's Pack"]},
+    "Wizard":     {"gold": 100, "items": ["Quarterstaff", "Component Pouch", "Spellbook", "Scholar's Pack"]},
+}
+
+
+# Skills metadata — used so the deck cards have proper ability + use hints.
+SKILL_INFO: Dict[str, Dict] = {
+    "Acrobatics":      {"ability": "DEX", "blurb": "Stay on your feet, balance on a tightrope, dive aside, slip a grapple."},
+    "Animal Handling": {"ability": "WIS", "blurb": "Calm a frightened animal, intuit a creature's intent, ride one well."},
+    "Arcana":          {"ability": "INT", "blurb": "Recall lore about spells, planes, magical traditions and creatures."},
+    "Athletics":       {"ability": "STR", "blurb": "Climb, swim, jump, grapple, force a door."},
+    "Deception":       {"ability": "CHA", "blurb": "Sell a lie, fast-talk a guard, conceal your real intent."},
+    "History":         {"ability": "INT", "blurb": "Recall lore about wars, lineages, lost civilizations, kings."},
+    "Insight":         {"ability": "WIS", "blurb": "Read a face, catch a tell, sense the truth behind words."},
+    "Intimidation":    {"ability": "CHA", "blurb": "Threaten, glare, force compliance through pressure."},
+    "Investigation":   {"ability": "INT", "blurb": "Search a room methodically, deduce from clues, find hidden things by reasoning."},
+    "Medicine":        {"ability": "WIS", "blurb": "Stabilize the dying, diagnose an illness, identify a poison."},
+    "Nature":          {"ability": "INT", "blurb": "Recall lore about terrain, plants, animals, the weather."},
+    "Perception":      {"ability": "WIS", "blurb": "Spot, hear, otherwise notice — what others miss."},
+    "Performance":     {"ability": "CHA", "blurb": "Entertain a crowd: music, dance, oration, tale-telling."},
+    "Persuasion":      {"ability": "CHA", "blurb": "Win someone over with reason, charm, courtesy."},
+    "Religion":        {"ability": "INT", "blurb": "Recall lore about gods, holy rites, sacred relics."},
+    "Sleight of Hand": {"ability": "DEX", "blurb": "Pickpocket, plant something, palm a coin, conceal a weapon."},
+    "Stealth":         {"ability": "DEX", "blurb": "Move unseen, unheard, vanish into shadow or crowd."},
+    "Survival":        {"ability": "WIS", "blurb": "Track, forage, navigate, read the weather, weather a wilderness."},
+}
+
+
+
+
 # Rarity ordering for sorting + visual prominence.
 RARITY_ORDER = {"legendary": 0, "epic": 1, "rare": 2, "common": 3}
+

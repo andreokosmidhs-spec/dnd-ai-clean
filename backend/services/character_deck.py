@@ -27,15 +27,18 @@ from uuid import uuid4
 from data.character_features import (
     BACKGROUND_FEATURES,
     CLASS_FEATURES_LEVEL_1,
+    CLASS_PROFICIENCIES,
+    CLASS_STARTING_EQUIPMENT,
     LANGUAGE_INFO,
     RACE_TRAITS,
     RARITY_ORDER,
+    SKILL_INFO,
 )
 
 logger = logging.getLogger(__name__)
 
 # `source` taxonomy — also drives UI grouping.
-SOURCES = ("race", "language", "background", "class", "trait",
+SOURCES = ("race", "language", "background", "class", "trait", "proficiency",
            "quest", "curse", "item", "spell", "contact", "reputation")
 
 
@@ -222,6 +225,98 @@ def seed_deck_for_character(character: Dict) -> List[Dict]:
             tags=["class", cls_key.lower()],
         ))
 
+    # === PROFICIENCIES (skills · saves · armor · weapons · tools) ===
+    cls = (character or {}).get("class_") or (character or {}).get("class") or {}
+    skill_profs = cls.get("skillProficiencies") or [] if isinstance(cls, dict) else []
+    for skill in skill_profs:
+        info = SKILL_INFO.get(skill, {"ability": "", "blurb": ""})
+        ability = info.get("ability") or ""
+        cards.append(_new_card(
+            source="proficiency",
+            title=f"Skill: {skill}",
+            description=info.get("blurb") or f"Proficient in {skill}.",
+            rarity="rare",
+            mechanical=f"Add prof bonus to {skill} ({ability})" if ability else f"Proficient: {skill}",
+            tags=["proficiency", "skill", skill.lower().replace(" ", "-")],
+            metadata={"kind": "skill", "skill": skill, "ability": ability},
+        ))
+
+    profs = CLASS_PROFICIENCIES.get(cls_key, {})
+    for save in profs.get("saves", []):
+        cards.append(_new_card(
+            source="proficiency",
+            title=f"Save: {save}",
+            description=f"Proficient on {save} saving throws — add your proficiency bonus when this save is called for.",
+            rarity="rare",
+            mechanical=f"+prof on {save} saves",
+            tags=["proficiency", "save", save.lower()],
+            metadata={"kind": "save", "ability": save},
+        ))
+    for armor in profs.get("armor", []):
+        cards.append(_new_card(
+            source="proficiency",
+            title=f"Armor: {armor}",
+            description=f"You can wear and fight effectively in {armor.lower()} without disadvantage on STR/DEX checks.",
+            rarity="common",
+            mechanical=f"Wear {armor} without penalty",
+            tags=["proficiency", "armor", armor.lower().replace(" ", "-")],
+            metadata={"kind": "armor"},
+        ))
+    weapons = profs.get("weapons", [])
+    if weapons:
+        # Compact: one card listing weapon proficiencies (otherwise classes
+        # like Fighter would have 30+ cards just for weapons).
+        cards.append(_new_card(
+            source="proficiency",
+            title="Weapon Proficiencies",
+            description="Weapons you can wield without disadvantage and with full proficiency bonus to attack rolls: " + ", ".join(weapons) + ".",
+            rarity="common",
+            mechanical=", ".join(weapons[:3]) + ("…" if len(weapons) > 3 else ""),
+            tags=["proficiency", "weapon"],
+            metadata={"kind": "weapon", "list": weapons},
+        ))
+    # Tools — class default tools + background tool choices, deduped.
+    class_tools = profs.get("tools", []) or []
+    bg_tools = (character or {}).get("background", {}).get("toolChoices") or []
+    seen_tools = set()
+    for tool in list(class_tools) + list(bg_tools):
+        key = tool.lower().strip()
+        if not key or key in seen_tools:
+            continue
+        seen_tools.add(key)
+        cards.append(_new_card(
+            source="proficiency",
+            title=f"Tool: {tool}",
+            description=f"Trained with {tool} — add your proficiency bonus on relevant checks.",
+            rarity="common",
+            mechanical=f"Use {tool} skillfully",
+            tags=["proficiency", "tool", key.replace(" ", "-")],
+            metadata={"kind": "tool", "tool": tool},
+        ))
+
+    # === STARTING EQUIPMENT (items + gold) ===
+    starter = CLASS_STARTING_EQUIPMENT.get(cls_key) or {}
+    for item_name in starter.get("items") or []:
+        cards.append(_new_card(
+            source="item",
+            title=item_name,
+            description="Standard starting gear granted at character creation.",
+            rarity="common",
+            mechanical="",
+            tags=["item", "starter", cls_key.lower()],
+            metadata={"kind": "starter", "starter_class": cls_key},
+        ))
+    if starter.get("gold"):
+        cards.append(_new_card(
+            source="item",
+            title=f"Coin Purse — {starter['gold']} gp",
+            description=f"You begin with {starter['gold']} gold pieces in coin and small valuables.",
+            rarity="common",
+            mechanical=f"{starter['gold']} gp",
+            tags=["item", "currency"],
+            metadata={"kind": "currency", "gold": starter["gold"]},
+        ))
+
     return cards
 
 
@@ -309,6 +404,7 @@ def deck_context_block(deck: List[Dict], max_chars: int = 900) -> str:
         "background": "Background",
         "class": "Class",
         "trait": "Roleplay Anchors (Ideal · Bond · Flaw)",
+        "proficiency": "Proficiencies (skills · saves · armor · weapons · tools)",
         "quest": "Quest Rewards",
         "curse": "Curses & Afflictions",
         "item": "Notable Items",
@@ -316,8 +412,8 @@ def deck_context_block(deck: List[Dict], max_chars: int = 900) -> str:
         "contact": "Contacts & Allies",
         "reputation": "Reputation",
     }
-    order = ["race", "language", "background", "trait", "class", "spell", "item",
-             "contact", "quest", "reputation", "curse"]
+    order = ["race", "language", "background", "trait", "class", "proficiency",
+             "spell", "item", "contact", "quest", "reputation", "curse"]
     for src in order:
         if src in grouped:
             lines.append(f"{label.get(src, src.title())}: {' · '.join(grouped[src])}")

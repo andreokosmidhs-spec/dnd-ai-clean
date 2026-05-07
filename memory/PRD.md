@@ -38,6 +38,29 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Proficiency + Item Cards in the Player's Deck (Feb 2026)
+The deck now includes every proficiency and starting item the character owns — not just race/class/background features. Avon's Rogue went from 9 cards → **27 cards**, capturing his full mechanical identity in deck form.
+- **Backend `data/character_features.py`**:
+  - `CLASS_PROFICIENCIES` — armor / weapons / tools / saving-throw proficiencies for all 12 classes (Rogue gets Light Armor + Simple+Finesse weapons + Thieves' Tools + DEX/INT saves; Fighter gets All Armor + All Weapons + STR/CON saves; etc.).
+  - `CLASS_STARTING_EQUIPMENT` — default starter pack for all 12 classes (~5-7 items + gold) mirrored from the frontend `startingEquipment.js`.
+  - `SKILL_INFO` — 18 D&D 5e skills with their ability + a one-line evocative blurb for each card description.
+- **Backend `services/character_deck.py`**:
+  - New deck source: **`proficiency`**. Seeder mints:
+    - 1 card per skill in `class.skillProficiencies` (rare, "Skill: Acrobatics — Stay on your feet…").
+    - 1 card per saving throw in `CLASS_PROFICIENCIES.saves` (rare, "Save: Dexterity — Add prof bonus…").
+    - 1 card per armor type (common, "Armor: Light Armor — Wear without penalty").
+    - 1 consolidated weapon-proficiency card (common; full list in description, top 3 in mechanical line).
+    - 1 card per tool (deduped from class default + background tool choices).
+  - New mints under existing **`item`** source:
+    - 1 card per item from `CLASS_STARTING_EQUIPMENT.items` (Rapier, Burglar's Pack, Thieves' Tools, etc.).
+    - 1 currency card "Coin Purse — N gp" with the starter gold amount.
+  - DM context block adds a new "Proficiencies" line and reorders to keep proficiencies after class features.
+- **Frontend `utils/deckRarity.js`**: Added `proficiency` source meta (🎯 teal label "Proficiencies"). Display order: race → language → background → trait → class → proficiency → spell → item → contact → quest → reputation → curse.
+- **Verified live (avon — Human Rogue Criminal)** — full 27-card deck:
+  - Race (1) · Language (1) · Background (1: Criminal Contact rare) · Trait (3: Ideal/Bond/Flaw) · Class (3: Sneak Attack epic + Thieves' Cant + Expertise) · **Proficiency (10)** · **Item (8)**.
+  - All cards mint with stable `art_key` so the player's uploaded art persists across characters/campaigns.
+  - DM now sees a proficiency-aware context block every turn — knows the character can speak Common, sneak in light armor, force a door (Athletics), pick a lock (Thieves' Tools), parry with a Rapier, etc.
+
 #### Intent-Driven Campaign Deck + Preview Button (Feb 2026)
 The Tone / Focus / Scope / Danger picks on the Campaign Setup screen now actively shape which event templates the DM has available to draft. Each event TYPE (encounter, faction, cultural, etc.) has an affinity weight against each axis, so a Combat-Heroic-City-High game gets a deck heavy on Encounters / Factions / Quests, while a Story-Balanced-Mixed-Medium one leans into Faction / Lore / Quest / Cultural. A new "Preview Campaign Deck" button on the setup screen shows the player exactly what they'll get before committing.
 - **Backend `data/event_catalog.py`**:

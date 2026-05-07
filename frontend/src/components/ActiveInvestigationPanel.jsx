@@ -622,7 +622,14 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed }) =
                 </div>
               </div>
             ) : (
-              <div className="text-[12.5px] text-amber-100 italic font-serif leading-relaxed line-clamp-6">
+              <div
+                className={`text-[12.5px] text-amber-100 italic font-serif leading-relaxed ${
+                  isActive
+                    ? 'overflow-y-auto pr-1 max-h-[260px] sm:max-h-[320px]'
+                    : 'line-clamp-6'
+                }`}
+                data-testid={isActive ? 'beat-description-active' : undefined}
+              >
                 {beat.description}
               </div>
             )}

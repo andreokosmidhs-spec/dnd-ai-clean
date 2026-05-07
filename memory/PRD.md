@@ -38,6 +38,20 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Hook-Anchored Opening Scene + Readable Beat Cards (Feb 2026)
+Fixed two related bugs in the open-ended investigation flow:
+1. **Opening scene was generic** — Engaging a hook like *"wooden sign about a lost family heirloom"* used to draft a beat titled *"Curious Marketplace"* with marketplace ambient. The hook subject was never named.
+2. **Beat description was clipped** — `line-clamp-6` cut the active beat's text mid-sentence ("…As you scan the area, a…").
+
+- **Backend `services/storyline_service.py`** (`draft_initial_scene`):
+  - System message rewritten to forbid generic ambient openings and require the scene to foreground the literal hook subject.
+  - Prompt body now includes a HARD GROUNDING RULES block: title must reference the hook, description's FIRST sentence must name the hook object directly, task must be a verb phrase aimed at the hook subject (e.g. "Read the sign"), and ambient detail can only be texture *around* the subject.
+  - Verified live with hook *"wooden sign about a lost family heirloom"* → `title: "The Heirloom Notice"`, beat `title: "The Posted Sign"`, description opens *"The wooden sign hangs at eye level, ink still wet from the morning…"*, task *"Read the sign"*.
+- **Frontend `components/ActiveInvestigationPanel.jsx`** (`BeatCard`):
+  - Active beat description now uses `overflow-y-auto pr-1 max-h-[260px] sm:max-h-[320px]` so the player can scroll the full text inside the card.
+  - Inactive cards keep `line-clamp-6` for visual rhythm.
+  - Added `data-testid="beat-description-active"` for testing.
+
 #### Proficiency + Item Cards in the Player's Deck (Feb 2026)
 The deck now includes every proficiency and starting item the character owns — not just race/class/background features. Avon's Rogue went from 9 cards → **27 cards**, capturing his full mechanical identity in deck form.
 - **Backend `data/character_features.py`**:

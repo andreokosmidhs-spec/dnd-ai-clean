@@ -203,14 +203,55 @@ async def extract_hooks_llm(narration: str, max_hooks: int = 3) -> List[Dict]:
         return []
 
 
+def _hooks_overlap(a: Dict, b: Dict) -> bool:
+    """Two hooks overlap if their character spans intersect or one contains
+    the other's topic words. Used to dedupe regex+LLM merges."""
+    try:
+        a_s, a_e = int(a.get("start", -1)), int(a.get("end", -1))
+        b_s, b_e = int(b.get("start", -1)), int(b.get("end", -1))
+    except Exception:
+        return False
+    if a_s < 0 or b_s < 0:
+        return False
+    # Span intersection
+    if not (a_e <= b_s or b_e <= a_s):
+        return True
+    # Topic-word containment
+    a_top = (a.get("topic") or "").lower().strip()
+    b_top = (b.get("topic") or "").lower().strip()
+    if a_top and b_top and (a_top in b_top or b_top in a_top):
+        return True
+    return False
+
+
 async def extract_hooks(narration: str, max_hooks: int = 3) -> List[Dict]:
-    """Combined extractor — regex fast-path first, LLM fallback if it returned nothing."""
+    """Combined extractor — runs BOTH the regex enumeration pass and the LLM
+    semantic pass, then merges (regex first, LLM appended for non-overlapping
+    spans). This catches both the canonical 'three things draw the eye' list
+    AND salient narrative objects mentioned earlier in the paragraph (e.g. a
+    posted notice, an open ledger, a sign on a wall) that the player is
+    likely to engage with even though the DM didn't enumerate them.
+    Capped at `max_hooks * 2` to give the engagement detector enough surface
+    area without flooding the inline-render budget.
+    """
     if not narration:
         return []
-    hooks = extract_hooks_regex(narration, max_hooks=max_hooks)
-    if hooks:
-        return hooks
-    return await extract_hooks_llm(narration, max_hooks=max_hooks)
+    regex_hooks = extract_hooks_regex(narration, max_hooks=max_hooks)
+    # Always run the LLM pass too (cheap gpt-4o-mini call). Ask for up to
+    # max_hooks more so we don't double-count the enumeration when both fire.
+    try:
+        llm_hooks = await extract_hooks_llm(narration, max_hooks=max_hooks)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"LLM hook merge failed: {exc}")
+        llm_hooks = []
+    # Merge: keep regex hooks, then append LLM hooks that don't overlap.
+    merged: List[Dict] = list(regex_hooks)
+    for h in llm_hooks:
+        if not any(_hooks_overlap(h, m) for m in merged):
+            merged.append(h)
+    # Sort by start position so inline render order matches the prose flow.
+    merged.sort(key=lambda h: int(h.get("start", 0)))
+    return merged[: max(max_hooks * 2, max_hooks)]
 
 
 # -------------------- engagement detection --------------------

@@ -38,6 +38,15 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Robust Hook Engagement — Merged Extractor + Re-extract Fallback (Feb 2026)
+Fixed "I walk to the wooden sign and nothing happens" — players engaging with concrete narrative objects that the regex pass missed (because it stopped at the canonical "Three things draw the eye" enumeration) now correctly draft a storyline.
+- **Backend `services/hook_extractor.py`**:
+  - `extract_hooks` no longer short-circuits when the regex pass returns hits. It now ALWAYS runs the LLM pass too and merges (regex first, then LLM hooks for non-overlapping spans), sorted by character position. New `_hooks_overlap` helper dedupes by span intersection or topic-word containment. Cap raised to `max_hooks * 2` so the engagement detector has enough surface area.
+  - Verified live: opening narration with both "Three things draw the eye" enumeration AND a "wooden sign about a lost family heirloom" mention now produces 6 hooks (3 regex + 3 LLM); the wooden sign appears as topic `"lost family heirloom"`, verb `investigate`.
+- **Backend `routers/lean_dm.py`**:
+  - After the initial engagement check fails, the endpoint now re-extracts hooks on the fly from the most recent DM narration text (last 1-2 turns or `starting_scene.introText` on turn 1), merges any newly-discovered hooks with the cached `active_hooks`, and retries `detect_engaged_hook`. This rescues OLD campaigns whose `starting_scene.hooks` was saved with only the canonical enumeration before this fix shipped.
+  - Verified live: cached 3-hook list (no wooden sign) + player action *"I walk to the wooden sign…"* → initial engagement returns NONE → re-extraction finds `"sign"` → engagement succeeds → storyline drafts.
+
 #### Hook-Anchored Opening Scene + Readable Beat Cards (Feb 2026)
 Fixed two related bugs in the open-ended investigation flow:
 1. **Opening scene was generic** — Engaging a hook like *"wooden sign about a lost family heirloom"* used to draft a beat titled *"Curious Marketplace"* with marketplace ambient. The hook subject was never named.

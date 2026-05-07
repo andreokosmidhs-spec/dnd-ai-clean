@@ -387,6 +387,42 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             logger.warning(f"Hook engagement check failed: {exc}")
             engaged_hook = None
 
+    # Fallback: cached hooks may be stale (older campaigns saved only the
+    # canonical "three things" enumeration and missed concrete narrative
+    # objects like a posted notice or a sign on a wall). Re-extract hooks
+    # from the most recent DM narration on demand and retry engagement so
+    # players never get stuck targeting something the narration clearly
+    # showed but the cached hook list omitted.
+    if engaged_hook is None:
+        try:
+            recent_text_parts: List[str] = []
+            # Most recent DM narration from history (last 1-2 turns).
+            for m in reversed(history or []):
+                if m.get("role") == "dm" and m.get("content"):
+                    recent_text_parts.append(str(m["content"]))
+                    if len(recent_text_parts) >= 2:
+                        break
+            # First-turn fallback: starting_scene introText.
+            if not recent_text_parts:
+                ss = campaign.get("starting_scene") or {}
+                intro = ss.get("introText") or ss.get("intro_text")
+                if intro:
+                    recent_text_parts.append(str(intro))
+            recent_narration = "\n\n".join(recent_text_parts)[:4000]
+            if recent_narration:
+                refreshed = await extract_hooks(recent_narration, max_hooks=5)
+                # Keep only hooks not already in active_hooks (by topic match).
+                seen_topics = {(h.get("topic") or "").lower() for h in active_hooks}
+                new_hooks = [
+                    h for h in refreshed
+                    if (h.get("topic") or "").lower() not in seen_topics
+                ]
+                if new_hooks:
+                    merged_pool = list(active_hooks) + new_hooks
+                    engaged_hook = await detect_engaged_hook(req.player_action, merged_pool)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Hook re-extraction fallback failed: {exc}")
+
     # Build LLM prompt — inject current time-of-day for narration grounding.
     clock_hour = get_world_clock(campaign)
     passive_perception = compute_passive_perception(character)

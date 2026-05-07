@@ -588,9 +588,18 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         if req.check_result:
             check_note = f"\n[Check result context: {req.check_result}]\n"
 
+        # Server-side intent pre-check — scan the player's action for keyword
+        # patterns matching the DM Reasoning Chart (Stealth / Deception /
+        # Intimidation / etc.). If a strong cue fires, inject a HARD DIRECTIVE
+        # into the user message forcing the DM to narrate the BEAT only and
+        # end with a check prompt instead of auto-resolving.
+        from services.intent_classifier import classify_player_intent, build_intent_directive
+        intent_hit = classify_player_intent(req.player_action)
+        intent_directive = build_intent_directive(intent_hit) if intent_hit else ""
+
         user_msg = (
             f"{history_block}"
-            f"Player action: {req.player_action}{check_note}\n"
+            f"Player action: {req.player_action}{check_note}{intent_directive}\n"
             f"Narrate the next beat."
         )
 
@@ -804,6 +813,16 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             "hooks": narration_hooks,
             "engaged_hook_id": (engaged_hook or {}).get("id") if engaged_hook else None,
             "storyline": storyline_payload,
+            # Surface the detected intent so the frontend can flash a small
+            # "🎯 Stealth check expected" chip beside the player's message —
+            # the player sees the rule fired even if the DM still hedged.
+            "intent_hint": (
+                {
+                    "check_type": intent_hit["check_type"],
+                    "matched": intent_hit["matched"],
+                    "confidence": intent_hit["confidence"],
+                } if intent_hit else None
+            ),
             "world_state_update": {
                 "clock_hour": new_clock_hour,
                 "time_of_day": time_bucket["key"],     # string — legacy compatibility

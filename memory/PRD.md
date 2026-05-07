@@ -38,6 +38,31 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Server-Side Intent Pre-Classifier (Feb 2026)
+The DM was still occasionally auto-resolving stealth / deception / intimidation actions instead of asking for a check. Wired a fast keyword classifier that runs BEFORE the DM call and forces the rule.
+
+**Backend** (`services/intent_classifier.py` new):
+- 11 check categories (Stealth, Deception, Performance, Intimidation, Persuasion, Insight, Athletics, Acrobatics, Perception, Investigation, Sleight of Hand) with weighted regex patterns covering ~80+ natural-language phrasings.
+- `classify_player_intent(text)` returns `{check_type, matched, score, confidence}` or None when nothing crosses the threshold.
+- `build_intent_directive(intent)` produces the hard-rule directive injected into the DM user message: *"You MUST narrate ONLY the visible BEAT and END your reply by prompting the appropriate {check} check naturally. Do NOT auto-resolve the outcome (don't say the NPC instantly believes / sees you / is intimidated)."*
+
+**Backend** (`routers/lean_dm.py`):
+- Pre-classifies every `req.player_action` and appends the directive to the user message before sending to the LLM.
+- Adds `data.intent_hint = {check_type, matched, confidence}` to the response payload.
+
+**Frontend** (`AdventureLogWithDM.jsx`):
+- DM message now carries `intentHint`; renders a small amber chip above the narration: *"🎲 Stealth check expected · cued by 'pretend not to see'"*. Hover tooltip explains the DM was nudged. Visible only when a rule fired.
+
+**Verified live** with the screenshot scenarios:
+- *"I pretend not to see Kellan and walk to a stall to lure him close, then surprise him"* → **Stealth/HIGH (score 7)**, matched "pretend not to see"
+- *"I sing a song to distract the guards"* → **Performance/HIGH (score 7)**
+- *"I draw my dagger and press it against his throat"* → **Intimidation**
+- *"I tell him I am the new bookkeeper for House Veillane"* → **Deception**
+- *"I walk to the wooden sign and read it"* → **no check** (correctly skipped)
+- *"I ask the merchant his price"* → **no check** (correctly skipped)
+
+Together with the player feedback loop, the DM now has a SAFETY NET (server-side rule firing before the LLM responds) AND a TRAINER (player feedback persisted into future system prompts).
+
 #### DM Reasoning Chart inside Feedback Modal (Feb 2026)
 Quick-reference quick-glance card embedded at the top of the "Ask the DM" feedback modal so players can self-serve before round-tripping a feedback request.
 - Collapsible panel ("DM Reasoning Chart — what triggers what check") with a sticky-header table mapping 11 common player intents → canonical ability check → typical DC range → notes.

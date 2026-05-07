@@ -937,6 +937,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           entity_mentions: data.entity_mentions || [],
           hooks: data.hooks || [],
           engagedHookId: data.engaged_hook_id || null,
+          intentHint: data.intent_hint || null,  // {check_type, matched, confidence}
           timestamp: Date.now(),
           isCinematic: isCinematic,
           audioUrl: null,
@@ -1641,6 +1642,24 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                         <div className={`text-base leading-relaxed ${
                           entry.isWorldBrief ? 'text-amber-50/90 italic font-serif tracking-wide' : 'text-violet-50'
                         }`}>
+                          {/* Intent classifier hint — flashes a small chip
+                              above the narration when the player's prior
+                              action triggered a hard rule (e.g. Stealth /
+                              Intimidation / Persuasion). Helps the player
+                              see the rule fired even if the DM still hedged. */}
+                          {entry.intentHint?.check_type && (
+                            <div
+                              className="inline-flex items-center gap-1.5 mb-2 px-2 py-0.5 rounded-md border border-amber-400/60 bg-amber-950/40 text-amber-100 text-[11px] not-italic font-bold tracking-wide"
+                              data-testid="intent-hint-chip"
+                              title={`Detected '${entry.intentHint.matched}' — DM was nudged to require a ${entry.intentHint.check_type} check.`}
+                            >
+                              <Dice6 className="w-3 h-3" />
+                              <span>{entry.intentHint.check_type} check expected</span>
+                              <span className="text-amber-300/70 italic font-normal">
+                                · cued by "{entry.intentHint.matched}"
+                              </span>
+                            </div>
+                          )}
                           {/* Entity Links + Hooks: parse entity markup AND inline DM hook spans */}
                           {(
                             (entry.entity_mentions && entry.entity_mentions.length > 0) ||

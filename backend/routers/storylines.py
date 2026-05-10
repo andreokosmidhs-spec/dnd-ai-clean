@@ -1584,3 +1584,240 @@ def _ability_for_check(check: str) -> str:
         "Nature": "int", "Religion": "int",
     }
     return m.get(check, "wis")
+
+
+
+# ====================================================================
+# DC ADJUSTMENT — player types their pitch, DM sizes it up, returns the
+# adjusted DC + rationale BEFORE the roll
+# ====================================================================
+
+class AdjustDCBody(BaseModel):
+    """Player tells the DM what they actually say/do for a social check.
+    The DM evaluates pitch quality vs the NPC's personality + scene context
+    and returns an adjusted DC with a rationale. The roll happens after,
+    against the adjusted DC.
+    """
+    beat_index: int
+    approach_text: str
+
+
+async def _judge_pitch_quality(
+    *,
+    campaign: Dict,
+    storyline: Dict,
+    beat: Dict,
+    approach_text: str,
+    npc_card: Optional[Dict] = None,
+) -> Dict:
+    """LLM judge: evaluates the player's pitch and returns a DC modifier
+    in the range -5..+8 from the beat's base DC, plus a one-line rationale.
+    Smart, in-character, well-targeted offers REDUCE the DC; insulting,
+    blunt, or off-target attempts RAISE it.
+    """
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    base_dc = int(beat.get("dc") or 12)
+    check_type = beat.get("check_type") or "Persuasion"
+
+    if not api_key:
+        return {
+            "modifier": 0,
+            "adjusted_dc": base_dc,
+            "rationale": "Judge offline — DC unchanged.",
+            "quality": "neutral",
+        }
+
+    intent = campaign.get("intent") or {}
+    realm = (campaign.get("world") or {}).get("world_core", {}).get("name", "the realm")
+
+    # NPC context — voice, ideal, flaw, motive — so the judge knows what
+    # would actually move THIS person.
+    npc_block = ""
+    if npc_card and isinstance(npc_card.get("secret_content"), dict):
+        sc = npc_card["secret_content"]
+        pers = sc.get("personality", {})
+        npc_block = (
+            f"NPC TARGET: {npc_card.get('title','an NPC')}\n"
+            f"  voice: {sc.get('speech_style','plain')}\n"
+            f"  trait: {pers.get('trait','')}\n"
+            f"  ideal: {pers.get('ideal','')}\n"
+            f"  bond: {pers.get('bond','')}\n"
+            f"  flaw: {pers.get('flaw','')}\n"
+            f"  motive THIS scene: {sc.get('current_motivation','')}\n"
+        )
+    else:
+        npc_block = "NPC TARGET: an NPC the player is trying to influence (no detailed sheet on file).\n"
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        prompt = (
+            f"You are an experienced D&D Dungeon Master sizing up the player's PITCH "
+            f"before they roll a {check_type} check. Your job: rate the quality of what "
+            f"they actually said/did and adjust the base DC accordingly. Smart, "
+            f"in-character, well-targeted approaches REDUCE the DC. Insulting, blunt, "
+            f"clueless, or off-target attempts RAISE the DC. Be a fair table DM, not a "
+            f"pushover.\n\n"
+            f"=== CAMPAIGN ===\n"
+            f"Realm: {realm} | Tone: {intent.get('tone','heroic')}\n\n"
+            f"=== STORYLINE & BEAT ===\n"
+            f"Storyline: {storyline.get('title','the scene')}\n"
+            f"Beat: {beat.get('title','')} — base DC {base_dc}\n"
+            f"Beat description: {(beat.get('description') or '')[:400]}\n"
+            f"Check: {check_type}\n\n"
+            f"=== {npc_block}\n"
+            f"=== PLAYER'S PITCH (what they actually say/do) ===\n"
+            f'"{approach_text}"\n\n'
+            "=== QUALITY RUBRIC ===\n"
+            "  brilliant   (modifier -5 to -3): targets the NPC's bond/flaw exactly, "
+            "                                   in-character, leverages a real lever\n"
+            "  smart       (modifier -3 to -1): reasonable angle, decent framing, plays "
+            "                                   to NPC's interests\n"
+            "  neutral     (modifier  0 to +1): generic approach, neither aided nor hurt\n"
+            "  weak        (modifier +2 to +4): blunt, generic, ignores NPC traits, "
+            "                                   slightly off-tone\n"
+            "  foolish     (modifier +5 to +8): insulting, threatening when persuading, "
+            "                                   contradicts NPC values, calls them stupid\n\n"
+            "Output strict JSON, no code fence:\n"
+            "{\n"
+            "  \"modifier\": -3,           // integer -5..+8\n"
+            "  \"adjusted_dc\": 10,        // base + modifier, clamped 5..25\n"
+            "  \"rationale\": \"one short sentence — why this modifier (cite a specific element of the pitch)\",\n"
+            "  \"quality\": \"brilliant|smart|neutral|weak|foolish\"\n"
+            "}"
+        )
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"dc-adjust-{uuid4()}",
+            system_message=(
+                "You are a fair, experienced D&D Dungeon Master. You reward smart play "
+                "with lower DCs and punish dumb play with higher DCs — never zero, never "
+                "auto-success. Output strict JSON only."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        s = raw.strip()
+        if s.startswith("```"):
+            s = s.strip("`")
+            if s.lower().startswith("json"):
+                s = s[4:].lstrip()
+        import json as _json
+        try:
+            data = _json.loads(s)
+        except Exception:
+            a, b = s.find("{"), s.rfind("}")
+            data = _json.loads(s[a:b + 1]) if a != -1 and b > a else {}
+        if not isinstance(data, dict):
+            return {
+                "modifier": 0,
+                "adjusted_dc": base_dc,
+                "rationale": "Judge returned malformed output — DC unchanged.",
+                "quality": "neutral",
+            }
+        try:
+            mod = int(data.get("modifier", 0))
+        except Exception:
+            mod = 0
+        mod = max(-5, min(8, mod))
+        adjusted = max(5, min(25, base_dc + mod))
+        return {
+            "modifier": mod,
+            "adjusted_dc": adjusted,
+            "rationale": (data.get("rationale") or "").strip()[:240],
+            "quality": (data.get("quality") or "neutral").strip().lower()[:16],
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"pitch judge failed: {exc}")
+        return {
+            "modifier": 0,
+            "adjusted_dc": base_dc,
+            "rationale": f"Judge errored: {exc}",
+            "quality": "neutral",
+        }
+
+
+@router.post("/{campaign_id}/storylines/{storyline_id}/adjust-dc")
+async def adjust_beat_dc(campaign_id: str, storyline_id: str, body: AdjustDCBody):
+    """Player tells the DM what they say/do; DM evaluates and returns the
+    DC modifier + adjusted DC. The storyline beat is updated in place so
+    subsequent rolls happen against the adjusted DC. Idempotent in spirit:
+    submitting a new pitch overwrites the prior adjustment (player can
+    revise their pitch up until they actually roll).
+    """
+    text = (body.approach_text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="approach_text is required")
+    if len(text) < 8:
+        raise HTTPException(status_code=400, detail="Pitch is too short — say more.")
+
+    sl = await _storylines_collection().find_one(
+        {"campaign_id": campaign_id, "id": storyline_id}, {"_id": 0}
+    )
+    if not sl:
+        raise HTTPException(status_code=404, detail="Storyline not found")
+    beats = sl.get("beats") or []
+    if body.beat_index < 0 or body.beat_index >= len(beats):
+        raise HTTPException(status_code=400, detail="beat_index out of range")
+    beat = beats[body.beat_index]
+
+    # Snapshot the original base DC ONCE (so revising the pitch always
+    # adjusts from the truth, not from a prior adjustment).
+    if "base_dc" not in beat:
+        beat["base_dc"] = int(beat.get("dc") or 12)
+    base_dc = int(beat["base_dc"])
+    beat["dc"] = base_dc  # reset before recompute
+
+    campaign = await _load_campaign(campaign_id)
+
+    # Try to find the NPC card the player is talking to — pull from beat.targets[]
+    # first (most reliable), fall back to scanning the description.
+    npc_card: Optional[Dict] = None
+    target_npc_name: Optional[str] = None
+    for t in (beat.get("targets") or []):
+        if isinstance(t, dict) and (t.get("type") or "").lower() in {"npc", "character"}:
+            target_npc_name = (t.get("name") or "").strip()
+            break
+    if target_npc_name:
+        npc_card = await _cards_collection().find_one(
+            {
+                "campaign_id": campaign_id,
+                "type": "character",
+                "title": target_npc_name,
+            },
+            {"_id": 0},
+        )
+
+    judgment = await _judge_pitch_quality(
+        campaign=campaign,
+        storyline=sl,
+        beat=beat,
+        approach_text=text,
+        npc_card=npc_card,
+    )
+
+    # Stamp the adjustment onto the beat so the UI can render it AND so
+    # downstream resolve calls roll against the adjusted DC. We also keep
+    # the player's pitch on the beat as `pitch_text` for the next-scene
+    # prompt to weave in naturally.
+    beat["dc"] = int(judgment["adjusted_dc"])
+    beat["dc_adjustment"] = {
+        "base_dc": base_dc,
+        "modifier": int(judgment["modifier"]),
+        "adjusted_dc": int(judgment["adjusted_dc"]),
+        "quality": judgment["quality"],
+        "rationale": judgment["rationale"],
+        "pitch_text": text[:600],
+    }
+    beat["pitch_text"] = text[:600]
+    beats[body.beat_index] = beat
+
+    await _storylines_collection().update_one(
+        {"campaign_id": campaign_id, "id": storyline_id},
+        {"$set": {"beats": beats}},
+    )
+    sl["beats"] = beats
+    return {
+        "ok": True,
+        "judgment": judgment,
+        "storyline": storyline_to_dict(sl),
+    }

@@ -7,6 +7,7 @@ import { Search, Check, X, Dice5, Loader2, Trophy, Scroll, Lock, RotateCw, Arrow
 import { toast } from 'sonner';
 import { abilityMod } from '../utils/hp';
 import { DMFeedbackButton } from './storyline/DMFeedbackButton';
+import { PitchInput } from './storyline/PitchInput';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -636,24 +637,37 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed, cam
                 Show the public-facing prompt + lock instead so the player
                 doesn't see the answer before they roll. */}
             {beat.reveal_type === 'knowledge' && !resolved ? (
-              <div className="rounded-md border-2 border-amber-400/70 bg-stone-900 p-3 text-center shadow-inner">
-                <Lock className="h-5 w-5 text-amber-200 mx-auto mb-1.5" />
-                <div className="text-[14px] text-amber-50 italic font-serif leading-snug font-medium">
-                  {beat.prompt || `Roll ${beat.check_type} (DC ${beat.dc}) to reveal what you can piece together.`}
-                </div>
-                {Array.isArray(beat.targets) && beat.targets.length > 0 && (
-                  <div className="mt-2 flex flex-wrap justify-center gap-1.5">
-                    {beat.targets.slice(0, 3).map((t, ti) => (
-                      <span
-                        key={ti}
-                        className="px-2 py-0.5 rounded bg-amber-500 border border-amber-300 text-[11px] uppercase tracking-wide text-stone-950 font-bold"
-                      >
-                        {t.type}
-                      </span>
-                    ))}
+              <>
+                <div className="rounded-md border-2 border-amber-400/70 bg-stone-900 p-3 text-center shadow-inner">
+                  <Lock className="h-5 w-5 text-amber-200 mx-auto mb-1.5" />
+                  <div className="text-[14px] text-amber-50 italic font-serif leading-snug font-medium">
+                    {beat.prompt || `Roll ${beat.check_type} (DC ${beat.dc}) to reveal what you can piece together.`}
                   </div>
+                  {Array.isArray(beat.targets) && beat.targets.length > 0 && (
+                    <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                      {beat.targets.slice(0, 3).map((t, ti) => (
+                        <span
+                          key={ti}
+                          className="px-2 py-0.5 rounded bg-amber-500 border border-amber-300 text-[11px] uppercase tracking-wide text-stone-950 font-bold"
+                        >
+                          {t.type}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Pitch input — only social knowledge beats. The DM judges
+                    the pitch, adjusts the DC, then the player rolls. */}
+                {isActive && campaignId && storylineId && (
+                  <PitchInput
+                    campaignId={campaignId}
+                    storylineId={storylineId}
+                    beat={beat}
+                    beatIndex={index}
+                    onAdjusted={onCorrectionApplied}
+                  />
                 )}
-              </div>
+              </>
             ) : beat.reveal_type === 'knowledge' && beat.status === 'failed' ? (
               <div className="rounded-md border-2 border-rose-400/70 bg-stone-900 p-3">
                 <div className="flex items-center gap-1.5 text-rose-200 text-[11px] uppercase tracking-wider font-bold mb-1">
@@ -678,6 +692,22 @@ const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed, cam
                     : ''
                 )}
               </div>
+            )}
+
+            {/* Action beats with a SOCIAL check (Persuasion / Deception /
+                Intimidation / Performance) — the player can also pitch
+                what they say to adjust the DC before rolling. Knowledge
+                beats already render PitchInput inside the locked panel
+                above. */}
+            {!resolved && isActive && beat.reveal_type !== 'knowledge'
+              && Number(beat.dc) > 0 && campaignId && storylineId && (
+              <PitchInput
+                campaignId={campaignId}
+                storylineId={storylineId}
+                beat={beat}
+                beatIndex={index}
+                onAdjusted={onCorrectionApplied}
+              />
             )}
 
             {beat.outcome_text && (

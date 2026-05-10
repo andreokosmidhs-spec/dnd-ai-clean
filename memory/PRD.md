@@ -38,6 +38,25 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Pitch-Driven DC Adjustment for Social Checks (Feb 2026)
+Player asked: when the DM asks for a Persuasion roll, the DC should reflect HOW the player pitches it — smart leverage drops the DC, foolish blunt insults raise it. Wired end-to-end.
+
+**Backend** (`routers/storylines.py`):
+- New `_judge_pitch_quality` LLM helper — fair-DM rubric mapping pitch → modifier (`brilliant -5..-3, smart -3..-1, neutral 0..+1, weak +2..+4, foolish +5..+8`). Pulls the target NPC's hidden identity sheet (speech_style, ideal/bond/flaw, current_motivation) so the judge knows what would actually move *this* NPC, not just any NPC.
+- New `POST /api/campaigns/{id}/storylines/{slid}/adjust-dc` endpoint — body `{beat_index, approach_text}`. Snapshots the original DC as `base_dc`, computes the modifier, stamps `dc_adjustment: {base_dc, modifier, adjusted_dc, quality, rationale, pitch_text}` on the beat, and updates the storyline so subsequent rolls roll against the adjusted DC. Idempotent — submitting a revised pitch always anchors from the original `base_dc`.
+- **Verified live with the same beat (base DC 13, target Kellan)**:
+  - *"I tell him I know about his sister, slide a 50gp purse, ask for the name"* → **smart, -3, DC 10** ("targets Kellan's bond and offers a tangible incentive")
+  - *"Tell me everything you know"* → **weak, +2, DC 15**
+  - *"You worthless little rat — talk before I lose patience"* → **foolish, +5, DC 18**
+
+**Frontend** (`components/storyline/PitchInput.jsx` new + `ActiveInvestigationPanel.jsx`):
+- New `<PitchInput>` component renders inline on any active beat with a SOCIAL check (Persuasion / Deception / Intimidation / Performance / Insight). Above-prompt label *"Speak first — the DM sets the DC after hearing you out"*.
+- Textarea for the player's actual words, "Pitch & Set DC" button → calls the adjust-dc endpoint → renders a color-coded judgment chip (emerald for brilliant/smart, amber for weak, rose for foolish) showing the new DC big and bold, the modifier (`+5`, `-3`), and the DM's one-line rationale.
+- "Revise pitch" lets the player rewrite up until they roll; each submit re-anchors from `base_dc` (no DC creep).
+- Wired into both knowledge-beat (locked prompt) AND action-beat (social check on the description) paths, so any social moment benefits.
+
+The DC chip on the card header reflects `beat.dc` so it updates live the moment the pitch is judged.
+
 #### Server-Side Intent Pre-Classifier (Feb 2026)
 The DM was still occasionally auto-resolving stealth / deception / intimidation actions instead of asking for a check. Wired a fast keyword classifier that runs BEFORE the DM call and forces the rule.
 

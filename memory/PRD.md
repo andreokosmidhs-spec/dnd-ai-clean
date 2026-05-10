@@ -38,6 +38,35 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Intel-Locked Pitch Grading + Auto-Reveal NPC Sheet on Passed Social Checks (Feb 2026)
+Closing the loop on the redacted-NPC-card system: passing a social check now actually MATTERS — it uncloaks fields on the NPC's identity sheet, and those revealed fields are the ONLY ones the pitch judge can credit. Intel becomes a mechanical advantage.
+
+**1. Intel-locked pitch grading** (`routers/storylines.py::_judge_pitch_quality`):
+- The judge now reads the NPC card's `revealed_fields` set and replaces unrevealed fields with `[hidden — player has not learned this]` before sending to the LLM.
+- Explicit instruction: *"You may NOT reward a pitch that 'happens to' target a hidden lever — only credit pitches that target levers marked above. If the pitch coincidentally hits a hidden lever, rate it on its surface merits only — call it 'lucky' in the rationale."*
+- **Verified**: same pitch *"I tell him I know about his sister, slide a 50gp purse"* against Kellan
+  - Bond hidden: rated `SMART` (-3) — only the coin counts, sister mention is "lucky"
+  - Bond revealed (via Insight): rated `BRILLIANT` (-3) — judge explicitly cites "appeals to his flaw of being easily bought while referencing his bond with his sister"
+
+**2. Auto-reveal NPC fields on passed social checks** (`routers/storylines.py::_reveal_npc_fields_on_resolve`):
+- New `_CHECK_REVEALS_NPC_FIELDS` map:
+  - **Insight** → `personality.flaw`, `personality.bond`, `speech_style`, `mannerisms`
+  - **Persuasion** → `current_motivation`, `personality.ideal`
+  - **Intimidation** → `secret_0`, `personality.flaw`
+  - **Deception** → `personality.ideal`, `passive_insight`
+  - **Investigation** → `background`, `stats.ac`, `stats.hp`
+  - **History** → `allegiances`
+- Fires on `outcome=passed` for every NPC named in `beat.targets[]`. Skips fields the NPC doesn't actually have data for. Stamps `is_new: true` so the card lights up emerald in the deck.
+- Wired into both `/resolve` (roll path) and `/creative` endpoints.
+
+**3. Frontend** (`ActiveInvestigationPanel.jsx`):
+- Both `callResolve` and `callCreative` now read `data.npc_field_reveals` from the response and surface a per-NPC success toast: *"You learned: Kellan's flaw, bond, speech style"* (5.5s). Broadcasts `rpg:cards-refreshed` so any open Knowledge Deck panel re-renders the freshly-uncloaked card live.
+
+End-to-end loop:
+1. Player passes Insight on Kellan → 3 fields uncloak on his card (toast + emerald glow + sheet expands)
+2. Player pitches a Persuasion attempt referencing the now-known bond → judge credits it as BRILLIANT, DC drops -3 to -5
+3. Player rolls against the lower DC → success → next reveal cascades
+
 #### Pitch-Driven DC Adjustment for Social Checks (Feb 2026)
 Player asked: when the DM asks for a Persuasion roll, the DC should reflect HOW the player pitches it — smart leverage drops the DC, foolish blunt insults raise it. Wired end-to-end.
 

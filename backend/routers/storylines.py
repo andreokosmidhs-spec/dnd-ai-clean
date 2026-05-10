@@ -842,6 +842,23 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"target card mint failed (non-fatal): {exc}")
 
+    # On a passed social check, uncloak the appropriate fields on the
+    # target NPC's identity sheet (Insight → flaw+bond, Persuasion →
+    # motive+ideal, Intimidation → secret_0+flaw, Deception → ideal,
+    # Investigation → background+ac+hp, History → allegiances). Revealed
+    # fields render un-redacted on the NPC card and become available to
+    # the pitch judge as legitimate levers.
+    npc_field_reveals: List[Dict] = []
+    if body.outcome == "passed":
+        try:
+            npc_field_reveals = await _reveal_npc_fields_on_resolve(
+                campaign_id=campaign_id,
+                beat=cur_beat,
+                outcome=body.outcome,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"NPC field reveal failed (non-fatal): {exc}")
+
     # If failed (and not press-on), produce a fail-forward complication so the
     # Adventure Log gets a narrative beat tying the failure to the story.
     # On success/skip, clear any previously carried complication — the player
@@ -953,6 +970,7 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
         "reward": reward,
         "lead": lead_card,
         "target_cards": target_cards,
+        "npc_field_reveals": npc_field_reveals,
     }
 
 
@@ -1029,6 +1047,7 @@ async def creative_approach_endpoint(
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"lead card mint via creative failed: {exc}")
     # Auto-mint Knowledge Cards for revealed entities on a creative pass.
+    npc_field_reveals: List[Dict] = []
     if storyline_outcome == "passed":
         try:
             target_cards = await _mint_target_cards_if_revealed(
@@ -1039,6 +1058,16 @@ async def creative_approach_endpoint(
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"target card mint via creative failed: {exc}")
+        # Same auto-reveal logic as the roll path — passed social check
+        # uncloaks NPC sheet fields.
+        try:
+            npc_field_reveals = await _reveal_npc_fields_on_resolve(
+                campaign_id=campaign_id,
+                beat=cur_beat,
+                outcome=storyline_outcome,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"NPC field reveal via creative failed: {exc}")
 
     complication_text: Optional[str] = None
     if storyline_outcome == "failed":
@@ -1120,6 +1149,7 @@ async def creative_approach_endpoint(
         "reward": reward,
         "lead": lead_card,
         "target_cards": target_cards,
+        "npc_field_reveals": npc_field_reveals,
     }
 
 
@@ -1587,10 +1617,107 @@ def _ability_for_check(check: str) -> str:
 
 
 
-# ====================================================================
-# DC ADJUSTMENT — player types their pitch, DM sizes it up, returns the
-# adjusted DC + rationale BEFORE the roll
-# ====================================================================
+# Map: which check, when passed against an NPC, reveals which fields on
+# their identity sheet. The values are written into the NPC card's
+# `revealed_fields` array; the frontend NPCIdentityPanel re-renders those
+# fields un-redacted, and `_judge_pitch_quality` lets the player leverage
+# them in pitches.
+_CHECK_REVEALS_NPC_FIELDS: Dict[str, List[str]] = {
+    # Reading body language → see what they care about and what trips them
+    "Insight": ["personality.flaw", "personality.bond", "speech_style", "mannerisms"],
+    # Convincing them — you learn what they actually want from this scene
+    "Persuasion": ["current_motivation", "personality.ideal"],
+    # Intimidation → they crack and one buried secret slips
+    "Intimidation": ["secret_0", "personality.flaw"],
+    # Successfully fooling them shows you read them well — their ideal
+    "Deception": ["personality.ideal", "passive_insight"],
+    # Investigation around / about them — backstory + stats glimpse
+    "Investigation": ["background", "stats.ac", "stats.hp"],
+    # History / lore — their allegiances are public knowledge if you know
+    "History": ["allegiances"],
+}
+
+
+async def _reveal_npc_fields_on_resolve(
+    *,
+    campaign_id: str,
+    beat: Dict,
+    outcome: str,
+) -> List[Dict]:
+    """When a social check passes against a named NPC, append the appropriate
+    fields to that NPC's `revealed_fields` array so the player sees their
+    identity sheet uncloak in real time. Returns the list of NPC card patches
+    `[{title, newly_revealed: [...]}, ...]` so the frontend can highlight
+    the fresh info.
+    """
+    if outcome != "passed":
+        return []
+    check = beat.get("check_type")
+    fields = _CHECK_REVEALS_NPC_FIELDS.get(check) or []
+    if not fields:
+        return []
+
+    # NPC targets on the beat — these are the people the check actually
+    # acted upon. We unmask each one.
+    npc_names: List[str] = []
+    for t in (beat.get("targets") or []):
+        if not isinstance(t, dict):
+            continue
+        if (t.get("type") or "").lower() not in {"npc", "character"}:
+            continue
+        nm = (t.get("name") or "").strip()
+        if nm:
+            npc_names.append(nm)
+    if not npc_names:
+        return []
+
+    patches: List[Dict] = []
+    coll = _cards_collection()
+    for nm in npc_names[:3]:
+        card = await coll.find_one(
+            {"campaign_id": campaign_id, "type": "character", "title": nm},
+            {"_id": 0},
+        )
+        if not card:
+            continue
+        existing = set(card.get("revealed_fields") or ["title", "description"])
+        secret = card.get("secret_content") or {}
+        # Skip fields the NPC doesn't actually have data for — no point
+        # revealing an empty 'allegiances' list.
+        newly: List[str] = []
+        for f in fields:
+            if f in existing:
+                continue
+            # Validate the path actually has data
+            if f.startswith("personality."):
+                key = f.split(".", 1)[1]
+                if (secret.get("personality") or {}).get(key):
+                    newly.append(f)
+            elif f.startswith("stats."):
+                key = f.split(".", 1)[1]
+                if (secret.get("stats") or {}).get(key) is not None:
+                    newly.append(f)
+            elif f == "secret_0":
+                if (secret.get("secrets") or [None])[0]:
+                    newly.append(f)
+            elif f == "secret_1":
+                if len(secret.get("secrets") or []) > 1 and secret["secrets"][1]:
+                    newly.append(f)
+            else:
+                if secret.get(f):
+                    newly.append(f)
+        if not newly:
+            continue
+        merged = sorted(existing.union(newly))
+        await coll.update_one(
+            {"campaign_id": campaign_id, "type": "character", "title": nm},
+            {"$set": {"revealed_fields": merged, "is_new": True}},
+        )
+        patches.append({"title": nm, "newly_revealed": newly})
+    return patches
+
+
+
 
 class AdjustDCBody(BaseModel):
     """Player tells the DM what they actually say/do for a social check.
@@ -1631,19 +1758,37 @@ async def _judge_pitch_quality(
     realm = (campaign.get("world") or {}).get("world_core", {}).get("name", "the realm")
 
     # NPC context — voice, ideal, flaw, motive — so the judge knows what
-    # would actually move THIS person.
+    # would actually move THIS person. ONLY fields the player has REVEALED
+    # in-game count: knowing the NPC's bond (e.g. via Insight) unlocks the
+    # brilliant-pitch band; without it the judge plays blind and the player
+    # can only neutral-pitch their way through. This makes in-fiction intel
+    # mechanically rewarding.
     npc_block = ""
     if npc_card and isinstance(npc_card.get("secret_content"), dict):
         sc = npc_card["secret_content"]
+        revealed = set(npc_card.get("revealed_fields") or ["title", "description"])
         pers = sc.get("personality", {})
+
+        def _show(key: str, value: str) -> str:
+            """Render a field as either its real value or a hidden marker
+            so the judge knows it CANNOT factor that lever in."""
+            if key in revealed and value:
+                return str(value)
+            return "[hidden — player has not learned this]"
+
         npc_block = (
             f"NPC TARGET: {npc_card.get('title','an NPC')}\n"
-            f"  voice: {sc.get('speech_style','plain')}\n"
-            f"  trait: {pers.get('trait','')}\n"
-            f"  ideal: {pers.get('ideal','')}\n"
-            f"  bond: {pers.get('bond','')}\n"
-            f"  flaw: {pers.get('flaw','')}\n"
-            f"  motive THIS scene: {sc.get('current_motivation','')}\n"
+            f"  voice: {_show('speech_style', sc.get('speech_style','plain'))}\n"
+            f"  trait: {_show('personality.trait', pers.get('trait',''))}\n"
+            f"  ideal: {_show('personality.ideal', pers.get('ideal',''))}\n"
+            f"  bond:  {_show('personality.bond', pers.get('bond',''))}\n"
+            f"  flaw:  {_show('personality.flaw', pers.get('flaw',''))}\n"
+            f"  motive THIS scene: {_show('current_motivation', sc.get('current_motivation',''))}\n"
+            "(Hidden levers EXIST but the player does not know them. You may NOT "
+            "reward a pitch that 'happens to' target a hidden lever — only credit "
+            "pitches that target levers marked above, OR generic angles. If the "
+            "pitch coincidentally hits a hidden lever, rate it on its surface "
+            "merits only — call it 'lucky' in the rationale.)"
         )
     else:
         npc_block = "NPC TARGET: an NPC the player is trying to influence (no detailed sheet on file).\n"

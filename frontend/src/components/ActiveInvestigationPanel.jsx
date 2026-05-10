@@ -148,6 +148,22 @@ const ActiveInvestigationPanel = ({
       if (Array.isArray(data.target_cards) && data.target_cards.length > 0 && onTargetCardsMinted) {
         onTargetCardsMinted(data.target_cards);
       }
+      if (Array.isArray(data.npc_field_reveals) && data.npc_field_reveals.length > 0) {
+        // NPCs whose identity sheets just uncloaked. Toast each one and
+        // broadcast a refresh so any open Knowledge Deck panel re-renders
+        // the freshly-revealed fields.
+        data.npc_field_reveals.forEach((p) => {
+          const fields = (p.newly_revealed || [])
+            .map((f) => f.replace('personality.', '').replace('stats.', '').replace('_', ' '))
+            .join(', ');
+          toast.success(`You learned: ${p.title}'s ${fields}`, { duration: 5500 });
+        });
+        try {
+          window.dispatchEvent(new CustomEvent('rpg:cards-refreshed', {
+            detail: { campaignId, source: 'npc-field-reveal' },
+          }));
+        } catch {}
+      }
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);
       } else {
@@ -187,6 +203,19 @@ const ActiveInvestigationPanel = ({
       if (data.lead && onLeadMinted) onLeadMinted(data.lead);
       if (Array.isArray(data.target_cards) && data.target_cards.length > 0 && onTargetCardsMinted) {
         onTargetCardsMinted(data.target_cards);
+      }
+      if (Array.isArray(data.npc_field_reveals) && data.npc_field_reveals.length > 0) {
+        data.npc_field_reveals.forEach((p) => {
+          const fields = (p.newly_revealed || [])
+            .map((f) => f.replace('personality.', '').replace('stats.', '').replace('_', ' '))
+            .join(', ');
+          toast.success(`You learned: ${p.title}'s ${fields}`, { duration: 5500 });
+        });
+        try {
+          window.dispatchEvent(new CustomEvent('rpg:cards-refreshed', {
+            detail: { campaignId, source: 'npc-field-reveal' },
+          }));
+        } catch {}
       }
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);

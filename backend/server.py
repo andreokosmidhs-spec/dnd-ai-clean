@@ -122,6 +122,7 @@ from routers import lean_dm as lean_dm_router
 from routers import feedback as feedback_router
 from routers import storylines as storylines_router
 from routers import character_deck as character_deck_router
+from routers import dm_lessons as dm_lessons_router
 
 # Create the main app without a prefix
 app = FastAPI(title="Sentient RPG Engine", description="AI-Powered Text RPG Framework")
@@ -4161,6 +4162,7 @@ app.include_router(lean_dm_router.router)  # Lean DM on top of campaigns + knowl
 app.include_router(feedback_router.router)  # Player feedback → email via Resend
 app.include_router(storylines_router.router)  # Hook → storyline → beat progression → reward
 app.include_router(character_deck_router.router)  # Character deck (race/class/bg/lang + DM context)
+app.include_router(dm_lessons_router.router)  # DM Notebook (persistent lessons from feedback + 👍/👎)
 app.include_router(character_v2_router)
 app.include_router(character_v2_router_alias)
 
@@ -4177,6 +4179,7 @@ campaign_log_router.set_database(db)
 campaigns_router.set_database(db)
 lean_dm_router.set_database(db)
 storylines_router.set_database(db)
+dm_lessons_router.set_database(db)
 scene_refresh_router.set_database(db)
 set_character_v2_database(db)
 

@@ -3,7 +3,7 @@ import { Card, CardContent } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Dice6, MessageSquare, Loader2, User, Sparkles, Volume2, X, BookOpen, Bookmark, BookmarkCheck, Scroll, Flag } from 'lucide-react';
+import { Dice6, MessageSquare, Loader2, User, Sparkles, Volume2, X, BookOpen, Bookmark, BookmarkCheck, Scroll, Flag, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useGameState } from '../contexts/GameStateContext';
 // CheckRequestCard and RollResultCard removed - CheckRollPanel handles all rolls now
 import NarrationAudioPlayer from './NarrationAudioPlayer';
@@ -604,6 +604,62 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
       );
       window.showToast && window.showToast('Could not save that beat. Try again.', 'error');
       setRememberDialog((d) => ({ ...d, saving: false }));
+    }
+  };
+
+  // 👍 / 👎 — react to a DM narration beat. The backend distills the reaction
+  // (with the surrounding narration) into a persistent DM Lesson: 👍 becomes
+  // a style_preference, 👎 becomes a taboo. Lessons are then injected into
+  // future DM turns so the model gets better with every interaction.
+  const handleBeatReaction = async (messageIndex, reaction) => {
+    const message = messages[messageIndex];
+    if (!message || message.type !== 'dm') return;
+    if (!campaignId) {
+      toast.error('No active campaign — load a game first.');
+      return;
+    }
+    if (message.reaction === reaction) return;  // already tapped
+    // Optimistic UI — mark the reaction immediately
+    setMessages((prev) => prev.map((m, i) =>
+      i === messageIndex ? { ...m, reaction, reactionBusy: true } : m
+    ));
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/api/campaigns/${campaignId}/dm-lessons/reaction`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reaction,
+            narration: message.text || message.message || '',
+            beat_title: message.chronicleTitle || (message.isCinematic ? 'Cinematic Intro' : null),
+            character_id: gameStateContext?.characterState?.id || null,
+            message_id: `msg_${messageIndex}_${message.timestamp || ''}`,
+          }),
+        }
+      );
+      if (!res.ok) throw new Error(`Reaction failed: ${res.status}`);
+      const data = await res.json();
+      setMessages((prev) => prev.map((m, i) =>
+        i === messageIndex ? { ...m, reactionBusy: false, lessonId: data.lesson?.id } : m
+      ));
+      if (data.lesson) {
+        const action = data.action === 'merged' ? 'reinforced an existing lesson' : 'added a new lesson';
+        toast.success(
+          reaction === 'like'
+            ? `Noted — DM ${action} (style: keep doing this).`
+            : `Got it — DM ${action} (avoid this pattern).`,
+          { duration: 3500 }
+        );
+      } else {
+        toast('Reaction noted, but no clear lesson to distill.', { duration: 2500 });
+      }
+    } catch (e) {
+      // Roll back the optimistic mark on failure
+      setMessages((prev) => prev.map((m, i) =>
+        i === messageIndex ? { ...m, reaction: null, reactionBusy: false } : m
+      ));
+      toast.error(e.message || 'Could not save reaction.');
     }
   };
 
@@ -1607,6 +1663,46 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                               onGenerateAudio={() => generateAudioForMessage(idx)}
                               isGenerating={entry.isGeneratingAudio}
                             />
+                            {/* 👍 — train the DM: this beat is the kind of writing the player wants more of */}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleBeatReaction(idx, 'like')}
+                              disabled={entry.reactionBusy || !campaignId}
+                              title={entry.reaction === 'like' ? 'You liked this beat — DM has noted it' : 'I liked this — train the DM to do more of this'}
+                              data-testid={`beat-like-${idx}`}
+                              className={`h-7 w-7 p-0 ${
+                                entry.reaction === 'like'
+                                  ? 'text-emerald-300 hover:text-emerald-200'
+                                  : 'text-violet-300 hover:text-emerald-300 hover:bg-emerald-600/20'
+                              }`}
+                            >
+                              {entry.reactionBusy && entry.reaction === 'like' ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <ThumbsUp className="h-4 w-4" />
+                              )}
+                            </Button>
+                            {/* 👎 — train the DM: avoid this pattern */}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleBeatReaction(idx, 'dislike')}
+                              disabled={entry.reactionBusy || !campaignId}
+                              title={entry.reaction === 'dislike' ? 'You flagged this beat — DM will avoid this pattern' : "Didn't land — train the DM to avoid this"}
+                              data-testid={`beat-dislike-${idx}`}
+                              className={`h-7 w-7 p-0 ${
+                                entry.reaction === 'dislike'
+                                  ? 'text-rose-300 hover:text-rose-200'
+                                  : 'text-violet-300 hover:text-rose-300 hover:bg-rose-600/20'
+                              }`}
+                            >
+                              {entry.reactionBusy && entry.reaction === 'dislike' ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <ThumbsDown className="h-4 w-4" />
+                              )}
+                            </Button>
                             {/* Remember this → pin into Knowledge Deck */}
                             <Button
                               size="sm"

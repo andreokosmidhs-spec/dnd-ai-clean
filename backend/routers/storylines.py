@@ -1556,6 +1556,39 @@ async def submit_dm_feedback(campaign_id: str, storyline_id: str, body: DMFeedba
     if isinstance(record_out.get("created_at"), datetime):
         record_out["created_at"] = record_out["created_at"].isoformat()
 
+    # Distill this feedback into a persistent DM Lesson so the DM Notebook
+    # accumulates rule corrections + DC calibrations across turns. Non-fatal.
+    distilled_lesson: Optional[Dict] = None
+    try:
+        from services.dm_lessons import (
+            distill_lesson_from_feedback,
+            merge_or_create_lesson,
+        )
+        partial = await distill_lesson_from_feedback(
+            feedback=body.model_dump(), judgment=judgment
+        )
+        if partial:
+            stored = await merge_or_create_lesson(
+                _get_db(),
+                campaign_id=campaign_id,
+                character_id=sl.get("character_id"),
+                lesson=partial,
+                source_ref={
+                    "feedback_id": record["id"],
+                    "storyline_id": storyline_id,
+                    "beat_title": beat.get("title"),
+                },
+            )
+            distilled_lesson = {
+                k: v for k, v in stored.items() if k != "_id"
+            }
+            for k in ("created_at", "updated_at", "last_applied_at"):
+                v = distilled_lesson.get(k)
+                if isinstance(v, datetime):
+                    distilled_lesson[k] = v.isoformat()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"DM lesson distill failed (non-fatal): {exc}")
+
     # If the judge agrees AND a correction is warranted AND the player asked
     # us to apply it, append a corrective check beat so the player can
     # actually roll for what they tried to do.
@@ -1600,6 +1633,7 @@ async def submit_dm_feedback(campaign_id: str, storyline_id: str, body: DMFeedba
         "judgment": judgment,
         "feedback_record": record_out,
         "correction_applied": bool(correction_beat),
+        "lesson": distilled_lesson,
         "storyline": storyline_to_dict(sl),
     }
 

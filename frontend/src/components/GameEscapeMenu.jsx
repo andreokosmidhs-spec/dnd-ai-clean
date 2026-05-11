@@ -8,10 +8,10 @@
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { Button } from './ui/button';
-import { Play, Settings as SettingsIcon, Home, ChevronLeft, X, Type } from 'lucide-react';
+import { Play, Settings as SettingsIcon, Home, ChevronLeft, X, Type, BookOpen } from 'lucide-react';
 import { useFontSize } from '../contexts/FontSizeContext';
 
-const GameEscapeMenu = ({ open, onClose, onMainMenu }) => {
+const GameEscapeMenu = ({ open, onClose, onMainMenu, onOpenDMNotebook }) => {
   const [view, setView] = useState('root');  // 'root' | 'settings'
   const { preset, setPreset, presets, order } = useFontSize();
 
@@ -112,6 +112,22 @@ const GameEscapeMenu = ({ open, onClose, onMainMenu }) => {
                   </span>
                 </div>
               </Button>
+
+              {onOpenDMNotebook && (
+                <Button
+                  onClick={() => { onClose && onClose(); onOpenDMNotebook(); }}
+                  className="h-14 text-base font-bold bg-stone-800 hover:bg-stone-700 text-amber-50 border border-amber-500/40 justify-start gap-3"
+                  data-testid="escape-menu-dm-notebook-btn"
+                >
+                  <BookOpen className="h-5 w-5 text-amber-300" />
+                  <div className="flex flex-col items-start leading-tight">
+                    <span>DM Notebook</span>
+                    <span className="text-[11px] font-normal text-amber-200/80">
+                      What the DM has learned about you
+                    </span>
+                  </div>
+                </Button>
+              )}
 
               <Button
                 onClick={handleMainMenu}

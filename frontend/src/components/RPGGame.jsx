@@ -14,6 +14,7 @@ import { useGameState } from '../contexts/GameStateContext';
 import { generateWorldBlueprint, createCharacter, getLastCampaign } from '../api/rpgClient';
 import sessionManager from '../state/SessionManager';
 import GameEscapeMenu from './GameEscapeMenu';
+import DMNotebookPanel from './DMNotebookPanel';
 import { checkLevelUp, getLevelFromXP, getXPForNextLevel } from '../data/levelingData';
 import { useSessionCore } from '../store/useSessionCore';
 import { raceData as RACE_DATA } from '../data/raceData';
@@ -100,6 +101,8 @@ const RPGGame = () => {
   const [gameState, setGameState] = useState('main-menu'); // main-menu, playing
   // ESC pause menu — only meaningful in-game.
   const [escMenuOpen, setEscMenuOpen] = useState(false);
+  // DM Notebook — opened from the ESC pause menu, shows persistent lessons.
+  const [dmNotebookOpen, setDmNotebookOpen] = useState(false);
   const [character, setCharacter] = useState(null);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [worldData, setWorldData] = useState(mockData.world);
@@ -1186,7 +1189,7 @@ const RPGGame = () => {
         )}
       </div>
 
-      {/* ESC pause menu — Continue · Settings · Main Menu */}
+      {/* ESC pause menu — Continue · Settings · DM Notebook · Main Menu */}
       <GameEscapeMenu
         open={escMenuOpen}
         onClose={() => setEscMenuOpen(false)}
@@ -1194,6 +1197,15 @@ const RPGGame = () => {
           setEscMenuOpen(false);
           startNewGame();
         }}
+        onOpenDMNotebook={() => setDmNotebookOpen(true)}
+      />
+
+      {/* DM Notebook — persistent learned lessons */}
+      <DMNotebookPanel
+        open={dmNotebookOpen}
+        onClose={() => setDmNotebookOpen(false)}
+        campaignId={campaignId}
+        characterId={character?.id || null}
       />
     </div>
   );

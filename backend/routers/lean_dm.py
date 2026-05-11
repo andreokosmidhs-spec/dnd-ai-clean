@@ -98,7 +98,7 @@ def _format_title(s: str) -> str:
     return str(s or "").replace("_", " ").strip().title()
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None) -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None) -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -281,6 +281,12 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         + ("\n".join(feedback_lines) if feedback_lines else "(no rulings on record)")
     )
 
+    # DM NOTEBOOK — persistent lessons distilled from feedback + 👍/👎
+    # reactions. Rendered as a grouped block; the DM is instructed to
+    # silently apply it like a second-DM whispering in their ear.
+    from services.dm_lessons import render_lessons_for_prompt
+    lessons_block = render_lessons_for_prompt(dm_lessons or [])
+
     tone = intent.get("tone", "heroic")
 
     return (
@@ -323,6 +329,7 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{deck_context_block(deck or [])}\n\n"
         f"{chaos_block_for_dm(chaos)}\n\n"
         f"{feedback_block}\n\n"
+        f"{lessons_block}\n\n"
         "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "
@@ -544,16 +551,31 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     recent_feedback: List[Dict] = []
     try:
         cursor = db["campaign_dm_feedback"].find(
-            {"campaign_id": req.campaign_id}, {"_id": 0}
+            {"campaign_id": campaign_id}, {"_id": 0}
         ).sort("created_at", -1).limit(5)
         recent_feedback = await cursor.to_list(length=5)
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"feedback load failed (non-fatal): {exc}")
         recent_feedback = []
 
+    # Pull active DM lessons — distilled, persistent guidance from the
+    # player. These outweigh raw feedback because they're cleaned,
+    # deduped, and weighted.
+    active_lessons: List[Dict] = []
+    try:
+        from services.dm_lessons import load_active_lessons, bump_apply_counts
+        active_lessons = await load_active_lessons(
+            db, campaign_id=campaign_id, character_id=req.character_id, limit=12
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"dm lessons load failed (non-fatal): {exc}")
+        active_lessons = []
+
     system_prompt = _build_system_prompt(
         campaign, character, cards, clock_hour,
-        deck=deck_cards, chaos=chaos_value, recent_feedback=recent_feedback,
+        deck=deck_cards, chaos=chaos_value,
+        recent_feedback=recent_feedback,
+        dm_lessons=active_lessons,
     )
 
     # Call the LLM
@@ -607,6 +629,18 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Lean DM LLM call failed: {exc}")
         raise HTTPException(status_code=502, detail=f"DM generation failed: {exc}") from exc
+
+    # Track that the active lessons were actually applied this turn — bumps
+    # apply_count + last_applied_at so the DM Notebook can show usage stats.
+    try:
+        if active_lessons:
+            from services.dm_lessons import bump_apply_counts
+            await bump_apply_counts(
+                db, campaign_id=campaign_id,
+                lesson_ids=[l["id"] for l in active_lessons if l.get("id")],
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"lesson apply-count bump failed: {exc}")
 
     now = datetime.now(timezone.utc)
 

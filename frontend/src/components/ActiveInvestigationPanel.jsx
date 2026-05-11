@@ -318,7 +318,7 @@ const ActiveInvestigationPanel = ({
       <div className="absolute inset-0 bg-black/75 backdrop-blur-md" aria-hidden="true" />
 
       <div
-        className="relative w-full max-w-5xl max-h-[88vh] flex flex-col gap-4 rounded-xl border-2 border-amber-500/60 bg-stone-950 p-4 sm:p-6 shadow-[0_0_60px_rgba(245,158,11,0.25)]"
+        className="relative w-full max-w-5xl max-h-[88vh] flex flex-col gap-4 rounded-xl border-2 border-amber-500/60 bg-gradient-to-br from-stone-950 via-stone-900 to-amber-950/30 p-4 sm:p-6 shadow-[0_0_60px_rgba(245,158,11,0.25)] shadow-inner"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -332,13 +332,13 @@ const ActiveInvestigationPanel = ({
               {storyline.title}
             </div>
           </div>
-          <Badge variant="outline" className="text-[11px] border-amber-300 text-amber-50 bg-stone-800 font-bold" data-testid="beat-counter">
+          <Badge variant="outline" className="text-[11px] border-amber-400/70 text-amber-100 bg-stone-900/80 font-bold" data-testid="beat-counter">
             Beat {idx + 1} of {beats.length}
           </Badge>
           {beat.time_of_day && (
             <Badge
               variant="outline"
-              className="text-[11px] border-indigo-300 text-indigo-50 bg-stone-800 font-bold"
+              className="text-[11px] border-indigo-300/70 text-indigo-100 bg-stone-900/80 font-bold"
               data-testid="beat-time-of-day"
               title={`In-fiction time: ${beat.time_of_day.label}${beat.time_of_day.hour != null ? ` (hour ${beat.time_of_day.hour}/24)` : ''}`}
             >
@@ -346,10 +346,10 @@ const ActiveInvestigationPanel = ({
               {beat.time_of_day.label}
             </Badge>
           )}
-          <Badge variant="outline" className="text-[11px] border-emerald-300 text-emerald-100 bg-stone-800 font-bold">
+          <Badge variant="outline" className="text-[11px] border-emerald-300/70 text-emerald-100 bg-stone-900/80 font-bold">
             {passed} passed
           </Badge>
-          <Badge variant="outline" className="text-[11px] border-rose-300 text-rose-100 bg-stone-800 font-bold">
+          <Badge variant="outline" className="text-[11px] border-rose-300/70 text-rose-100 bg-stone-900/80 font-bold">
             {failed} failed
           </Badge>
           <Button
@@ -383,14 +383,16 @@ const ActiveInvestigationPanel = ({
         </div>
 
         {/* Active beat task line */}
-        <div className="rounded-md border border-amber-500/50 bg-stone-900 px-3 py-2.5">
+        <div className="rounded-md border border-amber-500/50 bg-stone-900/70 px-3 py-2.5">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[11px] uppercase tracking-[0.16em] text-amber-300 font-semibold">Task</span>
-            <Badge variant="outline" className="text-[10.5px] border-amber-300/60 text-amber-100/95 ml-auto">
+            <Badge variant="outline" className="text-[10.5px] border-amber-300/60 text-amber-100/95 ml-auto bg-stone-900/80">
               {ability.toUpperCase()} mod {formatMod(mod)}
             </Badge>
           </div>
-          <div className="text-amber-50 text-base italic font-serif leading-relaxed">{beat.task}</div>
+          <div className="text-amber-50 text-base italic font-serif leading-relaxed">
+            {beat.task || <span className="text-amber-200/60 not-italic font-sans text-sm">(no specific task — engage the scene however you like)</span>}
+          </div>
           {lastRoll && !lastRoll.passed && (
             <div className="mt-2 text-[13px] text-rose-200 italic">
               Last roll: {lastRoll.die}{formatMod(lastRoll.mod)} = {lastRoll.total} vs DC {lastRoll.dc} — failed.

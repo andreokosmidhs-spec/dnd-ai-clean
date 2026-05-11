@@ -1492,6 +1492,56 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                 );
               } catch {}
             }}
+            onNpcFieldsRevealed={(reveals) => {
+              if (!Array.isArray(reveals) || reveals.length === 0) return;
+              // Friendly labels matching the NPCIdentityPanel.
+              const FRIENDLY = {
+                'personality.trait': 'Trait',
+                'personality.ideal': 'Ideal',
+                'personality.bond':  'Bond',
+                'personality.flaw':  'Flaw',
+                'speech_style':      'Speech style',
+                'mannerisms':        'Mannerisms',
+                'background':        'Background',
+                'current_motivation':'Current motive',
+                'allegiances':       'Allegiances',
+                'passive_insight':   'Passive Insight',
+                'stats.ac':          'AC',
+                'stats.hp':          'HP',
+                'stats.intimidation_dc': 'Intimidation DC',
+                'stats.persuasion_dc':   'Persuasion DC',
+                'stats.deception_dc':    'Deception DC',
+                'stats.insight_dc':      'Insight DC',
+                'secret_0':          'Secret 1',
+                'secret_1':          'Secret 2',
+              };
+              const lines = reveals.map((p) => {
+                const fields = (p.newly_revealed || []).map((f) => FRIENDLY[f] || f).join(', ');
+                return `• ${p.title} — ${fields}`;
+              }).join('\n');
+              const text =
+                `Codex Update — your read on these people just got sharper:\n${lines}\n\n` +
+                `Open their cards in the deck to see the freshly-revealed details. ` +
+                `Future pitches against them can now leverage what you've learned.`;
+              const msg = {
+                type: 'dm', text, message: text,
+                timestamp: Date.now(),
+                isCinematic: false,
+                source: 'npc-fields-revealed',
+                meta: {
+                  count: reveals.length,
+                  titles: reveals.map((r) => r.title),
+                  fields: reveals.flatMap((r) => r.newly_revealed || []),
+                },
+              };
+              setMessages((prev) => {
+                const next = [...prev, msg].slice(-200);
+                if (sessionId) {
+                  try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+                }
+                return next;
+              });
+            }}
             onComplete={(sl, reward) => {
               setActiveStoryline(null);
               setShowRewardModal(reward);

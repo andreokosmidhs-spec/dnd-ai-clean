@@ -77,6 +77,7 @@ const ActiveInvestigationPanel = ({
   onCreativeNarration, // fired when a creative approach lands a narration
   onLeadMinted,      // fired when a knowledge beat mints a Lead card (revealed or sealed)
   onTargetCardsMinted, // fired when a knowledge beat auto-mints Knowledge Cards for named entities
+  onNpcFieldsRevealed, // fired when a passed social check uncloaks NPC identity-sheet fields
 }) => {
   const [busy, setBusy] = useState(false);
   const [lastRoll, setLastRoll] = useState(null);  // { die, mod, total, dc, passed }
@@ -163,6 +164,9 @@ const ActiveInvestigationPanel = ({
             detail: { campaignId, source: 'npc-field-reveal' },
           }));
         } catch {}
+        // Adventure-Log "Codex Update" beat — the player gets a moment of
+        // pause and recognition during the campaign flow.
+        if (onNpcFieldsRevealed) onNpcFieldsRevealed(data.npc_field_reveals);
       }
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);
@@ -216,6 +220,7 @@ const ActiveInvestigationPanel = ({
             detail: { campaignId, source: 'npc-field-reveal' },
           }));
         } catch {}
+        if (onNpcFieldsRevealed) onNpcFieldsRevealed(data.npc_field_reveals);
       }
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);

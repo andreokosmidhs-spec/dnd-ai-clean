@@ -98,7 +98,7 @@ def _format_title(s: str) -> str:
     return str(s or "").replace("_", " ").strip().title()
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None) -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None) -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -287,6 +287,12 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
     from services.dm_lessons import render_lessons_for_prompt
     lessons_block = render_lessons_for_prompt(dm_lessons or [])
 
+    # CANON — auto-checkpoints of every beat the player has PASSED. The
+    # current canon scene is the DM's anchor; older canon must never be
+    # contradicted.
+    from services.canon_scenes import render_canon_for_prompt
+    canon_block = render_canon_for_prompt(canon_scenes or [])
+
     tone = intent.get("tone", "heroic")
 
     return (
@@ -330,6 +336,7 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{chaos_block_for_dm(chaos)}\n\n"
         f"{feedback_block}\n\n"
         f"{lessons_block}\n\n"
+        f"{canon_block}\n\n"
         "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "
@@ -571,11 +578,24 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         logger.warning(f"dm lessons load failed (non-fatal): {exc}")
         active_lessons = []
 
+    # Pull recent CANON scenes — locked-in truth from passed checks. The
+    # most-recent one is the DM's current anchor.
+    recent_canon: List[Dict] = []
+    try:
+        from services.canon_scenes import load_recent_canon
+        recent_canon = await load_recent_canon(
+            db, campaign_id=campaign_id, limit=6
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"canon scenes load failed (non-fatal): {exc}")
+        recent_canon = []
+
     system_prompt = _build_system_prompt(
         campaign, character, cards, clock_hour,
         deck=deck_cards, chaos=chaos_value,
         recent_feedback=recent_feedback,
         dm_lessons=active_lessons,
+        canon_scenes=recent_canon,
     )
 
     # Call the LLM
@@ -637,7 +657,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             from services.dm_lessons import bump_apply_counts
             await bump_apply_counts(
                 db, campaign_id=campaign_id,
-                lesson_ids=[l["id"] for l in active_lessons if l.get("id")],
+                lesson_ids=[lsn["id"] for lsn in active_lessons if lsn.get("id")],
             )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"lesson apply-count bump failed: {exc}")

@@ -861,6 +861,30 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"NPC field reveal failed (non-fatal): {exc}")
 
+    # Auto-checkpoint canon: on a successful pass, lock the beat in as a
+    # canon scene the DM can never contradict.
+    canon_scene: Optional[Dict] = None
+    if body.outcome == "passed":
+        try:
+            from services.canon_scenes import checkpoint_passed_beat
+            narration_snippet = await _latest_dm_narration(
+                campaign_id, storyline.get("character_id")
+            )
+            canon_scene = await checkpoint_passed_beat(
+                _get_db(),
+                campaign_id=campaign_id,
+                character_id=storyline.get("character_id"),
+                storyline_id=storyline.get("id"),
+                storyline_title=storyline.get("title"),
+                beat=cur_beat,
+                beat_index=current,
+                outcome_text=body.outcome_text or "",
+                roll_total=body.roll_total,
+                narration_snippet=narration_snippet,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"canon checkpoint failed (non-fatal): {exc}")
+
     # If failed (and not press-on), produce a fail-forward complication so the
     # Adventure Log gets a narrative beat tying the failure to the story.
     # On success/skip, clear any previously carried complication — the player
@@ -973,6 +997,7 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
         "lead": lead_card,
         "target_cards": target_cards,
         "npc_field_reveals": npc_field_reveals,
+        "canon_scene": canon_scene,
     }
 
 
@@ -1073,6 +1098,30 @@ async def creative_approach_endpoint(
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"NPC field reveal via creative failed: {exc}")
 
+    # Auto-checkpoint canon for creative-path passes too.
+    canon_scene: Optional[Dict] = None
+    if storyline_outcome == "passed":
+        try:
+            from services.canon_scenes import checkpoint_passed_beat
+            narration_snippet = await _latest_dm_narration(
+                campaign_id, storyline.get("character_id")
+            )
+            canon_scene = await checkpoint_passed_beat(
+                _get_db(),
+                campaign_id=campaign_id,
+                character_id=storyline.get("character_id"),
+                storyline_id=storyline.get("id"),
+                storyline_title=storyline.get("title"),
+                beat=cur_beat,
+                beat_index=current,
+                outcome_text=f"Creative approach ({judged_outcome}): {narration}"[:400],
+                roll_total=None,
+                narration_snippet=narration_snippet or narration,
+                creative_quality=judged_outcome,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"canon checkpoint via creative failed: {exc}")
+
     complication_text: Optional[str] = None
     if storyline_outcome == "failed":
         try:
@@ -1154,6 +1203,7 @@ async def creative_approach_endpoint(
         "lead": lead_card,
         "target_cards": target_cards,
         "npc_field_reveals": npc_field_reveals,
+        "canon_scene": canon_scene,
     }
 
 
@@ -1333,6 +1383,24 @@ async def mark_all_cards_seen(campaign_id: str):
     )
     return {"ok": True, "cleared": int(res.modified_count)}
 
+
+
+async def _latest_dm_narration(campaign_id: str, character_id: Optional[str]) -> str:
+    """Best-effort fetch of the most recent DM narration text for canon
+    distillation. Empty string on failure (canon falls back to outcome_text)."""
+    if not character_id:
+        return ""
+    try:
+        session_id = f"{campaign_id}:{character_id}"
+        doc = await _get_db()["campaign_messages"].find_one(
+            {"session_id": session_id, "role": "dm"},
+            {"_id": 0, "content": 1},
+            sort=[("timestamp", -1)],
+        )
+        return (doc or {}).get("content", "") or ""
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"latest DM narration fetch failed: {exc}")
+        return ""
 
 
 # ====================================================================
@@ -1593,12 +1661,36 @@ async def submit_dm_feedback(campaign_id: str, storyline_id: str, body: DMFeedba
     # us to apply it, append a corrective check beat so the player can
     # actually roll for what they tried to do.
     correction_beat: Optional[Dict] = None
+    rewind_target: Optional[Dict] = None
     if (
         body.apply_correction
         and judgment.get("should_correct")
         and judgment.get("check_type")
         and judgment.get("dc")
     ):
+        # Identify which canon scene we're rewinding from — the most recent
+        # canon scene preceding the contested beat. The DM is told to step
+        # back to it so the retroactive check feels diegetic, not a
+        # mechanical undo.
+        try:
+            from services.canon_scenes import find_rewind_target
+            rewind_target = await find_rewind_target(
+                _get_db(),
+                campaign_id=campaign_id,
+                before_beat_index=idx,
+                storyline_id=storyline_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"rewind target lookup failed: {exc}")
+
+        rewind_chip = ""
+        if rewind_target:
+            rewind_chip = (
+                f" The DM rewinds to "
+                f"Scene {rewind_target.get('scene_number')} — "
+                f"'{rewind_target.get('title')}' — and replays from canon."
+            )
+
         correction_beat = {
             "title": f"Retroactive {judgment['check_type']} check",
             "description": (
@@ -1606,6 +1698,7 @@ async def submit_dm_feedback(campaign_id: str, storyline_id: str, body: DMFeedba
                 f"The DM agrees and rewinds — roll {judgment['check_type']} (DC {judgment['dc']}) to "
                 f"resolve what you actually attempted. "
                 f"({judgment.get('dc_reasoning','')})"
+                f"{rewind_chip}"
             ).strip(),
             "task": f"Roll {judgment['check_type']} (DC {judgment['dc']})",
             "check_type": judgment["check_type"],
@@ -1618,6 +1711,8 @@ async def submit_dm_feedback(campaign_id: str, storyline_id: str, body: DMFeedba
             "outcome_text": None,
             "roll_optional": False,
             "from_dm_feedback": True,
+            "rewind_to_scene_id": rewind_target.get("id") if rewind_target else None,
+            "rewind_to_scene_number": rewind_target.get("scene_number") if rewind_target else None,
         }
         beats.append(correction_beat)
         new_idx = len(beats) - 1
@@ -1634,6 +1729,7 @@ async def submit_dm_feedback(campaign_id: str, storyline_id: str, body: DMFeedba
         "feedback_record": record_out,
         "correction_applied": bool(correction_beat),
         "lesson": distilled_lesson,
+        "rewind_target": rewind_target,
         "storyline": storyline_to_dict(sl),
     }
 

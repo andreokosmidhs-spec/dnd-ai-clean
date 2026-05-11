@@ -8,10 +8,10 @@
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { Button } from './ui/button';
-import { Play, Settings as SettingsIcon, Home, ChevronLeft, X, Type, BookOpen } from 'lucide-react';
+import { Play, Settings as SettingsIcon, Home, ChevronLeft, X, Type, BookOpen, Scroll } from 'lucide-react';
 import { useFontSize } from '../contexts/FontSizeContext';
 
-const GameEscapeMenu = ({ open, onClose, onMainMenu, onOpenDMNotebook }) => {
+const GameEscapeMenu = ({ open, onClose, onMainMenu, onOpenDMNotebook, onOpenCanonTimeline }) => {
   const [view, setView] = useState('root');  // 'root' | 'settings'
   const { preset, setPreset, presets, order } = useFontSize();
 
@@ -124,6 +124,22 @@ const GameEscapeMenu = ({ open, onClose, onMainMenu, onOpenDMNotebook }) => {
                     <span>DM Notebook</span>
                     <span className="text-[11px] font-normal text-amber-200/80">
                       What the DM has learned about you
+                    </span>
+                  </div>
+                </Button>
+              )}
+
+              {onOpenCanonTimeline && (
+                <Button
+                  onClick={() => { onClose && onClose(); onOpenCanonTimeline(); }}
+                  className="h-14 text-base font-bold bg-stone-800 hover:bg-stone-700 text-amber-50 border border-emerald-500/40 justify-start gap-3"
+                  data-testid="escape-menu-canon-timeline-btn"
+                >
+                  <Scroll className="h-5 w-5 text-emerald-300" />
+                  <div className="flex flex-col items-start leading-tight">
+                    <span>Canon Timeline</span>
+                    <span className="text-[11px] font-normal text-emerald-200/80">
+                      Scenes you've locked in as truth
                     </span>
                   </div>
                 </Button>

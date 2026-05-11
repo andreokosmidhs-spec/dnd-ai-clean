@@ -168,6 +168,14 @@ const ActiveInvestigationPanel = ({
         // pause and recognition during the campaign flow.
         if (onNpcFieldsRevealed) onNpcFieldsRevealed(data.npc_field_reveals);
       }
+      // Canon checkpoint — the just-passed beat became locked-in truth.
+      // Toast it so the player feels the weight of the moment.
+      if (data.canon_scene) {
+        toast.success(
+          `✦ Scene ${data.canon_scene.scene_number} locked in: "${data.canon_scene.title}"`,
+          { duration: 5500, description: 'The DM can never contradict this. Open ESC → Canon Timeline to review.' }
+        );
+      }
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);
       } else {
@@ -221,6 +229,13 @@ const ActiveInvestigationPanel = ({
           }));
         } catch {}
         if (onNpcFieldsRevealed) onNpcFieldsRevealed(data.npc_field_reveals);
+      }
+      // Canon checkpoint via creative path
+      if (data.canon_scene) {
+        toast.success(
+          `✦ Scene ${data.canon_scene.scene_number} locked in: "${data.canon_scene.title}"`,
+          { duration: 5500, description: 'Your creative approach is now canon. Open ESC → Canon Timeline.' }
+        );
       }
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);

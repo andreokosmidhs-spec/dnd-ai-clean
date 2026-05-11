@@ -15,6 +15,7 @@ import { generateWorldBlueprint, createCharacter, getLastCampaign } from '../api
 import sessionManager from '../state/SessionManager';
 import GameEscapeMenu from './GameEscapeMenu';
 import DMNotebookPanel from './DMNotebookPanel';
+import CanonTimelinePanel from './CanonTimelinePanel';
 import { checkLevelUp, getLevelFromXP, getXPForNextLevel } from '../data/levelingData';
 import { useSessionCore } from '../store/useSessionCore';
 import { raceData as RACE_DATA } from '../data/raceData';
@@ -103,6 +104,8 @@ const RPGGame = () => {
   const [escMenuOpen, setEscMenuOpen] = useState(false);
   // DM Notebook — opened from the ESC pause menu, shows persistent lessons.
   const [dmNotebookOpen, setDmNotebookOpen] = useState(false);
+  // Canon Timeline — locked-in scenes from passed checks.
+  const [canonTimelineOpen, setCanonTimelineOpen] = useState(false);
   const [character, setCharacter] = useState(null);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [worldData, setWorldData] = useState(mockData.world);
@@ -1198,6 +1201,7 @@ const RPGGame = () => {
           startNewGame();
         }}
         onOpenDMNotebook={() => setDmNotebookOpen(true)}
+        onOpenCanonTimeline={() => setCanonTimelineOpen(true)}
       />
 
       {/* DM Notebook — persistent learned lessons */}
@@ -1206,6 +1210,13 @@ const RPGGame = () => {
         onClose={() => setDmNotebookOpen(false)}
         campaignId={campaignId}
         characterId={character?.id || null}
+      />
+
+      {/* Canon Timeline — locked-in scenes from passed checks */}
+      <CanonTimelinePanel
+        open={canonTimelineOpen}
+        onClose={() => setCanonTimelineOpen(false)}
+        campaignId={campaignId}
       />
     </div>
   );

@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 7 — Canon Scenes feature backend + frontend tested. Backend: 10/10 pytest cases passed against the live preview URL (canon list/current, passed-only checkpoint creation, monotonic scene_number, is_current flip, failed/skipped do NOT create canon, creative passed/partial creates canon w/ creative_quality, dm-feedback returns rewind_target field, dm/action returns 200 with non-empty narration, empty-canon contract for a brand-new campaign id). Frontend: ESC pause menu correctly shows the new 'Canon Timeline' option (data-testid='escape-menu-canon-timeline-btn'); clicking opens CanonTimelinePanel (data-testid='canon-timeline-panel'); 5 canon-scene-{N} rows rendered newest-first; current anchor (Scene 5) styled emerald and tagged 'CURRENT ANCHOR'; empty state correctly absent when canon exists.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/campaigns/{cid}/storylines/{sid}/dm-feedback", "issue": "When apply_correction=true but the LLM judge disagrees with the player, the response correctly returns rewind_target=null. However the correction beat is not appended in that case (by design). Documenting so a future tester does not misread as bug."},
+      {"endpoint": "POST /api/campaigns/{cid}/dm/action", "issue": "Response is wrapped in {success, data:{narration,...}} rather than top-level narration. Not a bug per se, but inconsistent with other DM endpoints — worth documenting in OpenAPI/types."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_canon_scenes.py",
+    "/app/test_reports/pytest/canon_scenes_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "canon_scenes.checkpoint_passed_beat: the 'unmark previous current' update_many runs even when the subsequent insert fails (returns None). On insert failure the campaign is left with NO is_current scene until the next pass — minor consistency drift. Consider performing the unmark only after a successful insert (or revert on insert failure).",
+    "find_rewind_target: when storyline_id is provided but no same-storyline canon precedes the contested beat_index, it falls back to the campaign-wide most-recent scene WITHOUT re-filtering by 'before_beat_index'. That can rewind to a scene that's actually newer than the contested beat in another storyline. Consider gating the fallback by created_at or scene_number < current_anchor.scene_number.",
+    "_distill_canon: a Mongo collection-level unique index on (campaign_id, scene_number) is not declared. Two concurrent passed-resolutions could race on the find-max + insert path and produce duplicate scene_numbers. Low probability in single-player but worth a unique index.",
+    "Canon block injection in lean_dm: ensure the prompt size is bounded — render_canon_for_prompt caps at scenes[1:6] but each fact is 240 chars and there is no overall character cap. With 5-scene history and 5 facts each that's up to ~7KB of system-prompt overhead per /dm/action call.",
+    "Backend storyline router file is ~1900+ lines (storylines.py). Recommend splitting feedback/unseal/canon-hook handlers into separate modules for maintainability (>700-line guideline)."
+  ],
+  "updated_files": ["/app/backend/tests/test_canon_scenes.py"],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% on validated flows (ESC menu + Canon Timeline panel + empty-state contract verified)"},
+  "test_credentials": "No auth required. Used the documented campaign_id=29feef57-a81d-4799-a988-88d644406acc and character_id=69fc667f579c1db376ac58db. /app/memory/test_credentials.md not present (flagged in iteration 6 as well).",
+  "seed_data_creation": "Tests resolved the active 'The Unsteady Crates' storyline with passed/failed/skipped + a creative approach. These actions canonized 2 additional scenes during the test run (scene_number 4 and 5), which is the intended behavior. Per-test prefixes 'TEST_canon_*' used in outcome_text fields. Empty-canon contract test uses a synthetic campaign id (test-empty-canon-campaign-99999) which never persisted data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend test file: /app/backend/tests/test_canon_scenes.py — 10 tests, ~95s runtime, hits live preview URL with real LLM calls. Frontend testid map confirmed: escape-menu-canon-timeline-btn -> canon-timeline-panel containing canon-scene-{N} rows (newest first). Current anchor row has 'emerald' in its className and a 'CURRENT ANCHOR' badge. Empty state uses data-testid='canon-timeline-empty'. The 'Load Latest Campaign' button on the landing page is the easiest entry point for E2E tests — direct routes like /game/{cid}/{charid} are NOT registered. ESC key toggles the pause menu.",
+  "rca of the issue": "N/A — no defects found. One self-corrected test issue: /dm/action response is nested under 'data' key; the test was updated to unwrap before asserting narration length."
+}

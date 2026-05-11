@@ -87,7 +87,15 @@ export const DMFeedbackButton = ({ campaignId, storylineId, beatIndex, onCorrect
       setJudgment(data.judgment);
       if (data.correction_applied && onCorrectionApplied) {
         onCorrectionApplied(data.storyline);
-        toast.success('DM agreed — corrective check added.');
+        const rt = data.rewind_target;
+        if (rt) {
+          toast.success(
+            `DM agreed — rewinding to Scene ${rt.scene_number}: "${rt.title}".`,
+            { duration: 5000 }
+          );
+        } else {
+          toast.success('DM agreed — corrective check added.');
+        }
       } else if (data.judgment?.agrees_with_player) {
         toast.success('DM agreed with you.');
       } else {

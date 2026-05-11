@@ -962,6 +962,22 @@ Properly defined what happens when a beat's check fails — until now a fail sti
   - `AdventureLogWithDM.jsx` — every DM narration beat now has **👍 / 👎** buttons (data-testid `beat-like-{idx}` / `beat-dislike-{idx}`). Liked beats glow emerald, disliked rose. Toast confirms whether the lesson was created or merged into an existing one.
 - **Tests**: 20/20 pytest backend cases pass (`/app/backend/tests/test_dm_lessons.py`). Frontend testing agent verified all 4 group sections render and reaction buttons appear on every beat.
 
+### 2026-05-11 (Canon Scenes — auto-checkpointing)
+- **Feature**: Every beat the player PASSES (via roll or creative approach) now auto-creates a canon scene — an immutable record of what's true in the world. The DM is told to never contradict canon; the most-recent canon is the DM's "current anchor".
+- **Backend**:
+  - New collection `canon_scenes` — `{scene_number (monotonic), title, summary, facts[], check_passed, narration_snippet, pitch_text, is_current, ...}`
+  - New service `services/canon_scenes.py` — LLM distiller (`gpt-4o-mini`) produces concrete `{title, summary, facts}` from each pass, plus `render_canon_for_prompt` and `find_rewind_target`
+  - New router `routers/canon_scenes.py` — `GET /api/campaigns/{id}/canon` (list) and `GET /api/campaigns/{id}/canon/current`
+  - `storylines.py::resolve_storyline_beat` and `creative_approach_endpoint` now auto-checkpoint on `passed`; resolve response includes `canon_scene` field
+  - `storylines.py::submit_dm_feedback` now also returns `rewind_target` and tags the corrective beat with `rewind_to_scene_id` + `rewind_to_scene_number` so the DM narrates the rewind diegetically
+  - `lean_dm.py` injects a `=== CANON SCENES ===` block — the current scene fully expanded with facts, prior scenes as one-liners
+- **Frontend**:
+  - New component `components/CanonTimelinePanel.jsx` — chronological view of locked-in scenes, current anchor highlighted emerald with "CURRENT ANCHOR" badge
+  - `GameEscapeMenu.jsx` now has a 5th option **"Canon Timeline"**
+  - `ActiveInvestigationPanel.jsx` shows a "✦ Scene N locked in" toast after every passed beat (roll + creative)
+  - `DMFeedbackButton.jsx` shows "DM rewinding to Scene N: …" toast when a correction is applied
+- **Tests**: 10/10 pytest backend cases pass (`/app/backend/tests/test_canon_scenes.py`). Frontend verified — Canon Timeline opens from ESC menu, renders scenes newest-first with current anchor styling.
+
 ## Files of Reference
 - `frontend/src/components/RPGGame.jsx` - Main game component with session bridge
 - `frontend/src/store/useSessionCore.js` - Zustand session store

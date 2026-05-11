@@ -1006,3 +1006,12 @@ Properly defined what happens when a beat's check fails — until now a fail sti
 - `backend/services/dm_lessons.py` - Lesson distillation + Jaccard merging
 - `backend/routers/dm_lessons.py` - DM Notebook REST endpoints
 - `backend/.env` - Contains OPENAI_API_KEY
+
+### 2026-05-11 (Investigation Beats → TCG Event Cards)
+- **Feature**: Investigation beat cards redesigned as TCG event cards: title-top + glowing rarity emblem + category color + click-to-flip-and-expand + auto-carousel.
+- **Frontend**:
+  - New `storyline/beatCardUtils.js` — `categoryPaletteFor(beat)` derives palette from `beat.targets[0].type` (npc→blue / location→emerald / faction→purple / default→cyan leads). `rarityFor(beat)` from DC: 0/optional→open (slate), 1-12→common (white), 13-15→rare (blue), 16-19→epic (purple), 20+→legendary (orange).
+  - New `storyline/BeatEventCard.jsx` — `PeekFace` (title top, glowing rarity crystal centered, category-color header band, info chips at bottom, click → flip) + `ExpandedFace` (centered overlay with description + Pitch input + action buttons + DMFeedback). Active beats auto-flip-open on mount.
+  - `ActiveInvestigationPanel.jsx` — replaced old BeatCard with BeatEventCard, added `carouselRef` + auto `scrollIntoView` on `idx` advance, `setExpandedIndex(null)` inside callResolve/callCreative for auto-close, removed redundant Task panel + Action bar (now inside the expanded card).
+  - Bug fixes from testing agent: TDZ on `idx` reference order; ESC double-handler conflict between parent + overlay (resolved via capture-phase + stopPropagation).
+- **Tests**: Frontend testing agent verified — peek cards render correctly (title, emblem, category band, chips), click flips to centered overlay, auto-open on active, rarity colors map by DC, expanded action buttons functional.

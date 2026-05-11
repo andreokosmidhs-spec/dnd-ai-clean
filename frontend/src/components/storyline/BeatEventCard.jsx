@@ -231,11 +231,17 @@ const ExpandedFace = ({
   const isKnowledgeLocked = beat.reveal_type === 'knowledge' && !resolved;
   const CatIcon = CATEGORY_ICONS[palette.key] || Compass;
 
-  // ESC to close
+  // ESC to close — stop propagation so the parent panel's ESC handler
+  // doesn't ALSO fire and close the whole investigation.
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);  // capture phase wins
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
 
   return (

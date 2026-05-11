@@ -111,19 +111,22 @@ const ActiveInvestigationPanel = ({
   }, [idx]);
 
   // Lock body scroll while the modal is up; close on Escape (only when
-  // no nested dialogs are open).
+  // no nested dialogs are open AND no beat card is currently expanded —
+  // the inner BeatEventCard overlay swallows ESC first).
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e) => {
-      if (e.key === 'Escape' && !failPrompt && !creativeOpen) onClose && onClose();
+      if (e.key === 'Escape' && !failPrompt && !creativeOpen && expandedIndex === null) {
+        onClose && onClose();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKey);
     };
-  }, [onClose, failPrompt, creativeOpen]);
+  }, [onClose, failPrompt, creativeOpen, expandedIndex]);
 
   const ability = useMemo(
     () => ABILITY_FOR_CHECK[beat?.check_type] || 'int',

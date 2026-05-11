@@ -121,9 +121,14 @@ _PATTERNS: Dict[str, List[Tuple[str, int]]] = {
     ],
     "Perception": [
         (r"\bscan\s+(?:the\s+)?(?:area|room|crowd|surroundings)\b", 2),
-        (r"\blisten\s+(?:carefully|for\s+sounds|for\s+(?:them|him|her))\b", 2),
+        (r"\blisten\s+(?:carefully|for\s+sounds|for\s+(?:them|him|her))\b", 3),
+        # Eavesdropping — overhearing conversation. The player wants to
+        # catch the actual words, not just "be in earshot". Strong cue.
+        (r"\b(?:eavesdrop|overhear|listen\s+(?:in|to|at)|press\s+(?:an\s+)?ear|ear\s+to\s+the\s+(?:door|wall|keyhole))\b", 3),
+        (r"\b(?:try\s+to\s+)?(?:catch|hear|make\s+out)\s+(?:what|their|the)\s+(?:words|conversation|talk|whisper)\b", 3),
         (r"\bkeep\s+watch\b", 2),
         (r"\bwatch\s+(?:the\s+)?(?:crowd|street|alley|window|door)\b", 2),
+        (r"\b(?:spot|notice|catch\s+sight\s+of)\b", 2),
     ],
     "Investigation": [
         (r"\bsearch\s+(?:the|through|for)\b", 3),
@@ -160,19 +165,27 @@ def classify_player_intent(text: str, *, threshold: int = 3) -> Optional[Dict]:
     pattern hits the threshold (default: a single 3-weight cue, or
     multiple 2-weight cues).
 
+    Compound actions: when the player chains two distinct intents (e.g.
+    "I hide and listen to them" = Stealth + Perception), the second
+    highest-scoring check is returned under `secondary_check` so the DM
+    can demand BOTH rolls instead of only the strongest one.
+
     Returns:
         {
-          "check_type": str,        # e.g. "Stealth"
-          "matched": str,           # the substring that fired the rule
+          "check_type": str,                # primary, e.g. "Stealth"
+          "matched": str,                   # the substring that fired the rule
           "score": int,
-          "confidence": "low"|"medium"|"high"
+          "confidence": "low"|"medium"|"high",
+          "secondary_check": str | None,    # second-strongest check (>= threshold)
+          "secondary_matched": str | None,
         }
         or None.
     """
     if not text or not text.strip():
         return None
     norm = text.strip().lower()
-    best: Optional[Tuple[str, int, str]] = None  # (check_type, score, matched)
+    # Score every check that meets the threshold so we can surface compound intents.
+    scored: List[Tuple[str, int, str]] = []  # (check_type, score, matched)
     for check_type, compiled in _COMPILED.items():
         score = 0
         matches: List[str] = []
@@ -181,11 +194,14 @@ def classify_player_intent(text: str, *, threshold: int = 3) -> Optional[Dict]:
             if m:
                 score += weight
                 matches.append(m.group(0))
-        if score >= threshold and (best is None or score > best[1]):
-            best = (check_type, score, matches[0] if matches else "")
-    if not best:
+        if score >= threshold:
+            scored.append((check_type, score, matches[0] if matches else ""))
+    if not scored:
         return None
-    score = best[1]
+    scored.sort(key=lambda x: x[1], reverse=True)
+    primary = scored[0]
+    secondary = scored[1] if len(scored) > 1 else None
+    score = primary[1]
     if score >= 6:
         confidence = "high"
     elif score >= 4:
@@ -193,24 +209,37 @@ def classify_player_intent(text: str, *, threshold: int = 3) -> Optional[Dict]:
     else:
         confidence = "low"
     return {
-        "check_type": best[0],
-        "matched": best[2],
+        "check_type": primary[0],
+        "matched": primary[2],
         "score": score,
         "confidence": confidence,
+        "secondary_check": secondary[0] if secondary else None,
+        "secondary_matched": secondary[2] if secondary else None,
     }
 
 
 def build_intent_directive(intent: Dict) -> str:
     """Build the hard-rule directive that gets injected into the DM user
     message. Tells the DM to NARRATE THE BEAT but NOT resolve the outcome,
-    ending with a natural prompt for the appropriate check.
+    ending with a natural prompt for the appropriate check(s).
     """
     if not intent:
         return ""
     check = intent.get("check_type", "")
     matched = intent.get("matched", "")
+    secondary = intent.get("secondary_check")
+    secondary_matched = intent.get("secondary_matched")
+    secondary_block = (
+        f" The player ALSO performed a {secondary} action (matched: "
+        f"'{secondary_matched}') — the system will require BOTH a {check} "
+        f"and a {secondary} check. Mention both naturally in your closing "
+        f"prompt (e.g. 'staying out of sight is one thing — making out "
+        f"their words is another')."
+        if secondary else ""
+    )
     return (
-        f"\n[INTENT-CLASSIFIER ({intent.get('confidence','low')}): {check}] "
+        f"\n[INTENT-CLASSIFIER ({intent.get('confidence','low')}): {check}"
+        f"{f' + {secondary}' if secondary else ''}] "
         f"The player's action contains cues for a {check} check (matched: '{matched}'). "
         f"You MUST narrate ONLY the visible BEAT (cause-and-effect — what stirs in the scene, "
         f"what the target's body language gives away, what tension hangs in the air) and END "
@@ -218,5 +247,5 @@ def build_intent_directive(intent: Dict) -> str:
         f"e.g. 'this calls for stealth' or 'his eyes flick to the blade — what's your tone?'. "
         f"Do NOT auto-resolve the outcome (don't say the NPC instantly believes / sees you / "
         f"is intimidated / falls for it / is convinced). The system layer will roll the check "
-        f"and you'll narrate the fallout next turn. This is a hard rule."
+        f"and you'll narrate the fallout next turn. This is a hard rule.{secondary_block}"
     )

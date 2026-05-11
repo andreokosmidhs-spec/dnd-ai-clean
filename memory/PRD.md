@@ -978,6 +978,15 @@ Properly defined what happens when a beat's check fails — until now a fail sti
   - `DMFeedbackButton.jsx` shows "DM rewinding to Scene N: …" toast when a correction is applied
 - **Tests**: 10/10 pytest backend cases pass (`/app/backend/tests/test_canon_scenes.py`). Frontend verified — Canon Timeline opens from ESC menu, renders scenes newest-first with current anchor styling.
 
+### 2026-05-11 (Canon Bar — always-visible anchor strip)
+- **Feature**: A slim **CanonBar** lives at the top of the Adventure Log, always showing the player WHICH canon scene the DM is currently anchored to. Click it → expands the full Canon Timeline.
+- **Frontend**:
+  - New `components/CanonBar.jsx` — fetches `/canon/current` on mount + listens for `rpg:canon-updated` window events (dispatched from `ActiveInvestigationPanel` after every passed beat) to live-refresh
+  - Emerald-styled when canon exists (scene-number circle + title + DC chip on `sm+`), stone-colored empty state with a "Pass a check to lock in your first scene" prompt when none
+  - Click opens the same `CanonTimelinePanel` reachable from ESC → Canon Timeline
+  - DC chip hidden when `dc <= 0` (action beats / public reveals shouldn't display "DC 0")
+- **Tests**: Frontend testing agent verified 100% (rendering, click-to-expand, event-driven refresh).
+
 ## Files of Reference
 - `frontend/src/components/RPGGame.jsx` - Main game component with session bridge
 - `frontend/src/store/useSessionCore.js` - Zustand session store

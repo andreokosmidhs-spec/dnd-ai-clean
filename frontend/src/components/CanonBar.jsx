@@ -69,7 +69,7 @@ const CanonBar = ({ campaignId }) => {
                 {current.title}
               </div>
             </div>
-            {current.check_passed?.check_type && (
+            {current.check_passed?.check_type && Number(current.check_passed?.dc) > 0 && (
               <span
                 className="hidden sm:inline-flex text-[10px] px-2 py-0.5 rounded-full border border-emerald-400/50 text-emerald-200 bg-stone-950/60 shrink-0"
                 data-testid="canon-bar-check-chip"

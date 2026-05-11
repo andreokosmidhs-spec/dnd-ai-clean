@@ -43,7 +43,7 @@ const CanonSceneCard = ({ scene, isCurrent }) => {
                 <Anchor className="h-3 w-3" /> Current anchor
               </span>
             )}
-            {cp?.check_type && (
+            {cp?.check_type && Number(cp.dc) > 0 && (
               <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-400/50 text-amber-200 bg-stone-950/60 flex items-center gap-1">
                 <ShieldCheck className="h-3 w-3" />
                 {cp.check_type} DC {cp.dc}

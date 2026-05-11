@@ -17,6 +17,7 @@ import ActiveInvestigationPanel, { StorylineRewardModal } from './ActiveInvestig
 import RememberCardDialog from './RememberCardDialog';
 import SceneReportDialog from './SceneReportDialog';
 import DefeatModal from './DefeatModal';
+import CanonBar from './CanonBar';
 import { getCheckOutcome, getAbilityModifier, isProficient } from '../utils/dndMechanics';
 import { useTTS } from '../hooks/useTTS';
 import sessionManager from '../state/SessionManager';
@@ -1610,6 +1611,9 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
             }}
           />
         )}
+
+        {/* Canon anchor strip — always shows the current locked-in scene */}
+        <CanonBar campaignId={campaignId} />
 
         {/* Messages */}
         <ScrollArea className="flex-1" ref={scrollRef}>

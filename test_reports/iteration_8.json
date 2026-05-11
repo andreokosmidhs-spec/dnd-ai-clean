@@ -1,0 +1,28 @@
+{
+  "summary": "Frontend-only verification of the new CanonBar component in AdventureLogWithDM. Loaded campaign 29feef57-a81d-4799-a988-88d644406acc via 'Load Latest Campaign'. CanonBar renders at the top of the Adventure Log with the correct emerald styling, scene number circle (5), 'Current canon' label, title ('Secrets in Emberfall Shadows'), check chip ('Insight DC 0'), and ChevronRight indicator. Clicking the bar opens the CanonTimelinePanel with identical content to the ESC → Canon Timeline path. The rpg:canon-updated window event is wired correctly and dispatch did not throw; the bar continues to reflect current canon after dispatch. Empty-state was not reachable for this campaign (already has canon) but the rendering logic was validated via code review.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "CanonBar check chip", "issues": ["Chip displays 'Insight DC 0' — DC value of 0 looks odd to a player. Likely upstream data issue from check_passed.dc on the canon scene (not a CanonBar bug). Worth surfacing to main agent so they can verify if DC should be a positive integer or the chip should hide when dc <= 0."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_8.json"],
+  "action_items": [
+    "Consider hiding the canon-bar-check-chip when check_passed.dc is 0/falsy (currently it shows 'Insight DC 0'). Trivial guard: `current.check_passed?.check_type && current.check_passed?.dc > 0`.",
+    "Optional: dedupe BACKEND_URL trailing-slash handling in CanonBar.jsx (other components already strip trailing slash)."
+  ],
+  "critical_code_review_comments": [
+    "CanonBar.jsx is clean (~100 lines), uses useCallback for fetcher, properly cleans up the window event listener on unmount, gracefully returns null when no campaignId, and silently degrades to the empty state on fetch errors — good defensive UX.",
+    "Empty-state branch has full data-testid coverage via the root 'canon-bar' button; consider adding a secondary testid like 'canon-bar-empty' to disambiguate the two states in future automation.",
+    "Event listener is correctly added/removed but does not filter by detail.campaignId — if multiple campaigns ever coexist this would over-refetch. Minor; current single-campaign UX is fine."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "100%"},
+  "seed_data_creation": "Used pre-existing campaign 29feef57-a81d-4799-a988-88d644406acc (already had 5 canon scenes).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "CanonBar is fully wired: data-testid='canon-bar' (root), 'canon-bar-check-chip' (DC chip, sm+ widths only), and 'canon-timeline-panel' (expanded view). Use 'Load Latest Campaign' on the home screen to enter the game — there is no /game route. The DC chip is hidden on viewports below sm (640px). Empty-state path was not exercised live (campaign already has canon); to test it, run with a fresh campaign that has no passed checks yet.",
+  "rca of the issue": "No bugs found in CanonBar itself. Only observation: 'DC 0' chip display is awkward but stems from upstream canon scene data, not CanonBar logic."
+}

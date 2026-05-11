@@ -175,6 +175,11 @@ const ActiveInvestigationPanel = ({
           `✦ Scene ${data.canon_scene.scene_number} locked in: "${data.canon_scene.title}"`,
           { duration: 5500, description: 'The DM can never contradict this. Open ESC → Canon Timeline to review.' }
         );
+        try {
+          window.dispatchEvent(new CustomEvent('rpg:canon-updated', {
+            detail: { campaignId, scene: data.canon_scene },
+          }));
+        } catch {}
       }
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);
@@ -236,6 +241,11 @@ const ActiveInvestigationPanel = ({
           `✦ Scene ${data.canon_scene.scene_number} locked in: "${data.canon_scene.title}"`,
           { duration: 5500, description: 'Your creative approach is now canon. Open ESC → Canon Timeline.' }
         );
+        try {
+          window.dispatchEvent(new CustomEvent('rpg:canon-updated', {
+            detail: { campaignId, scene: data.canon_scene },
+          }));
+        } catch {}
       }
       if (data.completed) {
         onComplete && onComplete(data.storyline, data.reward);

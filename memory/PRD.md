@@ -987,6 +987,14 @@ Properly defined what happens when a beat's check fails — until now a fail sti
   - DC chip hidden when `dc <= 0` (action beats / public reveals shouldn't display "DC 0")
 - **Tests**: Frontend testing agent verified 100% (rendering, click-to-expand, event-driven refresh).
 
+### 2026-05-11 (Canon References — inline DM-honors-canon signal)
+- **Feature**: Below every DM narration that mentions a canonized entity (NPC, item, location), a compact footer of **pulsing emerald chips** appears — one chip per referenced canon scene. Players SEE the DM honoring canon in real time. Clicking any chip opens the full Canon Timeline.
+- **Frontend**:
+  - New `hooks/useCanonTerms.js` — fetches all canon scenes, extracts proper-noun terms (NPC names, place names, item names) from titles + facts via sentence-aware regex, indexes back to the originating scene. Refreshes on `rpg:canon-updated` events. Robust STOP_TERMS list filters articles, pronouns, past-tense verbs, and abstract proper-noun leaders so generic words don't trip false positives.
+  - New `components/CanonReferences.jsx` — renders the footer row of pulsing emerald chips with Anchor icon, scene number, title, and matched terms. Each chip click opens the shared `CanonTimelinePanel`.
+  - `AdventureLogWithDM.jsx` mounts the hook once and renders the footer beneath every DM narration block (coexists with the existing entity/hook highlighters — no conflicts).
+- **Tests**: Frontend testing agent verified 100% on the explicit spec — chips appear under narration that mentions canonized entities, false-positive guards correctly skip generic words like "Returned"/"Found"/"Passed"/"Secrets", and clicks open the timeline panel.
+
 ## Files of Reference
 - `frontend/src/components/RPGGame.jsx` - Main game component with session bridge
 - `frontend/src/store/useSessionCore.js` - Zustand session store

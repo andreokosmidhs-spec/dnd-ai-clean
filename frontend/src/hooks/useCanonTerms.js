@@ -39,6 +39,14 @@ const STOP_TERMS = new Set([
   'made', 'did', 'got', 'put', 'set', 'kept', 'held',
   'next', 'first', 'last', 'final',
   'yes', 'no', 'okay', 'well',
+  // Abstract proper-noun leaders that scene titles frequently begin with —
+  // matching the lowercase form in narration would create false-positive
+  // canon chips on everyday words. Only filter the standalone form; the
+  // multi-word phrases still survive ("Secrets of Veillane" → "Veillane").
+  'secrets', 'shadows', 'whispers', 'beginning', 'journey', 'echoes',
+  'tales', 'legends', 'truths', 'lies', 'memories', 'dreams', 'nightmares',
+  'mysteries', 'rumors', 'silence', 'fate', 'destiny', 'fortune',
+  'darkness', 'light', 'shade', 'mist', 'fog', 'storm',
 ]);
 
 function extractProperNouns(text) {

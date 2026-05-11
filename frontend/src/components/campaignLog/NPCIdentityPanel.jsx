@@ -11,7 +11,7 @@
  *   background, mannerisms[], speech_style, secrets[], allegiances[], current_motivation
  */
 import React from 'react';
-import { Lock, Eye, Sword, Heart, ScrollText, EyeOff } from 'lucide-react';
+import { Lock, Eye, Sword, Heart, ScrollText, EyeOff, History } from 'lucide-react';
 
 const RedactedRow = ({ label, value, revealed, hint, testid }) => {
   if (revealed) {
@@ -58,6 +58,45 @@ export const NPCIdentityPanel = ({ card }) => {
   const mannerisms = secret.mannerisms || [];
   const secrets = secret.secrets || [];
   const allegiances = secret.allegiances || [];
+  const discoveryLog = Array.isArray(card.discovery_log) ? card.discovery_log : [];
+
+  // Friendly label for a revealed-field path (e.g. "personality.flaw" → "Flaw")
+  const friendlyField = (f) => {
+    const map = {
+      'personality.trait': 'Trait',
+      'personality.ideal': 'Ideal',
+      'personality.bond': 'Bond',
+      'personality.flaw': 'Flaw',
+      'speech_style': 'Speech style',
+      'mannerisms': 'Mannerisms',
+      'background': 'Background',
+      'current_motivation': 'Current motive',
+      'allegiances': 'Allegiances',
+      'passive_insight': 'Passive Insight',
+      'stats.ac': 'AC',
+      'stats.hp': 'HP',
+      'stats.intimidation_dc': 'Intimidation DC',
+      'stats.persuasion_dc': 'Persuasion DC',
+      'stats.deception_dc': 'Deception DC',
+      'stats.insight_dc': 'Insight DC',
+      'secret_0': 'Secret 1',
+      'secret_1': 'Secret 2',
+    };
+    return map[f] || f;
+  };
+
+  const formatTime = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString(undefined, {
+        month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      });
+    } catch {
+      return '';
+    }
+  };
 
   return (
     <div
@@ -207,6 +246,53 @@ export const NPCIdentityPanel = ({ card }) => {
           ))}
         </div>
       </div>
+
+      {/* Discovery Log — timeline of WHEN and HOW each redacted field was
+          uncovered. Reverse-chronological. Only renders when there's at
+          least one entry. Builds investigative satisfaction and gives the
+          player a record they can scroll back to during play. */}
+      {discoveryLog.length > 0 && (
+        <div className="space-y-2 pt-2" data-testid="discovery-log-section">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-stone-400 flex items-center gap-1.5">
+            <History className="w-3 h-3" />
+            Discovery Log
+            <span className="ml-auto text-stone-500 normal-case tracking-normal italic">
+              {discoveryLog.length} {discoveryLog.length === 1 ? 'entry' : 'entries'}
+            </span>
+          </div>
+          <ol className="pl-4 border-l-2 border-emerald-500/30 space-y-1.5">
+            {[...discoveryLog].reverse().slice(0, 12).map((entry, i) => (
+              <li
+                key={i}
+                className="relative text-[12px] text-amber-50 leading-snug"
+                data-testid={`discovery-log-entry-${i}`}
+              >
+                {/* Bullet dot anchored on the timeline line */}
+                <span className="absolute -left-[19px] top-1 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-stone-950" />
+                <div className="flex flex-wrap items-baseline gap-x-1.5">
+                  <span className="font-bold text-emerald-200">
+                    {friendlyField(entry.field)}
+                  </span>
+                  <span className="text-stone-400">revealed via</span>
+                  <span className="font-bold text-amber-200">{entry.check_type}</span>
+                </div>
+                <div className="text-[11px] text-stone-400 italic">
+                  in <span className="text-stone-300 not-italic">"{entry.storyline_title}"</span>
+                  {entry.beat_title && entry.beat_title !== entry.storyline_title && (
+                    <> · beat <span className="text-stone-300 not-italic">"{entry.beat_title}"</span></>
+                  )}
+                  {entry.at && <> · <span className="text-stone-500">{formatTime(entry.at)}</span></>}
+                </div>
+              </li>
+            ))}
+            {discoveryLog.length > 12 && (
+              <li className="text-[11px] text-stone-500 italic pt-1">
+                + {discoveryLog.length - 12} earlier entries
+              </li>
+            )}
+          </ol>
+        </div>
+      )}
     </div>
   );
 };

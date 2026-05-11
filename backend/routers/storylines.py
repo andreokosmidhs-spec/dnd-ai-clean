@@ -855,6 +855,8 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
                 campaign_id=campaign_id,
                 beat=cur_beat,
                 outcome=body.outcome,
+                storyline_title=storyline.get("title"),
+                beat_title=cur_beat.get("title"),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"NPC field reveal failed (non-fatal): {exc}")
@@ -1065,6 +1067,8 @@ async def creative_approach_endpoint(
                 campaign_id=campaign_id,
                 beat=cur_beat,
                 outcome=storyline_outcome,
+                storyline_title=storyline.get("title"),
+                beat_title=cur_beat.get("title"),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"NPC field reveal via creative failed: {exc}")
@@ -1643,12 +1647,16 @@ async def _reveal_npc_fields_on_resolve(
     campaign_id: str,
     beat: Dict,
     outcome: str,
+    storyline_title: Optional[str] = None,
+    beat_title: Optional[str] = None,
 ) -> List[Dict]:
     """When a social check passes against a named NPC, append the appropriate
     fields to that NPC's `revealed_fields` array so the player sees their
-    identity sheet uncloak in real time. Returns the list of NPC card patches
-    `[{title, newly_revealed: [...]}, ...]` so the frontend can highlight
-    the fresh info.
+    identity sheet uncloak in real time. Also appends a Discovery Log entry
+    per field so the player can see WHEN and HOW each piece was uncovered.
+    Returns the list of NPC card patches
+    `[{title, newly_revealed: [...], log_entries: [...]}, ...]` so the
+    frontend can highlight the fresh info.
     """
     if outcome != "passed":
         return []
@@ -1673,6 +1681,10 @@ async def _reveal_npc_fields_on_resolve(
 
     patches: List[Dict] = []
     coll = _cards_collection()
+    now = datetime.now(timezone.utc)
+    sl_title = storyline_title or "(unknown scene)"
+    b_title = beat_title or beat.get("title") or "(beat)"
+
     for nm in npc_names[:3]:
         card = await coll.find_one(
             {"campaign_id": campaign_id, "type": "character", "title": nm},
@@ -1709,11 +1721,31 @@ async def _reveal_npc_fields_on_resolve(
         if not newly:
             continue
         merged = sorted(existing.union(newly))
+        # Build Discovery Log entries — one per newly-revealed field — so
+        # the player can later trace exactly when and how each piece of
+        # intel was uncovered.
+        log_entries = [
+            {
+                "field": f,
+                "check_type": check,
+                "storyline_title": sl_title,
+                "beat_title": b_title,
+                "at": now.isoformat(),
+            }
+            for f in newly
+        ]
         await coll.update_one(
             {"campaign_id": campaign_id, "type": "character", "title": nm},
-            {"$set": {"revealed_fields": merged, "is_new": True}},
+            {
+                "$set": {"revealed_fields": merged, "is_new": True},
+                "$push": {"discovery_log": {"$each": log_entries}},
+            },
         )
-        patches.append({"title": nm, "newly_revealed": newly})
+        patches.append({
+            "title": nm,
+            "newly_revealed": newly,
+            "log_entries": log_entries,
+        })
     return patches
 
 

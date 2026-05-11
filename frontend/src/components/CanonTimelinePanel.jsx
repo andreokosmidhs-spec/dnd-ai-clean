@@ -16,10 +16,10 @@ const CanonSceneCard = ({ scene, isCurrent }) => {
   const cp = scene.check_passed || null;
   return (
     <div
-      className={`rounded-lg border-2 p-4 ${
+      className={`rounded-lg border-2 p-4 bg-gradient-to-br from-stone-900 via-stone-900 to-amber-950/30 shadow-inner shadow-amber-900/30 ${
         isCurrent
-          ? 'border-emerald-500/70 bg-emerald-950/30 shadow-[0_0_30px_rgba(16,185,129,0.2)]'
-          : 'border-amber-500/30 bg-stone-900/60'
+          ? 'border-emerald-500/60 ring-1 ring-emerald-400/30'
+          : 'border-amber-500/30'
       }`}
       data-testid={`canon-scene-${scene.scene_number}`}
     >
@@ -28,14 +28,14 @@ const CanonSceneCard = ({ scene, isCurrent }) => {
           className={`shrink-0 w-10 h-10 rounded-full border-2 flex items-center justify-center font-bold ${
             isCurrent
               ? 'border-emerald-300 bg-emerald-600 text-stone-950'
-              : 'border-amber-500/50 bg-stone-950 text-amber-200'
+              : 'border-amber-500/60 bg-stone-950 text-amber-200'
           }`}
         >
           {scene.scene_number}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h4 className={`font-bold text-base ${isCurrent ? 'text-emerald-50' : 'text-amber-50'}`}>
+            <h4 className="font-bold text-base text-amber-50 font-serif">
               {scene.title}
             </h4>
             {isCurrent && (
@@ -44,7 +44,7 @@ const CanonSceneCard = ({ scene, isCurrent }) => {
               </span>
             )}
             {cp?.check_type && Number(cp.dc) > 0 && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-400/50 text-amber-200 bg-stone-950/60 flex items-center gap-1">
+              <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500/50 text-amber-200 bg-stone-950/60 flex items-center gap-1">
                 <ShieldCheck className="h-3 w-3" />
                 {cp.check_type} DC {cp.dc}
                 {cp.roll_total != null && <span className="opacity-70"> · roll {cp.roll_total}</span>}
@@ -52,17 +52,17 @@ const CanonSceneCard = ({ scene, isCurrent }) => {
             )}
           </div>
           {scene.storyline_title && (
-            <div className="text-[11px] text-stone-400 italic mt-0.5">
+            <div className="text-[11px] text-amber-300/70 italic mt-0.5">
               from "{scene.storyline_title}"
             </div>
           )}
-          <p className={`mt-2 text-sm leading-relaxed italic font-serif ${isCurrent ? 'text-emerald-100' : 'text-amber-100/90'}`}>
+          <p className="mt-2 text-sm leading-relaxed italic font-serif text-amber-50/90 tracking-wide">
             {scene.summary}
           </p>
           {scene.facts && scene.facts.length > 0 && (
             <ul className="mt-3 space-y-1">
               {scene.facts.slice(0, 5).map((f, i) => (
-                <li key={i} className="text-[12px] text-stone-300 flex gap-2 leading-snug">
+                <li key={i} className="text-[12px] text-amber-100/85 flex gap-2 leading-snug font-serif">
                   <span className="text-amber-400 shrink-0">•</span>
                   <span>{f}</span>
                 </li>
@@ -70,7 +70,7 @@ const CanonSceneCard = ({ scene, isCurrent }) => {
             </ul>
           )}
           {scene.pitch_text && (
-            <div className="mt-2 text-[11px] text-stone-400 italic border-l-2 border-stone-600 pl-2">
+            <div className="mt-2 text-[11px] text-amber-200/70 italic border-l-2 border-amber-500/40 pl-2">
               Your pitch: "{scene.pitch_text}"
             </div>
           )}
@@ -142,7 +142,7 @@ const CanonTimelinePanel = ({ open, onClose, campaignId }) => {
         </div>
 
         <div className="px-5 py-3 border-b border-amber-500/20 bg-stone-900/50">
-          <p className="text-amber-100/80 text-xs leading-relaxed italic">
+          <p className="text-amber-100/90 text-xs leading-relaxed italic font-serif">
             Every check you pass becomes a locked-in scene — the DM treats these
             as immutable truth. The current scene is the DM's anchor; new
             narration always flows from it. If the DM contradicts canon, flag

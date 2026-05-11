@@ -946,10 +946,30 @@ Properly defined what happens when a beat's check fails — until now a fail sti
 - Created session bridge in RPGGame.jsx
 - Configured backend with OPENAI_API_KEY and emergentintegrations
 
+### 2026-05-11 (DM Notebook — persistent learning memory)
+- **Feature**: The DM now keeps a persistent **DM Notebook** of lessons distilled from player feedback + 👍/👎 reactions. The model conditions on these lessons every turn so it improves with each interaction.
+- **Backend**:
+  - New collection `dm_lessons` — `{type, text, trigger_keywords[], weight 1..5, enabled, source, source_ref, apply_count, last_applied_at}`
+  - New service `services/dm_lessons.py` — LLM distiller (`gpt-4o-mini`) for feedback + reactions, Jaccard-based merging (≥0.4 keyword overlap → merge + bump weight), prompt rendering
+  - New router `routers/dm_lessons.py` — `GET/POST /api/campaigns/{id}/dm-lessons`, `PATCH/DELETE /api/campaigns/{id}/dm-lessons/{lesson_id}`, `POST /api/campaigns/{id}/dm-lessons/reaction`
+  - `lean_dm.py` now loads active lessons each turn, injects them under a `=== DM NOTEBOOK ===` block grouped by RULES/DC/TABOO/STYLE, and bumps `apply_count + last_applied_at` after each turn
+  - `storylines.py::submit_dm_feedback` now also distills the judgment into a `rule_correction`/`dc_calibration` lesson, returned as `lesson` in the response
+  - **Bug fix**: `lean_dm.py` was referencing `req.campaign_id` (does not exist) — corrected to `campaign_id`
+- **Frontend**:
+  - New component `components/DMNotebookPanel.jsx` — opens via ESC menu, shows lessons grouped by 4 types with ★-weight, source tags, apply-count, toggle/edit/delete/+−/manual-add
+  - `GameEscapeMenu.jsx` now has a 4th option **"DM Notebook"** beside Continue / Settings / Main Menu
+  - `RPGGame.jsx` mounts `<DMNotebookPanel>` with state controlled from the escape menu
+  - `AdventureLogWithDM.jsx` — every DM narration beat now has **👍 / 👎** buttons (data-testid `beat-like-{idx}` / `beat-dislike-{idx}`). Liked beats glow emerald, disliked rose. Toast confirms whether the lesson was created or merged into an existing one.
+- **Tests**: 20/20 pytest backend cases pass (`/app/backend/tests/test_dm_lessons.py`). Frontend testing agent verified all 4 group sections render and reaction buttons appear on every beat.
+
 ## Files of Reference
 - `frontend/src/components/RPGGame.jsx` - Main game component with session bridge
 - `frontend/src/store/useSessionCore.js` - Zustand session store
 - `frontend/src/pages/CampaignGenerate.jsx` - Campaign generation page
 - `frontend/src/components/CampaignLogPanel.jsx` - Knowledge deck UI
+- `frontend/src/components/DMNotebookPanel.jsx` - Persistent DM-learned lessons UI
+- `frontend/src/components/AdventureLogWithDM.jsx` - 👍/👎 reactions on DM beats
 - `backend/server.py` - FastAPI backend
+- `backend/services/dm_lessons.py` - Lesson distillation + Jaccard merging
+- `backend/routers/dm_lessons.py` - DM Notebook REST endpoints
 - `backend/.env` - Contains OPENAI_API_KEY

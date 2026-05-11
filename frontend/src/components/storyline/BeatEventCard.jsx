@@ -453,19 +453,6 @@ const BeatEventCard = ({
   const hasComplication = isActive && !!(complication && complication.trim());
   const isOpen = expandedIndex === index;
 
-  // Auto-open the active beat the first time it appears in this card,
-  // so the player isn't forced to click before acting on a new beat.
-  const [autoOpened, setAutoOpened] = useState(false);
-  useEffect(() => {
-    if (isActive && !sealed && !autoOpened && expandedIndex === null) {
-      setAutoOpened(true);
-      setExpandedIndex(index);
-    }
-    if (!isActive) {
-      setAutoOpened(false);
-    }
-  }, [isActive, sealed, autoOpened, expandedIndex, index, setExpandedIndex]);
-
   return (
     <>
       <PeekFace

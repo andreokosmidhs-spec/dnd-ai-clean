@@ -23,21 +23,42 @@ import PitchInput from './PitchInput';
 import DMFeedbackButton from './DMFeedbackButton';
 import { categoryPaletteFor, rarityFor } from './beatCardUtils';
 
-// Shared Audio instance for the card-flip SFX. Lazy-initialized on first
-// click so we don't trigger an audio load at module-eval time, and reused
-// across cards so rapid clicks reset playback instead of stacking.
-let _flipAudio = null;
+// Card-flip SFX. Preloaded eagerly at module-load so the first click is
+// instant (the file is ~25 KB so this is essentially free). Each call to
+// playCardFlip clones the buffer via a fresh Audio that wraps the same
+// preloaded src, allowing overlapping plays if the player clicks rapidly.
+const FLIP_SFX_URL = '/sounds/card-flip.mp3';
+let _flipPrimer = null;
+if (typeof window !== 'undefined') {
+  try {
+    _flipPrimer = new Audio(FLIP_SFX_URL);
+    _flipPrimer.preload = 'auto';
+    _flipPrimer.volume = 0.7;
+    // Trigger the network fetch immediately.
+    _flipPrimer.load();
+  } catch { /* SSR / unsupported */ }
+}
 function playCardFlip() {
   try {
-    if (!_flipAudio) {
-      _flipAudio = new Audio('/sounds/card-flip.mp3');
-      _flipAudio.volume = 0.55;
-      _flipAudio.preload = 'auto';
+    // Reuse the primer when it's ready; clone it for overlapping plays.
+    const sfx = _flipPrimer && _flipPrimer.readyState >= 2
+      ? _flipPrimer.cloneNode(true)
+      : new Audio(FLIP_SFX_URL);
+    sfx.volume = 0.7;
+    const p = sfx.play();
+    if (p && typeof p.catch === 'function') {
+      p.catch((err) => {
+        // Most common: NotAllowedError = autoplay policy. We only call
+        // this inside a click handler so it should be fine — but log it
+        // to console so the dev sees if a browser blocks it anyway.
+        // eslint-disable-next-line no-console
+        console.warn('[card-flip sfx] play failed:', err?.name || err);
+      });
     }
-    _flipAudio.currentTime = 0;
-    const p = _flipAudio.play();
-    if (p && typeof p.catch === 'function') p.catch(() => { /* autoplay blocked — silent fail */ });
-  } catch { /* fail silently — sound is non-essential */ }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[card-flip sfx] init failed:', err);
+  }
 }
 
 const CATEGORY_ICONS = {

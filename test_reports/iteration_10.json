@@ -1,0 +1,41 @@
+{
+  "summary": "Tested the new TCG-style Investigation Beat cards (BeatEventCard) in ActiveInvestigationPanel. Found and fixed a CRITICAL Temporal Dead Zone (TDZ) bug that crashed the entire app whenever an active investigation tried to render. After the fix, the new card design, auto-open, rarity crystal, category color band, peek face, expanded overlay, and action buttons all work as specified. ESC-to-close has a minor conflict with parent panel's ESC handler.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ActiveInvestigationPanel.jsx",
+        "issue": "CRITICAL TDZ bug: useEffect referenced `idx` in its dep array and querySelector before `const idx = storyline?.current_beat ?? 0` was declared (line 101 used idx, declared at line 125). Threw `ReferenceError: Cannot access 'idx' before initialization` and triggered the ErrorBoundary, displaying 'Something went wrong / Reload Page' the moment the investigation panel mounted. The entire feature being tested in this iteration was unreachable until fixed.",
+        "selector": "[data-testid='active-investigation-panel']",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "ActiveInvestigationPanel.jsx + BeatEventCard.jsx",
+        "issue": "ESC-key conflict: both ActiveInvestigationPanel and the ExpandedFace inside BeatEventCard register their own `window.addEventListener('keydown', ...)` for Escape. When the player presses ESC inside the expanded overlay, BOTH handlers fire — the overlay closes via setExpandedIndex(null) AND the parent panel attempts onClose, which (a) closes the whole investigation panel and/or (b) re-triggers auto-open on next render. In testing the overlay remained present after ESC. The ExpandedFace ESC handler should call e.stopPropagation() OR ActiveInvestigationPanel's ESC handler should be skipped while expandedIndex !== null.",
+        "selector": "[data-testid='beat-card-expanded-overlay']",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_10.json"],
+  "action_items": [
+    "VERIFIED FIX: Moved beats/idx/beat declarations above the auto-scroll useEffect in ActiveInvestigationPanel.jsx so `idx` is in scope when the effect's dep array evaluates. App no longer crashes when an investigation begins.",
+    "FOLLOW-UP: Resolve the ESC-key double-handler conflict between ActiveInvestigationPanel and BeatEventCard.ExpandedFace. Suggested fix: in ActiveInvestigationPanel's onKey, also check `expandedIndex === null` before invoking onClose (i.e. let the inner overlay swallow ESC first), OR call e.stopPropagation() inside ExpandedFace's keydown.",
+    "Re-test once ESC conflict is fixed to confirm: ESC closes only the overlay (not the whole panel), backdrop click closes overlay, and after rolling/creative action the carousel auto-scrolls to centre the next active beat (only verified that the panel closes — couldn't test multi-beat auto-scroll because LLM-generated storylines in this campaign are 1-beat)."
+  ],
+  "critical_code_review_comments": [
+    "ActiveInvestigationPanel.jsx had a TDZ bug — `useEffect(..., [idx])` placed BEFORE `const idx = ...`. This is the kind of error a basic ESLint rule (`no-use-before-define`) would have caught at build time. Recommend enabling that rule.",
+    "Two components register `window.addEventListener('keydown')` for ESC simultaneously. Generally an anti-pattern — central key-handling at the modal layer (or use the React onKeyDown on a focused container) is cleaner.",
+    "carouselRef-based scrollIntoView is fine, but the closure captures `idx` indirectly through dep array; works after the fix.",
+    "Title at top, rarity crystal centred, category-color header band, info chips at bottom, and 'Tap to reveal' hint all match the spec on the live page."
+  ],
+  "updated_files": ["/app/frontend/src/components/ActiveInvestigationPanel.jsx"],
+  "success_rate": {"backend": "n/a", "frontend": "85%"},
+  "seed_data_creation": "none — used existing campaign 29feef57-a81d-4799-a988-88d644406acc via Load Latest Campaign and triggered a new investigation by typing 'I make an Investigation check, examining the merchant's stall' into the action box.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "After the TDZ fix, panel renders correctly. Verified data-testids: beat-card-{i}, beat-card-expanded-overlay, beat-card-expanded, beat-description-expanded, beat-rarity-open (DC<=0 case), storyline-roll-btn-expanded, storyline-creative-btn-expanded, storyline-continue-btn-expanded, beat-expanded-close-btn, storyline-abandon-btn. Auto-open works (overlay appeared without click). Old non-expanded storyline-roll-btn no longer present (good — old action bar removed). To test multi-beat carousel auto-scroll, you'll need a >1-beat storyline; the LLM in this campaign currently generates 1-beat scenes for simple actions — try a more open-ended action like 'I begin a full investigation of the locket theft, tracking down every lead'.",
+  "rca of the issue": "Root cause: variable hoisting / Temporal Dead Zone. In ActiveInvestigationPanel.jsx, a useEffect using `idx` in its dependency array (and inside its body) was placed BEFORE the `const idx = storyline?.current_beat ?? 0;` declaration. JavaScript hoists `const` declarations into the TDZ, so any read before the declaration line throws ReferenceError. React renders synchronously, so when the panel mounted with an active storyline, evaluating the deps array threw, crashing the component and tripping the ErrorBoundary. Reproduction: trigger any investigation via the player action box → app becomes 'Something went wrong / Reload Page'. Mitigation: moved the `beats`, `idx`, `beat` declarations above both useEffect blocks; now idx exists when the effect's dep array is evaluated. Verified via Playwright that the panel mounts, auto-opens the active beat, and all data-testids resolve cleanly with zero console errors."
+}

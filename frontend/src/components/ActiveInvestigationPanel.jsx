@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { abilityMod } from '../utils/hp';
 import { DMFeedbackButton } from './storyline/DMFeedbackButton';
 import { PitchInput } from './storyline/PitchInput';
+import BeatEventCard from './storyline/BeatEventCard';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -85,6 +86,30 @@ const ActiveInvestigationPanel = ({
   const [creativeOpen, setCreativeOpen] = useState(false);
   const [creativeText, setCreativeText] = useState('');
 
+  // Which beat card (if any) is currently flipped open in the centered
+  // overlay. `null` = all cards in their peek/closed state.
+  const [expandedIndex, setExpandedIndex] = useState(null);
+
+  // Ref to the horizontal carousel row so we can auto-scroll the active
+  // beat into view whenever `idx` advances (after a pass/skip/etc).
+  const carouselRef = useRef(null);
+
+  const beats = storyline?.beats || [];
+  const idx = storyline?.current_beat ?? 0;
+  const beat = beats[idx];
+
+  // Auto-scroll the carousel to the active beat AND auto-flip-open the
+  // newly active beat so the player sees their next scene without extra
+  // clicks. When a beat resolves, close the overlay first; the next
+  // tick's `idx` change will open the next beat.
+  useEffect(() => {
+    if (!carouselRef.current) return;
+    const el = carouselRef.current.querySelector(`[data-testid="beat-card-${idx}"]`);
+    if (el && el.scrollIntoView) {
+      el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  }, [idx]);
+
   // Lock body scroll while the modal is up; close on Escape (only when
   // no nested dialogs are open).
   useEffect(() => {
@@ -99,10 +124,6 @@ const ActiveInvestigationPanel = ({
       window.removeEventListener('keydown', onKey);
     };
   }, [onClose, failPrompt, creativeOpen]);
-
-  const beats = storyline?.beats || [];
-  const idx = storyline?.current_beat ?? 0;
-  const beat = beats[idx];
 
   const ability = useMemo(
     () => ABILITY_FOR_CHECK[beat?.check_type] || 'int',
@@ -186,6 +207,9 @@ const ActiveInvestigationPanel = ({
       } else {
         onUpdate && onUpdate(data.storyline);
       }
+      // Close the expanded overlay so the carousel can auto-advance and
+      // auto-open the next active beat.
+      setExpandedIndex(null);
     } catch (e) {
       toast.error(e.message || 'Could not advance the investigation.');
     } finally {
@@ -254,6 +278,8 @@ const ActiveInvestigationPanel = ({
       }
       setCreativeOpen(false);
       setCreativeText('');
+      // Close the expanded card so the carousel can auto-advance.
+      setExpandedIndex(null);
       toast.success(`DM judged: ${data.judgment}`);
     } catch (e) {
       toast.error('Could not submit your approach.');
@@ -362,11 +388,13 @@ const ActiveInvestigationPanel = ({
           </Button>
         </div>
 
-        {/* Card draft row */}
-        <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
-          <div className="flex gap-3 sm:gap-4 px-1 pb-2 items-stretch min-w-min h-full">
+        {/* Card draft row — auto-scrolls to the active beat. Each card is
+            a TCG-style face with a rarity emblem; clicking flips it open
+            into a centered overlay revealing the narration + actions. */}
+        <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden" ref={carouselRef}>
+          <div className="flex gap-3 sm:gap-4 px-1 pb-3 items-center min-w-min min-h-[360px]">
             {beats.map((b, i) => (
-              <BeatCard
+              <BeatEventCard
                 key={i}
                 beat={b}
                 index={i}
@@ -377,82 +405,31 @@ const ActiveInvestigationPanel = ({
                 campaignId={campaignId}
                 storylineId={storyline.id}
                 onCorrectionApplied={onUpdate}
+                onCreative={() => setCreativeOpen(true)}
+                onRoll={handleRoll}
+                onContinue={() => (beat.reveal_type === 'knowledge' ? handleSkip() : handleSkip())}
+                busy={busy}
+                rollOptional={rollOptional}
+                lastRoll={lastRoll}
+                formatMod={formatMod}
+                mod={mod}
+                expandedIndex={expandedIndex}
+                setExpandedIndex={setExpandedIndex}
               />
             ))}
           </div>
         </div>
 
-        {/* Active beat task line */}
-        <div className="rounded-md border border-amber-500/50 bg-stone-900/70 px-3 py-2.5">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[11px] uppercase tracking-[0.16em] text-amber-300 font-semibold">Task</span>
-            <Badge variant="outline" className="text-[10.5px] border-amber-300/60 text-amber-100/95 ml-auto bg-stone-900/80">
-              {ability.toUpperCase()} mod {formatMod(mod)}
-            </Badge>
-          </div>
-          <div className="text-amber-50 text-base italic font-serif leading-relaxed">
-            {beat.task || <span className="text-amber-200/60 not-italic font-sans text-sm">(no specific task — engage the scene however you like)</span>}
-          </div>
-          {lastRoll && !lastRoll.passed && (
-            <div className="mt-2 text-[13px] text-rose-200 italic">
-              Last roll: {lastRoll.die}{formatMod(lastRoll.mod)} = {lastRoll.total} vs DC {lastRoll.dc} — failed.
-            </div>
-          )}
-        </div>
-
-        {/* Action bar — creative approach is the primary path; roll is loose
-            and skip lets the player proceed without forcing a check.
-            Knowledge beats hide skip (the player NEEDS the reveal to advance). */}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            className="h-9 bg-fuchsia-500 hover:bg-fuchsia-400 text-black font-bold"
-            onClick={() => setCreativeOpen(true)} disabled={busy}
-            data-testid="storyline-creative-btn"
-            title="Type what you do — the DM will judge and continue the scene"
-          >
-            <Wand2 className="h-4 w-4 mr-1" /> What do you do?
-          </Button>
-          <Button
-            size="sm" variant="outline"
-            className="h-9 border-amber-400/70 text-amber-100 bg-amber-950/30 hover:bg-amber-700/30"
-            onClick={handleRoll} disabled={busy || rollOptional}
-            data-testid="storyline-roll-btn"
-            title={rollOptional ? 'No check suggested for this scene' : undefined}
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Dice5 className="h-4 w-4 mr-1" />}
-            {rollOptional
-              ? 'No check needed'
-              : (<>Roll d20{formatMod(mod)} <span className="ml-1 text-[10px] uppercase tracking-wider opacity-70">suggested</span></>)
-            }
-          </Button>
-          {beat.reveal_type !== 'knowledge' && (
-            <Button
-              size="sm"
-              variant={rollOptional ? 'default' : 'ghost'}
-              className={
-                rollOptional
-                  ? 'h-9 bg-emerald-600 hover:bg-emerald-500 text-stone-950 font-bold border border-emerald-300'
-                  : 'h-9 text-stone-200 hover:text-amber-50 hover:bg-stone-800/70 border border-stone-600'
-              }
-              onClick={handleSkip} disabled={busy}
-              data-testid="storyline-skip-btn"
-              title={rollOptional
-                ? 'No check needed — continue the scene'
-                : 'Proceed without rolling — the scene moves on'}
-            >
-              <ArrowRight className="h-4 w-4 mr-1" />
-              {rollOptional ? 'Continue' : 'Skip · Proceed'}
-            </Button>
-          )}
-          <div className="flex-1" />
+        {/* Slim footer — Abandon only; primary actions live inside the
+            expanded beat card. */}
+        <div className="flex items-center justify-end gap-2 pt-1">
           <Button
             size="sm" variant="ghost"
-            className="h-9 text-amber-200 hover:text-amber-50 hover:bg-amber-500/10"
+            className="h-8 text-amber-200/70 hover:text-rose-200 hover:bg-rose-500/10 text-[12px]"
             onClick={handleAbandon} disabled={busy}
             data-testid="storyline-abandon-btn"
           >
-            Abandon
+            Abandon Investigation
           </Button>
         </div>
 
@@ -616,209 +593,6 @@ const CreativeApproachDialog = ({ open, beat, busy, text, setText, onSubmit, onC
   </Dialog>
 );
 
-const BeatCard = ({ beat, index, total, isActive, complication, pressOnUsed, campaignId, storylineId, onCorrectionApplied }) => {
-  const c = colorsFor(beat.check_type);
-  const tone = STATUS_TONE[beat.status] || STATUS_TONE.pending;
-  const sealed = beat.status === 'pending';
-  const resolved = ['passed', 'failed', 'skipped'].includes(beat.status);
-  const hasComplication = isActive && !!(complication && complication.trim());
-
-  return (
-    <div
-      className={`relative shrink-0 w-[270px] sm:w-[300px] rounded-lg border-2 overflow-hidden flex flex-col
-        transition-transform duration-300
-        ${isActive
-          ? `${hasComplication ? 'border-rose-500/80 shadow-[0_0_24px_rgba(244,63,94,0.45)]' : c.border + ' shadow-xl'} bg-stone-800 scale-[1.04]`
-          : sealed
-            ? 'border-stone-600 bg-stone-900'
-            : resolved
-              ? `bg-stone-900 ${
-                  beat.status === 'passed' ? 'border-emerald-500/40' :
-                  beat.status === 'failed' ? 'border-rose-500/40' :
-                  'border-amber-500/40'
-                }`
-              : 'border-stone-600 bg-stone-900 opacity-85'}`}
-      data-testid={`beat-card-${index}`}
-      data-beat-status={beat.status}
-      data-has-complication={hasComplication ? '1' : '0'}
-    >
-      {/* Carry-forward complication ribbon (active card only) */}
-      {hasComplication && (
-        <div
-          className="px-2.5 py-1.5 text-[11px] bg-rose-950/80 border-b border-rose-500/60 text-rose-100"
-          data-testid="beat-complication-ribbon"
-        >
-          <div className="flex items-center gap-1.5 text-rose-300 uppercase tracking-wider font-bold text-[10px] mb-0.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
-            {pressOnUsed ? 'Pressing On — Cost Paid' : 'Carrying Forward'}
-          </div>
-          <div className="italic font-serif text-rose-50 leading-snug line-clamp-3">
-            {complication}
-          </div>
-        </div>
-      )}
-
-      <div
-        className={`flex items-center justify-between px-2.5 py-1.5 text-[11px] uppercase tracking-wider border-b
-          ${sealed ? 'bg-stone-800 border-stone-700 text-stone-300' : 'bg-stone-700 border-stone-500 text-amber-50 font-semibold'}`}
-      >
-        <span className="font-bold">{sealed ? `Beat ${index + 1}` : beat.check_type}</span>
-        {sealed ? (
-          <span className="px-1.5 py-0.5 rounded border font-bold border-stone-500 text-stone-200 bg-stone-900">
-            DC {beat.dc}
-          </span>
-        ) : (Number(beat.dc) > 0 && !beat.roll_optional) ? (
-          <span className={`px-1.5 py-0.5 rounded border font-bold ${c.chip}`}>
-            DC {beat.dc}
-          </span>
-        ) : (
-          <span
-            className="px-1.5 py-0.5 rounded border font-bold border-emerald-400/70 text-emerald-100 bg-emerald-950/60"
-            title="No roll required — the information is openly visible"
-            data-testid="beat-no-roll-chip"
-          >
-            OPEN
-          </span>
-        )}
-      </div>
-      <div className="flex-1 px-3 py-3 flex flex-col gap-2">
-        {sealed ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-stone-300 py-6">
-            <Lock className="h-8 w-8 mb-2 text-stone-400" />
-            <div className="text-[12px] tracking-widest uppercase font-bold text-stone-200">Sealed</div>
-            <div className="text-[11px] text-stone-400 mt-0.5">Beat {index + 1} of {total}</div>
-          </div>
-        ) : (
-          <>
-            <div className="text-amber-50 font-bold text-[17px] leading-tight">
-              {beat.title || (resolved ? 'Resolved beat' : 'New scene')}
-            </div>
-
-            {/* Knowledge beats: HIDE the description until the beat is resolved.
-                Show the public-facing prompt + lock instead so the player
-                doesn't see the answer before they roll. */}
-            {beat.reveal_type === 'knowledge' && !resolved ? (
-              <>
-                <div className="rounded-md border-2 border-amber-400/70 bg-stone-900 p-3 text-center shadow-inner">
-                  <Lock className="h-5 w-5 text-amber-200 mx-auto mb-1.5" />
-                  <div className="text-[14px] text-amber-50 italic font-serif leading-snug font-medium">
-                    {beat.prompt || `Roll ${beat.check_type} (DC ${beat.dc}) to reveal what you can piece together.`}
-                  </div>
-                  {Array.isArray(beat.targets) && beat.targets.length > 0 && (
-                    <div className="mt-2 flex flex-wrap justify-center gap-1.5">
-                      {beat.targets.slice(0, 3).map((t, ti) => (
-                        <span
-                          key={ti}
-                          className="px-2 py-0.5 rounded bg-amber-500 border border-amber-300 text-[11px] uppercase tracking-wide text-stone-950 font-bold"
-                        >
-                          {t.type}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* Pitch input — only social knowledge beats. The DM judges
-                    the pitch, adjusts the DC, then the player rolls. */}
-                {isActive && campaignId && storylineId && (
-                  <PitchInput
-                    campaignId={campaignId}
-                    storylineId={storylineId}
-                    beat={beat}
-                    beatIndex={index}
-                    onAdjusted={onCorrectionApplied}
-                  />
-                )}
-              </>
-            ) : beat.reveal_type === 'knowledge' && beat.status === 'failed' ? (
-              <div className="rounded-md border-2 border-rose-400/70 bg-stone-900 p-3">
-                <div className="flex items-center gap-1.5 text-rose-200 text-[11px] uppercase tracking-wider font-bold mb-1">
-                  <Lock className="h-3 w-3" /> Sealed Lead
-                </div>
-                <div className="text-[14px] text-amber-50 italic font-serif leading-snug">
-                  You couldn't piece it together. The lead is now in your deck — find someone who can help.
-                </div>
-              </div>
-            ) : (
-              <div
-                className={`text-[14.5px] text-amber-50 italic font-serif leading-relaxed ${
-                  isActive || resolved
-                    ? 'overflow-y-auto pr-1 max-h-[260px] sm:max-h-[320px]'
-                    : 'line-clamp-6'
-                }`}
-                data-testid={isActive ? 'beat-description-active' : (resolved ? `beat-description-resolved-${index}` : undefined)}
-              >
-                {beat.description || (
-                  resolved
-                    ? <span className="not-italic text-amber-200/80">— {beat.outcome_text || 'No revelation recorded.'}</span>
-                    : ''
-                )}
-              </div>
-            )}
-
-            {/* Action beats with a SOCIAL check (Persuasion / Deception /
-                Intimidation / Performance) — the player can also pitch
-                what they say to adjust the DC before rolling. Knowledge
-                beats already render PitchInput inside the locked panel
-                above. */}
-            {!resolved && isActive && beat.reveal_type !== 'knowledge'
-              && Number(beat.dc) > 0 && campaignId && storylineId && (
-              <PitchInput
-                campaignId={campaignId}
-                storylineId={storylineId}
-                beat={beat}
-                beatIndex={index}
-                onAdjusted={onCorrectionApplied}
-              />
-            )}
-
-            {beat.outcome_text && (
-              <div className="mt-1 text-[13px] text-amber-200 border-l-2 border-amber-400/70 pl-2 italic">
-                {beat.outcome_text}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-      {/* "Ask the DM" button — only visible on the active beat or
-          recently-resolved beats so the player can contest a missed check
-          right when it matters. */}
-      {!sealed && campaignId && storylineId && (isActive || resolved) && (
-        <div className="px-2 pb-1.5 flex justify-end">
-          <DMFeedbackButton
-            campaignId={campaignId}
-            storylineId={storylineId}
-            beatIndex={index}
-            onCorrectionApplied={onCorrectionApplied}
-          />
-        </div>
-      )}
-      <div
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10.5px] uppercase tracking-wider border-t font-bold
-          ${sealed ? 'bg-stone-800 border-stone-700 text-stone-300' : 'bg-stone-800 border-stone-600 text-amber-50'}`}
-      >
-        <span className={`w-2 h-2 rounded-full ${tone.dot}`} />
-        <span>{tone.label}</span>
-        <div className="flex-1" />
-        <span className="text-amber-100/90">{index + 1}/{total}</span>
-      </div>
-      {resolved && (
-        <div
-          className={`pointer-events-none absolute top-1.5 right-1.5 z-10
-            ${beat.status === 'passed' ? 'text-emerald-300' :
-              beat.status === 'failed' ? 'text-rose-300' : 'text-amber-300'}`}
-          data-testid={`beat-resolved-stamp-${beat.status}`}
-        >
-          <span className={`text-[10px] font-black uppercase tracking-widest -rotate-6 inline-block
-            border-2 border-current px-1.5 py-0.5 rounded
-            ${beat.status === 'passed' ? 'bg-emerald-950/80' :
-              beat.status === 'failed' ? 'bg-rose-950/80' : 'bg-amber-950/80'}`}>
-            {beat.status}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-};
 
 export const StorylineRewardModal = ({ open, reward, onClose }) => {
   if (!reward) return null;

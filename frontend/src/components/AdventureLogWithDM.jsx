@@ -18,6 +18,8 @@ import RememberCardDialog from './RememberCardDialog';
 import SceneReportDialog from './SceneReportDialog';
 import DefeatModal from './DefeatModal';
 import CanonBar from './CanonBar';
+import CanonReferences from './CanonReferences';
+import useCanonTerms, { findCanonMentions } from '../hooks/useCanonTerms';
 import { getCheckOutcome, getAbilityModifier, isProficient } from '../utils/dndMechanics';
 import { useTTS } from '../hooks/useTTS';
 import sessionManager from '../state/SessionManager';
@@ -42,6 +44,12 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   
   const [messages, setMessages] = useState([]);
   const [currentOptions, setCurrentOptions] = useState([]);
+
+  // Canon term index — proper-noun terms harvested from every canon
+  // scene's title/facts, mapped back to their originating scene. Used
+  // to detect when a DM narration honors canon and surface a pulsing
+  // emerald chip linking back to that scene.
+  const { termsMap: canonTermsMap } = useCanonTerms(campaignId);
   const [isLoading, setIsLoading] = useState(false);
   const [intentMode, setIntentMode] = useState('action');
   const [pendingCheck, setPendingCheck] = useState(null);
@@ -1833,6 +1841,12 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                             formatMessage(entry.text)
                           )}
                         </div>
+                        {/* Canon references — pulsing emerald chips for any
+                            canonized entity this narration just touched. */}
+                        <CanonReferences
+                          campaignId={campaignId}
+                          mentions={findCanonMentions(entry.text, canonTermsMap)}
+                        />
                         <div className="text-xs opacity-60 mt-2">
                           {new Date(entry.timestamp).toLocaleTimeString()}
                         </div>

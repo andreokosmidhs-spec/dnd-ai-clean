@@ -1,0 +1,28 @@
+{
+  "summary": "Frontend-only verification of the CanonReferences footer + useCanonTerms hook in AdventureLogWithDM. Loaded campaign 29feef57-a81d-4799-a988-88d644406acc via 'Load Latest Campaign'. The campaign has 5 canon scenes with proper-noun entities (Locket, Aleric, Hester Crane, House Veillane, Emberfall Shadows, etc.). The 'The Adventure Begins' DM message — which contains the word 'locket' — correctly renders a CanonReferences footer with a single chip pointing at Scene 3 ('The Locket Returned') and the matched term 'Locket'. The chip carries the pulsing emerald animate-ping dot, Anchor icon, scene number, scene title, and matched term as per spec. The first DM message ('A Chronicle of Realm of Story') — which contains no canonized entity names — correctly renders NO canon-references-row, validating the false-positive guard. Clicking the chip opens the shared CanonTimelinePanel (data-testid='canon-timeline-panel'). The capitalized word 'Returned' inside the scene title 'The Locket Returned' is correctly filtered by STOP_TERMS (only 'Locket' surfaces as the matched term), confirming the past-tense/article guard logic. Tried to drive a new DM narration via player action ('I head to the Anvil & Cup tavern to find Aleric.') to test live refresh through 'rpg:canon-updated' — Send was clicked but the DM response did not arrive within 30s on the preview env (UI input still held the text). This did not invalidate the core wiring, which was already proven by the existing 'The Adventure Begins' chip.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_9.json"],
+  "action_items": [
+    "Optional: the scene title 'Secrets in Emberfall Shadows' adds 'Secrets' to termsMap as a standalone proper-noun term (it is the first word of a sentence and not in STOP_TERMS). Any DM narration that uses the everyday word 'secrets' would surface a Scene-5 chip falsely. Consider adding 'secrets' (and similar generic abstract nouns like 'shadows', 'whispers', 'beginning', 'journey') to STOP_TERMS, or only index multi-word proper-noun phrases that include >=1 token that is NOT a common English word. Same concern for any 1-word scene-title leader like 'Locket Acquired in Alleyway' → 'Locket' is fine here, but 'Acquired' (past tense) is already filtered. Only flagging the abstract-noun edge case.",
+    "Optional: extractProperNouns regex (`\\b[A-Z][a-zA-Z']{2,}(?:\\s+[A-Z][a-zA-Z']{2,})?\\b`) caps at 2-word phrases. A 3-token name like 'House Veillane Estate' would index as 'House Veillane' (correct) plus drop 'Estate' (singleton fine). Acceptable, but worth noting for very long proper nouns."
+  ],
+  "critical_code_review_comments": [
+    "useCanonTerms.js is clean (~150 lines), correctly cleans up the rpg:canon-updated listener on unmount, gracefully degrades to empty termsMap on fetch failure, and prefers the earliest scene that established a term (good narrative correctness).",
+    "findCanonMentions uses indexOf + manual boundary check rather than a regex per term — efficient O(N*K) and avoids regex-injection if a term contains regex metacharacters. Good defensive choice.",
+    "CanonReferences.jsx returns null when mentions is empty, preventing empty footers. Chips have full data-testid coverage and the pulsing dot uses Tailwind animate-ping + opacity-60 for a subtle but visible effect.",
+    "Potential false positive: short, abstract proper-noun leads of scene titles (e.g. 'Secrets') get indexed verbatim and would match the lowercase word 'secrets' in any DM narration. Suggest extending STOP_TERMS with generic abstract nouns OR only indexing tokens >=4 chars that are not in a small common-English-word set.",
+    "useCanonTerms.refresh() is debounce-free — rapid sequential 'rpg:canon-updated' dispatches would cause multiple in-flight fetches. Low priority since the event is rare (only on canon creation)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "100% on the explicit feature spec; 1 false-positive edge case flagged for action_items"},
+  "seed_data_creation": "Used pre-existing campaign 29feef57-a81d-4799-a988-88d644406acc (5 canon scenes already present with named entities: Locket, Aleric, Hester Crane, Anvil & Cup, House Veillane, Emberfall Shadows).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "CanonReferences testids: 'canon-references-row' (footer wrapper) and 'canon-ref-chip-{scene_number}' (individual chips). Chip click opens 'canon-timeline-panel'. To trigger a chip in DM narration, the narration must contain a proper-noun term extracted from a canon scene's title or facts (case-insensitive, word-boundary). The DM auto-response after player Send is slow (>30s on preview) — wait at least 45s or assert against pre-existing DM messages instead. STOP_TERMS already covers articles, pronouns, past-tense verbs ('returned', 'found', 'passed', 'next', 'last'), so don't bother retesting those negatives — they pass.",
+  "rca of the issue": "No bugs to RCA. Single design observation: abstract proper-noun-style leaders of scene titles (e.g. 'Secrets in Emberfall Shadows' contributes 'Secrets' to termsMap) could produce false-positive chips on generic English words. Mitigation: extend STOP_TERMS with common abstract English nouns or require term length >=4 plus presence of an uncommon character/capital-cluster signature."
+}

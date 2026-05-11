@@ -296,6 +296,7 @@ const ExpandedFace = ({
         className={`relative w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl border-4 ${palette.border}
           bg-gradient-to-br from-stone-950 via-stone-900 to-amber-950/30
           shadow-[0_20px_60px_rgba(0,0,0,0.7)] overflow-hidden
+          selection:bg-amber-500/40 selection:text-amber-50
           animate-in fade-in zoom-in-95 duration-300`}
         data-testid="beat-card-expanded"
       >
@@ -370,7 +371,9 @@ const ExpandedFace = ({
             </div>
           ) : (
             <div
-              className="text-[15.5px] text-amber-50 italic font-serif leading-relaxed tracking-wide"
+              className="rounded-md border border-amber-500/30 bg-stone-950/70 px-4 py-3.5 shadow-inner shadow-amber-900/20
+                         text-[15.5px] text-amber-50 italic font-serif leading-relaxed tracking-wide
+                         selection:bg-amber-500/40 selection:text-amber-50"
               data-testid="beat-description-expanded"
             >
               {beat.description || (resolved

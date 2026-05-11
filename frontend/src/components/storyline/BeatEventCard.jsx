@@ -23,6 +23,23 @@ import PitchInput from './PitchInput';
 import DMFeedbackButton from './DMFeedbackButton';
 import { categoryPaletteFor, rarityFor } from './beatCardUtils';
 
+// Shared Audio instance for the card-flip SFX. Lazy-initialized on first
+// click so we don't trigger an audio load at module-eval time, and reused
+// across cards so rapid clicks reset playback instead of stacking.
+let _flipAudio = null;
+function playCardFlip() {
+  try {
+    if (!_flipAudio) {
+      _flipAudio = new Audio('/sounds/card-flip.mp3');
+      _flipAudio.volume = 0.55;
+      _flipAudio.preload = 'auto';
+    }
+    _flipAudio.currentTime = 0;
+    const p = _flipAudio.play();
+    if (p && typeof p.catch === 'function') p.catch(() => { /* autoplay blocked — silent fail */ });
+  } catch { /* fail silently — sound is non-essential */ }
+}
+
 const CATEGORY_ICONS = {
   npcs: Users,
   locations: MapPin,
@@ -465,7 +482,7 @@ const BeatEventCard = ({
         sealed={sealed}
         resolved={resolved}
         hasComplication={hasComplication}
-        onOpen={() => setExpandedIndex(index)}
+        onOpen={() => { playCardFlip(); setExpandedIndex(index); }}
       />
       {isOpen && (
         <ExpandedFace

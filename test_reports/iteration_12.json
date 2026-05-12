@@ -1,0 +1,45 @@
+{
+  "summary": "Tested the silent session-review feature, the 5 new DM-lesson types, AutoSaveIndicator, DM Notebook (9 groups), and the Main Menu → session-review wiring. Backend: 10/10 pytest tests pass. Frontend: AutoSaveIndicator pulses correctly for both 'action' and 'event' reasons; DM Notebook renders all 9 groups with correct testids and inline Add-a-lesson forms; clicking 'Go Back to Main Menu' now correctly raises a confirm() dialog (proves the wiring is reached) BUT the subsequent POST /dm-lessons/session-review did NOT fire in two consecutive playwright runs even after auto-accepting the dialog. Likely cause: the guard `if (campaignId && character?.id)` in RPGGame.jsx onMainMenu — `character` is sourced from GameStateContext and may be null at click-time even though the bridge has set it, OR the await fetch is being aborted by the synchronous startNewGame() if onMainMenu is unmounted on setEscMenuOpen(false). Existing test_dm_lessons.py still expected to pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Main Menu → silent session-review",
+        "issue": "Clicking [data-testid='escape-menu-main-menu-btn'] correctly raises the window.confirm() ('Return to the main menu?…') and after auto-accept the dialog the user lands back on the landing page (RPG Forge / New Campaign), but the POST /api/campaigns/{cid}/dm-lessons/session-review is never fired — network listener saw 0 requests across 25s of wait. Suspected RCA: in /app/frontend/src/components/RPGGame.jsx lines 1200–1230 the handler guards with `if (campaignId && character?.id)` — when the user has just loaded the latest campaign, `character` may still be the GameStateContext default (no .id) instead of the bridge character. Recommend either (a) read characterId directly from props/storage/session bridge (the same id used by DMNotebookPanel below — `character?.id || null` plus a fallback to the campaign's character_id from server), or (b) move the fetch BEFORE setEscMenuOpen(false) and use a stable ref. Toast 'Session reviewed — DM noted N new lessons' was therefore never shown.",
+        "affected_selectors": ["[data-testid='escape-menu-main-menu-btn']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_session_review.py",
+    "/app/test_reports/pytest/session_review.xml"
+  ],
+  "action_items": [
+    "Debug why POST /dm-lessons/session-review is not fired from RPGGame.onMainMenu — most likely the `character?.id` guard fails. Add console.log before the fetch and inspect `campaignId` + `character` at click-time. Suggested fix: pull characterId from the SessionManager / latest-campaign bridge (same source the DMNotebookPanel uses successfully) and pass it explicitly.",
+    "Optional: surface the wrap-up as a tiny non-blocking toast even on count=0 ('Session saved.') OR keep silent per spec — current spec is silent so leave as-is once the POST actually fires."
+  ],
+  "critical_code_review_comments": [
+    "GameEscapeMenu uses window.confirm() — fine, but the comment in the request says 'fire-and-forget BEFORE startNewGame()'. Because the fetch is awaited and only THEN startNewGame() runs, if the LLM takes 10s the user stares at a frozen pause menu (already closed) but the landing screen doesn't appear until the fetch resolves. Consider truly fire-and-forget: kick off fetch then immediately call startNewGame(); use .then() to toast.",
+    "_LESSON_TYPES is duplicated between services/dm_lessons.py and the explicit set in routers/dm_lessons.py create_lesson. Import the constant instead of redefining the 9 strings inline (drift risk).",
+    "AutoSaveIndicator's hide timer is 2500ms but flashing transition is 250ms — fine. Component has data-testid + role='status' + aria-live='polite' — accessible, good.",
+    "DMNotebookPanel: 5 new ACCENT entries (orange/indigo/cyan/violet + reused amber) all render. Manual create endpoint correctly accepts all 5 new types; verified via parametrized pytest."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_session_review.py"
+  ],
+  "success_rate": {
+    "backend": "100% (10/10 pytest)",
+    "frontend": "~80% (4 of 5 frontend behaviours verified; Main Menu → session-review POST not firing)"
+  },
+  "test_credentials": "n/a — campaign 29feef57-a81d-4799-a988-88d644406acc / character 69fc667f579c1db376ac58db",
+  "seed_data_creation": "Five TEST_SR lessons created and cleaned up per pytest run (one per new type).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend session-review endpoint and all 5 new lesson types are verified end-to-end (test_session_review.py, all green). AutoSaveIndicator and DMNotebookPanel 9-group expansion are verified in the browser (testids dm-notebook-group-{key} and dm-lesson-add-{key} all present). OPEN ISSUE: clicking 'Go Back to Main Menu' (data-testid='escape-menu-main-menu-btn') raises the window.confirm dialog (so the button is wired) and after accept the user returns to landing, BUT the POST /dm-lessons/session-review is NOT fired (verified twice with page.on('request') + dialog auto-accept). Root cause suspected to be the `character?.id` guard in RPGGame.jsx:1206 — character context may not be populated when the user clicks Main Menu directly after Load Latest Campaign without first making an action. Reproduce: load latest campaign → immediately press Escape → click 'Go Back to Main Menu' → accept confirm → no POST.",
+  "rca of the issue": "RPGGame.jsx onMainMenu callback (lines 1200-1230) guards with `if (campaignId && character?.id)` before firing the session-review POST. When the user clicks 'Go Back to Main Menu' right after Load Latest Campaign, the character object from GameStateContext is in transition (bridge logs show two REPLACING character cycles) and `character?.id` may be undefined at the moment of click, silently skipping the fetch. Mitigation: source characterId from the same place DMNotebookPanel uses (`characterId={character?.id || null}` works there because the panel mounts later), or read it from useSessionManager/localStorage. Also recommend converting the await fetch into fire-and-forget so the UI returns to menu instantly per spec ('Network failure must not block return to menu')."
+}

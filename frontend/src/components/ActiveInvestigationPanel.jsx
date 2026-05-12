@@ -203,6 +203,10 @@ const ActiveInvestigationPanel = ({
           window.dispatchEvent(new CustomEvent('rpg:canon-updated', {
             detail: { campaignId, scene: data.canon_scene },
           }));
+          // Autosave signal — event-string activated.
+          window.dispatchEvent(new CustomEvent('rpg:autosaved', {
+            detail: { reason: 'event' },
+          }));
         } catch {}
       }
       if (data.completed) {
@@ -271,6 +275,9 @@ const ActiveInvestigationPanel = ({
         try {
           window.dispatchEvent(new CustomEvent('rpg:canon-updated', {
             detail: { campaignId, scene: data.canon_scene },
+          }));
+          window.dispatchEvent(new CustomEvent('rpg:autosaved', {
+            detail: { reason: 'event' },
           }));
         } catch {}
       }

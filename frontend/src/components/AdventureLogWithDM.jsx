@@ -19,6 +19,7 @@ import SceneReportDialog from './SceneReportDialog';
 import DefeatModal from './DefeatModal';
 import CanonBar from './CanonBar';
 import CanonReferences from './CanonReferences';
+import AutoSaveIndicator from './AutoSaveIndicator';
 import useCanonTerms, { findCanonMentions } from '../hooks/useCanonTerms';
 import { useTargetMode, pickWordFromClick } from '../contexts/TargetModeContext';
 import { SearchTargetModal } from './TargetModeBanner';
@@ -1151,6 +1152,15 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
         }
         
         setCurrentOptions(data.options || []);
+
+        // Autosave signal — the DM response was persisted server-side as
+        // soon as it landed. Pulse the AutoSaveIndicator so the player
+        // sees a tactile confirmation that their progress is safe.
+        try {
+          window.dispatchEvent(new CustomEvent('rpg:autosaved', {
+            detail: { reason: 'action' },
+          }));
+        } catch {}
       }
 
     } catch (error) {
@@ -1718,7 +1728,14 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
         )}
 
         {/* Canon anchor strip — always shows the current locked-in scene */}
-        <CanonBar campaignId={campaignId} />
+        <div className="flex items-stretch gap-2">
+          <div className="flex-1 min-w-0">
+            <CanonBar campaignId={campaignId} />
+          </div>
+          <div className="flex items-center px-3 border-b border-stone-700/40 bg-stone-900/40">
+            <AutoSaveIndicator />
+          </div>
+        </div>
 
         {/* Messages */}
         <ScrollArea className="flex-1" ref={scrollRef}>

@@ -13,6 +13,7 @@ import { mockData } from '../data/mockData';
 import { useGameState } from '../contexts/GameStateContext';
 import { generateWorldBlueprint, createCharacter, getLastCampaign } from '../api/rpgClient';
 import sessionManager from '../state/SessionManager';
+import { toast } from 'sonner';
 import GameEscapeMenu from './GameEscapeMenu';
 import DMNotebookPanel from './DMNotebookPanel';
 import CanonTimelinePanel from './CanonTimelinePanel';
@@ -1196,8 +1197,35 @@ const RPGGame = () => {
       <GameEscapeMenu
         open={escMenuOpen}
         onClose={() => setEscMenuOpen(false)}
-        onMainMenu={() => {
+        onMainMenu={async () => {
           setEscMenuOpen(false);
+          // Fire-and-forget session review — DM distills lessons across
+          // the five craft categories from the just-finished session.
+          // Silent by user preference: a small toast confirms, lessons
+          // appear in the DM Notebook next session.
+          if (campaignId && character?.id) {
+            try {
+              const res = await fetch(
+                `${BACKEND_URL}/api/campaigns/${campaignId}/dm-lessons/session-review`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ character_id: character.id }),
+                }
+              );
+              if (res.ok) {
+                const data = await res.json();
+                if (data.count > 0) {
+                  toast.success(
+                    `Session reviewed — DM noted ${data.count} new lesson${data.count === 1 ? '' : 's'}.`,
+                    { duration: 4500, description: 'Open the DM Notebook to see what your DM learned.' }
+                  );
+                }
+              }
+            } catch {
+              // Silent fail — never block the return-to-menu flow.
+            }
+          }
           startNewGame();
         }}
         onOpenDMNotebook={() => setDmNotebookOpen(true)}

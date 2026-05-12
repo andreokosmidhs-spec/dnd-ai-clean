@@ -36,6 +36,7 @@ from pydantic import BaseModel
 
 from services.dm_lessons import (
     distill_lesson_from_reaction,
+    distill_session_review,
     merge_or_create_lesson,
 )
 
@@ -82,6 +83,10 @@ class ReactionBody(BaseModel):
     message_id: Optional[str] = None  # opaque ref to the message in the log
 
 
+class SessionReviewBody(BaseModel):
+    character_id: Optional[str] = None
+
+
 class ManualLessonBody(BaseModel):
     type: str
     text: str
@@ -114,7 +119,11 @@ async def list_lessons(campaign_id: str, character_id: Optional[str] = None):
 
 @router.post("/{campaign_id}/dm-lessons")
 async def create_lesson(campaign_id: str, body: ManualLessonBody):
-    if body.type not in {"rule_correction", "dc_calibration", "style_preference", "taboo"}:
+    if body.type not in {
+        "rule_correction", "dc_calibration", "style_preference", "taboo",
+        "challenge_tuning", "npc_craft", "narration_craft",
+        "reward_balance", "villain_craft",
+    }:
         raise HTTPException(status_code=400, detail="invalid lesson type")
     if not body.text or not body.text.strip():
         raise HTTPException(status_code=400, detail="text is required")
@@ -197,3 +206,18 @@ async def react_to_beat(campaign_id: str, body: ReactionBody):
     )
     action = "merged" if stored.get("apply_count", 0) > 0 else "created"
     return {"lesson": _to_out(stored), "action": action}
+
+
+@router.post("/{campaign_id}/dm-lessons/session-review")
+async def session_review(campaign_id: str, body: SessionReviewBody):
+    """Distill the recent session into lessons across the five craft
+    categories (challenge_tuning / npc_craft / narration_craft /
+    reward_balance / villain_craft). Triggered silently when the player
+    returns to the main menu so the DM Notebook grows between sessions.
+    """
+    stored = await distill_session_review(
+        _get_db(),
+        campaign_id=campaign_id,
+        character_id=body.character_id,
+    )
+    return {"lessons": [_to_out(d) for d in stored], "count": len(stored)}

@@ -18,7 +18,7 @@ import { Textarea } from './ui/textarea';
 import { Switch } from './ui/switch';
 import {
   X, BookOpen, Plus, Trash2, Sparkles, ShieldAlert, Gavel, Wand2, Loader2,
-  Pencil, Check,
+  Pencil, Check, Flame, Drama, Feather, Gem, Skull,
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -52,12 +52,53 @@ const GROUPS = [
     icon: Sparkles,
     accent: 'emerald',
   },
+  // Session-review categories (May 2026) — emitted by the silent
+  // wrap-up when the player returns to the main menu.
+  {
+    key: 'challenge_tuning',
+    title: 'Challenge Tuning',
+    hint: 'Keep things exciting — pacing, escalation, DC calibration.',
+    icon: Flame,
+    accent: 'orange',
+  },
+  {
+    key: 'npc_craft',
+    title: 'NPC Craft',
+    hint: 'Make characters feel real — stay true to their identity sheets.',
+    icon: Drama,
+    accent: 'indigo',
+  },
+  {
+    key: 'narration_craft',
+    title: 'Narration Craft',
+    hint: 'Tension, humour, tragedy, sensory specifics. Be a better narrator.',
+    icon: Feather,
+    accent: 'cyan',
+  },
+  {
+    key: 'reward_balance',
+    title: 'Reward Balance',
+    hint: 'Exciting items + spells + alliances, balanced and rule-clear.',
+    icon: Gem,
+    accent: 'amber',
+  },
+  {
+    key: 'villain_craft',
+    title: 'Villain Craft',
+    hint: 'Worthy antagonists — flair, depth, philosophy, evolution.',
+    icon: Skull,
+    accent: 'violet',
+  },
 ];
 
 const ACCENTS = {
   amber:   { border: 'border-amber-500/40',  bg: 'bg-amber-950/30',  text: 'text-amber-50',  chip: 'border-amber-400/50 text-amber-200' },
   emerald: { border: 'border-emerald-500/40',bg: 'bg-emerald-950/30',text: 'text-emerald-50',chip: 'border-emerald-400/50 text-emerald-200' },
   rose:    { border: 'border-rose-500/40',   bg: 'bg-rose-950/30',   text: 'text-rose-50',   chip: 'border-rose-400/50 text-rose-200' },
+  orange:  { border: 'border-orange-500/40', bg: 'bg-orange-950/30', text: 'text-orange-50', chip: 'border-orange-400/50 text-orange-200' },
+  indigo:  { border: 'border-indigo-500/40', bg: 'bg-indigo-950/30', text: 'text-indigo-50', chip: 'border-indigo-400/50 text-indigo-200' },
+  cyan:    { border: 'border-cyan-500/40',   bg: 'bg-cyan-950/30',   text: 'text-cyan-50',   chip: 'border-cyan-400/50 text-cyan-200' },
+  violet:  { border: 'border-violet-500/40', bg: 'bg-violet-950/30', text: 'text-violet-50', chip: 'border-violet-400/50 text-violet-200' },
 };
 
 const Stars = ({ weight }) => {

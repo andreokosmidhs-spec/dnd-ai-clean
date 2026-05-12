@@ -78,16 +78,100 @@ def get_world_clock(campaign: Dict) -> int:
 
 
 def time_context_block(hour: int) -> str:
-    """Short prompt block the DM can be fed each turn so narration matches the
-    current period. Kept tight to avoid bloating the system prompt."""
+    """HARD-rule prompt block telling the DM which sensory cues, NPC
+    activities, and atmospheric language are permitted at the current
+    hour — and which are FORBIDDEN. The DM must self-check before writing
+    any narration.
+    """
     b = bucket_for_hour(hour)
+    key = b["key"]
+
+    # Per-period guidance: light & sky, who's typically awake, who is
+    # definitely NOT around, ambient sounds, and language to avoid.
+    GUIDES = {
+        "night": {
+            "light": "deep darkness — only moonlight, lanterns, torches, or fire-glow. Streetlamps if the world has them; otherwise pitch-black between buildings.",
+            "awake": "the Watch on patrol, sleepless drunks staggering home, thieves and informants who choose this hour, owls, stray dogs, a baker stoking the dawn ovens.",
+            "asleep": "children, families, most merchants, market vendors, official offices, ordinary craftsfolk. They are inside, behind shutters.",
+            "sounds": "boots on cobble echoing too loud, distant tavern brawls bleeding through walls, wind rattling shutters, a watchman's bell at the half-hour.",
+            "forbid": "dawn light, morning mist, fresh-baked bread smells, merchants 'setting up', stalls open for business, children in the street, crowds in the market, the bustle of citizens.",
+        },
+        "dawn": {
+            "light": "thin grey light just spilling between rooftops, sky bruising purple-to-orange in the east, lanterns being doused.",
+            "awake": "bakers, the Watch changing shift, fishmongers heading to the wharf, early travellers, roosters, monks.",
+            "asleep": "most citizens still abed, no children in the streets yet, taverns closed, stalls still shuttered.",
+            "sounds": "first roosters, distant hammers, the creak of a baker's door, the slap of a fish-cart wheel.",
+            "forbid": "noon sun, packed markets, children playing, full crowds, evening lanterns, midnight stillness.",
+        },
+        "morning": {
+            "light": "clear golden light angling low across the rooftops; long shadows.",
+            "awake": "merchants opening stalls, market traffic building, children on errands, the Watch on day-shift, craftsfolk at their benches.",
+            "asleep": "drunks, late-night workers; taverns are slow but not closed.",
+            "sounds": "stall bells, hawkers calling wares, hammers, wheelbarrow wheels, gossip at the well.",
+            "forbid": "lanterns lit, twilight, sunset, midnight bells, deep shadows, drunks on the curb, sleeping streets.",
+        },
+        "midday": {
+            "light": "harsh overhead sun; minimal shadows; heat shimmer over flagstones.",
+            "awake": "the market at peak, lunchtime crowds, scribes, civic officials, midday Watch.",
+            "asleep": "no one — full daylight bustle.",
+            "sounds": "loud crowd hum, sizzling food carts, the noon bell, dogs panting in shade.",
+            "forbid": "anything implying low light, lantern-light, twilight, evening chill, morning dew, late-afternoon slant.",
+        },
+        "afternoon": {
+            "light": "warm slanting light, lengthening shadows. Dust motes visible in shafts.",
+            "awake": "merchants still trading, journeymen on errands, schoolchildren released, courtiers strolling.",
+            "asleep": "no one specifically.",
+            "sounds": "afternoon hush after the noon peak, vendor calls softening, distant temple bells.",
+            "forbid": "dawn light, morning bread, lanterns lit, midnight quiet.",
+        },
+        "late_afternoon": {
+            "light": "golden hour, long shadows reaching across streets, sky beginning to flush.",
+            "awake": "merchants closing up, workers heading home, taverns filling, the night Watch arriving.",
+            "asleep": "no one — but children being called inside.",
+            "sounds": "shutters being closed, stalls broken down, tavern doors swinging, the curfew bell warming up.",
+            "forbid": "dawn, morning bustle, midday sun, midnight bells.",
+        },
+        "dusk": {
+            "light": "the sky deep orange to violet; first lanterns lit; street corners darkening.",
+            "awake": "tavern crowds, lamplighters, the night Watch, lovers, beggars finding doorways.",
+            "asleep": "children, most merchants, market is closed, shutters closing one by one.",
+            "sounds": "lamplighters' clicks, tavern song spilling out, dogs barking at lengthening shadows.",
+            "forbid": "morning light, fresh bread baking, children in the street, market vendors at work.",
+        },
+        "evening": {
+            "light": "full dark with pools of lantern-light; sky a deep ink; cool air settling.",
+            "awake": "tavern patrons, late-shift Watch, smugglers, courtesans, gamblers, off-duty soldiers.",
+            "asleep": "all families, all children, all daytime merchants and craftsfolk.",
+            "sounds": "tavern noise, lanterns hissing, occasional drunken shouts, the curfew bell having tolled.",
+            "forbid": "morning bustle, dawn light, fresh bread, children, open markets, midday sun.",
+        },
+        "midnight": {
+            "light": "near-total darkness with only the moon and lantern-pools; everything beyond ten feet is shadow.",
+            "awake": "the Watch, thieves and cutpurses, drunks, smugglers at the docks, the desperately ill seeking healers, owls, stray cats.",
+            "asleep": "EVERYONE else — children, families, merchants, vendors, craftsfolk, clerics off-shift, courtiers. The streets are EMPTY of ordinary citizens. Shop shutters are bolted.",
+            "sounds": "a distant tavern dying down, watchmen's footsteps echoing alone, a far-off dog, the wind, occasionally the harbour bells, a baby's cry quickly hushed inside.",
+            "forbid": "MORNING LIGHT, DAWN, fresh bread smell, merchants 'setting up' or 'still setting up', open stalls, market crowds, children in the streets, children tugging at mothers' sleeves, parents and children on the street, watchmen 'sifting through produce', anything that implies daytime bustle.",
+        },
+    }
+    g = GUIDES.get(key, GUIDES["morning"])
+
     return (
-        f"=== TIME OF DAY ===\n"
-        f"Current period: {b['label']} (hour {b['hour']:02d}/24).\n"
-        f"Sensory cues should match this hour — light, sounds, who's awake, "
-        f"how the streets behave. Reference time naturally (e.g. 'the lanterns "
-        f"are being lit', 'the market hums full', 'a thin grey light spills "
-        f"between the rooftops'); never quote the hour as a number."
+        f"=== TIME OF DAY (HARD RULE — check every sentence against this) ===\n"
+        f"Current period: {b['label']} ({b['icon']}, hour {b['hour']:02d}/24).\n\n"
+        f"LIGHT/SKY: {g['light']}\n"
+        f"WHO'S AWAKE & IN PUBLIC: {g['awake']}\n"
+        f"WHO IS ASLEEP / NOT IN THE STREETS: {g['asleep']}\n"
+        f"AMBIENT SOUNDS: {g['sounds']}\n\n"
+        f"FORBIDDEN at {b['label']} (do not write any of these, even as metaphor): "
+        f"{g['forbid']}\n\n"
+        f"Before you write each sentence, ask: 'Is this consistent with "
+        f"{b['label']}?' If a beat's premise (e.g. 'children playing') is "
+        f"impossible at the current hour, REWRITE the beat to something "
+        f"plausible at this hour (a watchman's tipoff, a lone informant in "
+        f"a doorway, the silence after a murder, a tavern emptying). "
+        f"Reference time naturally — never quote the hour as a number, but "
+        f"ALWAYS reflect it in the prose. Treat this as a hard constraint "
+        f"that overrides any contradicting hook from earlier turns."
     )
 
 

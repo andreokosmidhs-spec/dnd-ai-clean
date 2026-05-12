@@ -751,11 +751,22 @@ async def generate_intro_endpoint(request: IntroGenerationRequest):
             "name": world_blueprint.get("starting_region", {}).get("name", "Unknown Region"),
             "description": world_blueprint.get("starting_region", {}).get("description", "")
         }
-        
+
+        # Pull current world clock so the intro matches the in-fiction
+        # time-of-day. If the player is loading at midnight, the intro
+        # must NOT describe dawn light or morning bustle.
+        intro_clock_hour = None
+        try:
+            from services.time_service import get_world_clock
+            intro_clock_hour = int(get_world_clock(campaign))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"intro clock fetch failed (non-fatal): {exc}")
+
         intro_md = generate_intro_markdown(
             character=character,
             region=region,
-            world_blueprint=world_blueprint
+            world_blueprint=world_blueprint,
+            clock_hour=intro_clock_hour,
         )
         
         # P0 FIX: Apply narration filter to intro (allow 16 for geography + world-building)
@@ -1643,7 +1654,10 @@ async def create_character_endpoint(request: CharacterCreateRequest):
             intro_md = generate_intro_markdown(
                 character=character_state_dict,
                 region=region,
-                world_blueprint=world_blueprint
+                world_blueprint=world_blueprint,
+                # This callsite is fresh-character-creation — clock is
+                # at its default starting hour (9) so we let the LLM
+                # default to morning unless the world has its own clock.
             )
             
             # FILTER INTRO NARRATION (allow 16 sentences for geography + world-building)

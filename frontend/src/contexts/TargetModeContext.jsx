@@ -40,12 +40,20 @@ export const TargetModeProvider = ({ children }) => {
     };
   }, [mode]);
 
-  // Escape cancels.
+  // Escape cancels. Use capture phase + stopPropagation so the pause
+  // menu's Escape handler doesn't ALSO fire when the player is just
+  // trying to cancel target mode.
   useEffect(() => {
     if (!mode) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') clearMode(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        clearMode();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [mode, clearMode]);
 
   return (

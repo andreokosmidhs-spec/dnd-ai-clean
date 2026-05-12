@@ -1015,3 +1015,15 @@ Properly defined what happens when a beat's check fails — until now a fail sti
   - `ActiveInvestigationPanel.jsx` — replaced old BeatCard with BeatEventCard, added `carouselRef` + auto `scrollIntoView` on `idx` advance, `setExpandedIndex(null)` inside callResolve/callCreative for auto-close, removed redundant Task panel + Action bar (now inside the expanded card).
   - Bug fixes from testing agent: TDZ on `idx` reference order; ESC double-handler conflict between parent + overlay (resolved via capture-phase + stopPropagation).
 - **Tests**: Frontend testing agent verified — peek cards render correctly (title, emblem, category band, chips), click flips to centered overlay, auto-open on active, rarity colors map by DC, expanded action buttons functional.
+
+### 2026-05-11 (Session Review — silent DM self-improvement)
+- **Feature**: When the player returns to the main menu, the DM silently reviews the session and emits lessons across **5 new craft categories** that flow into the existing DM Notebook + next session's prompt.
+- **5 categories**: `challenge_tuning` (pacing/DC), `npc_craft` (identity-sheet fidelity), `narration_craft` (tension/humour/tragedy/prose), `reward_balance` (loot fairness + rule clarity), `villain_craft` (antagonist flair/philosophy/evolution).
+- **Backend**:
+  - `services/dm_lessons.py` — `_LESSON_TYPES` expanded; `render_lessons_for_prompt` heading map expanded; new `_gather_session_corpus` (DM msgs + canon + feedback + prior reactions) + `distill_session_review` (single LLM call → merge_or_create_lesson each one).
+  - `routers/dm_lessons.py` — new `POST /dm-lessons/session-review {character_id}` returns `{lessons, count}`. Manual create endpoint now accepts the 5 new types.
+- **Frontend**:
+  - `RPGGame.jsx` — `onMainMenu` fires the session-review POST truly fire-and-forget (no await), sourced from durable `activeCampaignId`/`activeCharacterId` instead of GameStateContext. Toast shows `"Session reviewed — DM noted N new lessons"` when count>0.
+  - `AutoSaveIndicator.jsx` — small pulse pip at top of Adventure Log that listens for `rpg:autosaved` events and shows "Action saved" / "Event saved" briefly. Wired in `AdventureLogWithDM` (after each DM response) and `ActiveInvestigationPanel` (after each canon checkpoint).
+  - `DMNotebookPanel.jsx` — 9 groups total (4 originals + 5 new), each with its own icon (Flame/Drama/Feather/Gem/Skull) and accent palette (orange/indigo/cyan/amber/violet).
+- **Tests**: Backend 10/10 pytest pass (`test_session_review.py`). Frontend 80% on first pass; testing agent flagged the `character?.id` guard race — FIXED by switching to `activeCharacterId` + truly fire-and-forget pattern.

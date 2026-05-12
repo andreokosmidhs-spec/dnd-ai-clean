@@ -1197,34 +1197,35 @@ const RPGGame = () => {
       <GameEscapeMenu
         open={escMenuOpen}
         onClose={() => setEscMenuOpen(false)}
-        onMainMenu={async () => {
+        onMainMenu={() => {
           setEscMenuOpen(false);
-          // Fire-and-forget session review — DM distills lessons across
-          // the five craft categories from the just-finished session.
-          // Silent by user preference: a small toast confirms, lessons
-          // appear in the DM Notebook next session.
-          if (campaignId && character?.id) {
-            try {
-              const res = await fetch(
-                `${BACKEND_URL}/api/campaigns/${campaignId}/dm-lessons/session-review`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ character_id: character.id }),
-                }
-              );
-              if (res.ok) {
-                const data = await res.json();
-                if (data.count > 0) {
+          // Truly fire-and-forget session review so the player never
+          // waits on the LLM. Sourced from useSessionCore (durable)
+          // rather than the GameStateContext `character` which can be
+          // mid-transition when the user clicks Main Menu right after
+          // Load Latest Campaign.
+          const reviewCampaignId = activeCampaignId || campaignId;
+          const reviewCharacterId = activeCharacterId || character?.id || null;
+          if (reviewCampaignId && reviewCharacterId) {
+            // No await — kick off and forget. Toast resolves later.
+            fetch(
+              `${BACKEND_URL}/api/campaigns/${reviewCampaignId}/dm-lessons/session-review`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ character_id: reviewCharacterId }),
+              }
+            )
+              .then((res) => (res.ok ? res.json() : null))
+              .then((data) => {
+                if (data && data.count > 0) {
                   toast.success(
                     `Session reviewed — DM noted ${data.count} new lesson${data.count === 1 ? '' : 's'}.`,
                     { duration: 4500, description: 'Open the DM Notebook to see what your DM learned.' }
                   );
                 }
-              }
-            } catch {
-              // Silent fail — never block the return-to-menu flow.
-            }
+              })
+              .catch(() => { /* silent — never block menu return */ });
           }
           startNewGame();
         }}

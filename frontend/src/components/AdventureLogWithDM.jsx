@@ -58,6 +58,67 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   // "what are you looking for?" modal (search).
   const { mode: targetMode, clearMode: clearTargetMode } = useTargetMode();
   const [searchTarget, setSearchTarget] = useState(null);  // word in pending search
+  // Live underline overlay — tracks the word under the cursor while
+  // a target mode is active so the player can SEE what they're about to
+  // pick. Uses a single fixed-position element driven by Range bounding
+  // rects; rAF-throttled on mousemove to avoid layout thrash.
+  const [hoverHighlight, setHoverHighlight] = useState(null);  // { left, top, width, height, word }
+  const hoverRafRef = useRef(0);
+
+  const updateHover = useCallback((e) => {
+    if (!targetMode) {
+      if (hoverHighlight) setHoverHighlight(null);
+      return;
+    }
+    if (hoverRafRef.current) cancelAnimationFrame(hoverRafRef.current);
+    const { clientX, clientY } = e;
+    hoverRafRef.current = requestAnimationFrame(() => {
+      let range = null;
+      try {
+        if (typeof document.caretRangeFromPoint === 'function') {
+          range = document.caretRangeFromPoint(clientX, clientY);
+        } else if (typeof document.caretPositionFromPoint === 'function') {
+          const pos = document.caretPositionFromPoint(clientX, clientY);
+          if (pos) {
+            range = document.createRange();
+            range.setStart(pos.offsetNode, pos.offset);
+            range.collapse(true);
+          }
+        }
+        if (!range) { setHoverHighlight(null); return; }
+        const node = range.startContainer;
+        const text = (node && node.textContent) || '';
+        if (!text || node.nodeType !== 3) { setHoverHighlight(null); return; }
+        let s = range.startOffset;
+        let end = range.startOffset;
+        const isWordChar = (ch) => /[A-Za-z0-9'’\-]/.test(ch);
+        while (s > 0 && isWordChar(text[s - 1])) s -= 1;
+        while (end < text.length && isWordChar(text[end])) end += 1;
+        if (end <= s) { setHoverHighlight(null); return; }
+        const wordRange = document.createRange();
+        wordRange.setStart(node, s);
+        wordRange.setEnd(node, end);
+        const rect = wordRange.getBoundingClientRect();
+        if (!rect || rect.width === 0) { setHoverHighlight(null); return; }
+        setHoverHighlight({
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          word: text.slice(s, end),
+        });
+      } catch {
+        setHoverHighlight(null);
+      }
+    });
+  }, [targetMode, hoverHighlight]);
+
+  const clearHover = useCallback(() => setHoverHighlight(null), []);
+
+  // Drop the overlay whenever the target mode turns off.
+  useEffect(() => {
+    if (!targetMode && hoverHighlight) setHoverHighlight(null);
+  }, [targetMode, hoverHighlight]);
 
   const handleNarrationClick = (e) => {
     if (!targetMode) return;
@@ -65,6 +126,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
     if (!word) return;
     e.preventDefault();
     e.stopPropagation();
+    setHoverHighlight(null);
     if (targetMode === 'observe') {
       // Send an inspection command and exit observe mode.
       const command = `I focus on the ${word} and study it more closely — what stands out?`;
@@ -1856,6 +1918,8 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                           {/* Entity Links + Hooks: parse entity markup AND inline DM hook spans */}
                           <div
                             onClick={handleNarrationClick}
+                            onMouseMove={targetMode ? updateHover : undefined}
+                            onMouseLeave={targetMode ? clearHover : undefined}
                             className={targetMode ? 'select-text' : ''}
                             data-testid="dm-narration-clickable"
                           >
@@ -2091,6 +2155,28 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
         onClose={() => setSearchTarget(null)}
         onSubmit={submitTargetedSearch}
       />
+
+      {/* Live word-hover underline — visible only while a target mode is
+          active. Tracks the word under the cursor across the narration. */}
+      {targetMode && hoverHighlight && (
+        <div
+          className={`fixed pointer-events-none z-[125] transition-[left,top,width] duration-75 ease-out ${
+            targetMode === 'observe'
+              ? 'border-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.55)]'
+              : 'border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.55)]'
+          }`}
+          style={{
+            left: hoverHighlight.left - 2,
+            top: hoverHighlight.top + hoverHighlight.height - 1,
+            width: hoverHighlight.width + 4,
+            height: 2,
+            borderBottomWidth: 2,
+            borderBottomStyle: 'dashed',
+          }}
+          data-testid="target-mode-hover-underline"
+          aria-hidden="true"
+        />
+      )}
       
       {/* Entity Quick Inspect Panel - Opens when clicking entity links */}
       {selectedEntity && (

@@ -15,10 +15,12 @@ import CheckRollPanel from './checks/CheckRollPanel.tsx';
 import { useGameState } from '../contexts/GameStateContext';
 import gameService from '../services/gameService';
 import { calculateXpForNextLevel } from '../utils/xpCalculator';
+import { TargetModeProvider, useTargetMode } from '../contexts/TargetModeContext';
+import { TargetModeBanner } from './TargetModeBanner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-const FocusedRPG = ({ 
+const FocusedRPGInner = ({ 
   gameLog, 
   addToGameLog, 
   character, 
@@ -27,6 +29,7 @@ const FocusedRPG = ({
   inventory, 
   setInventory 
 }) => {
+  const { setMode: setTargetMode } = useTargetMode();
   const adventureLogRef = useRef();
   const [input, setInput] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -433,9 +436,17 @@ const FocusedRPG = ({
   };
 
   const handleActionSelect = (actionId) => {
+    // Observe / Search are special: they enable a "click a word in the
+    // narration" target mode instead of sending a generic message.
+    if (actionId === 'look') {
+      setTargetMode('observe');
+      return;
+    }
+    if (actionId === 'search') {
+      setTargetMode('search');
+      return;
+    }
     const actionCommands = {
-      'look': 'I look around carefully',
-      'search': 'I search the area thoroughly',
       'inventory': 'I check my inventory and equipment',
       'character': 'I review my character abilities and condition',
       'talk': 'I look for someone to talk to',
@@ -462,6 +473,8 @@ const FocusedRPG = ({
 
   return (
     <div className="h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 overflow-hidden">
+      {/* Floating chip — visible while Observe/Search mode is active */}
+      <TargetModeBanner />
       <div className="h-full flex">
         {/* Left Sidebar - Character (Collapsible) */}
         <div className={`transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-72'} flex-shrink-0`}>
@@ -735,5 +748,14 @@ const FocusedRPG = ({
     </div>
   );
 };
+
+// Outer wrapper — provides TargetMode context to the entire focused RPG
+// surface so child components (action dock, adventure log, etc.) can read
+// or set the active target mode.
+const FocusedRPG = (props) => (
+  <TargetModeProvider>
+    <FocusedRPGInner {...props} />
+  </TargetModeProvider>
+);
 
 export default FocusedRPG;

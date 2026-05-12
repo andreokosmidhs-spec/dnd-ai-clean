@@ -84,3 +84,22 @@ code {
     @apply bg-background text-foreground;
     }
 }
+
+
+/* ============================================================
+   Target Mode — click-a-word cursors (Observe / Search)
+   ------------------------------------------------------------
+   When the player activates Observe or Search from the action
+   dock, the document cursor switches to a themed icon. Hotspots
+   are at the eye/lens centre. SVGs are inline-encoded so this
+   is purely client-side with no asset fetch.
+   ============================================================ */
+body.cursor-target-observe,
+body.cursor-target-observe * {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><circle cx='14' cy='14' r='13' fill='black' opacity='0.6'/><path d='M3 14s4-6 11-6 11 6 11 6-4 6-11 6-11-6-11-6z' fill='none' stroke='%2334d399' stroke-width='1.8'/><circle cx='14' cy='14' r='3.6' fill='%2334d399'/><circle cx='14' cy='14' r='1.2' fill='black'/></svg>") 14 14, crosshair;
+}
+
+body.cursor-target-search,
+body.cursor-target-search * {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><circle cx='11' cy='11' r='8' fill='none' stroke='%23fbbf24' stroke-width='2'/><circle cx='11' cy='11' r='5' fill='%23fbbf2433'/><line x1='17' y1='17' x2='25' y2='25' stroke='%23fbbf24' stroke-width='2.4' stroke-linecap='round'/></svg>") 11 11, crosshair;
+}

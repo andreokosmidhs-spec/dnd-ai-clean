@@ -1,0 +1,30 @@
+{
+  "summary": "Frontend-only testing of the Observe/Search Target Mode feature. Validated TargetModeBanner activation, cancellation, mode switching, word extraction via caretRangeFromPoint, DM-narration click handlers, SearchTargetModal flow (open/submit/backdrop/Ctrl+Enter), and command-string construction sent via sendPlayerMessage. 13 of 14 sub-scenarios passed. One minor UX bug found: Escape clears target mode but also bubbles up and opens the pause menu. Inventory generic-command check was inconclusive because clicking Inventory in this campaign triggered an Investigation modal (unrelated flow).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "TargetModeContext / FocusedRPG pause menu", "issue": "Pressing Escape while Observe/Search mode is active clears the target mode AND simultaneously opens the game Pause menu (overlay data-testid='game-escape-menu-overlay'). The target-mode Escape handler should call e.stopPropagation() / e.preventDefault() (or check that pause-menu Escape handler ignores the event when a target mode was active) so that Escape only cancels the mode.", "selector": "[data-testid='game-escape-menu-overlay']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Make Escape in target mode swallow the event so the pause menu doesn't pop up at the same time (e.g. in TargetModeContext's onKey: if (e.key==='Escape' && mode) { e.preventDefault(); e.stopPropagation(); clearMode(); } and/or guard the FocusedRPG pause menu handler).",
+    "Consider adding data-testid='action-dock-look' / 'action-dock-search' on the primary action chips in ActionDock.jsx for more robust E2E selectors (currently fall back to role+name)."
+  ],
+  "critical_code_review_comments": [
+    "TargetModeContext Escape handler doesn't stop propagation — root cause of the pause-menu collision bug above.",
+    "ActionDock action chips lack data-testid attributes (rule: all interactive elements should have one).",
+    "AdventureLogWithDM.jsx is 2203 lines — exceeds the 700-line guideline; consider splitting (e.g., narration rendering, combat, modals).",
+    "pickWordFromClick already strips punctuation correctly and was validated against the 'a dog is crossing the street' example — returns 'dog'."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "~93% (13/14 sub-cases pass; 1 minor UX bug)"},
+  "test_credentials": "Used existing campaign via 'Load Latest Campaign' (no auth required for this feature).",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Feature fully wired. Confirmed PASS: ActionDock Look→observe, Search→search; banner testids target-mode-banner-observe/search render with correct icon+label; target-mode-cancel-btn clears mode and body class cursor-target-observe/search; mode switching is exclusive; same-mode reclick toggles off; pickWordFromClick correctly returns 'dog' for the dog-street test; clicking narration in observe mode sends `I focus on the {word} and study it more closely — what stands out?` and clears mode; search mode opens search-target-modal (with overlay), shows picked word in header, disables submit on empty, submits with `I search the {word} carefully — I'm looking for {query}. What do I find?`, supports Ctrl+Enter, and backdrop click cancels. Open issue: Escape also opens pause menu while clearing mode.",
+  "rca of the issue": "Escape collision: TargetModeProvider adds a window-level keydown listener that calls clearMode() on Escape but does NOT stopPropagation/preventDefault. FocusedRPG's pause-menu handler (likely keyed on the same Escape) therefore also fires, opening the game-escape-menu overlay. Reproduction: load campaign → click Look Around → press Escape → both the banner disappears AND the Pause Menu appears. Mitigation: in /app/frontend/src/contexts/TargetModeContext.jsx line ~46, change handler to `(e) => { if (e.key === 'Escape' && mode) { e.preventDefault(); e.stopPropagation(); clearMode(); } }` and attach with capture: true if needed, OR have FocusedRPG's pause-menu handler short-circuit when document.body has cursor-target-observe / cursor-target-search class."
+}

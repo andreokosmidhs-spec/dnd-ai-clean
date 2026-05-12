@@ -20,6 +20,8 @@ import DefeatModal from './DefeatModal';
 import CanonBar from './CanonBar';
 import CanonReferences from './CanonReferences';
 import useCanonTerms, { findCanonMentions } from '../hooks/useCanonTerms';
+import { useTargetMode, pickWordFromClick } from '../contexts/TargetModeContext';
+import { SearchTargetModal } from './TargetModeBanner';
 import { getCheckOutcome, getAbilityModifier, isProficient } from '../utils/dndMechanics';
 import { useTTS } from '../hooks/useTTS';
 import sessionManager from '../state/SessionManager';
@@ -50,6 +52,39 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   // to detect when a DM narration honors canon and surface a pulsing
   // emerald chip linking back to that scene.
   const { termsMap: canonTermsMap } = useCanonTerms(campaignId);
+
+  // Target Mode — when Observe/Search is active, clicks on DM narration
+  // pick a word and either auto-send an inspection (observe) or open the
+  // "what are you looking for?" modal (search).
+  const { mode: targetMode, clearMode: clearTargetMode } = useTargetMode();
+  const [searchTarget, setSearchTarget] = useState(null);  // word in pending search
+
+  const handleNarrationClick = (e) => {
+    if (!targetMode) return;
+    const word = pickWordFromClick(e);
+    if (!word) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (targetMode === 'observe') {
+      // Send an inspection command and exit observe mode.
+      const command = `I focus on the ${word} and study it more closely — what stands out?`;
+      sendPlayerMessage(command);
+      clearTargetMode();
+    } else if (targetMode === 'search') {
+      // Open the "what are you looking for?" modal; submission happens
+      // inside SearchTargetModal.
+      setSearchTarget(word);
+    }
+  };
+
+  const submitTargetedSearch = (query) => {
+    const word = searchTarget;
+    setSearchTarget(null);
+    clearTargetMode();
+    if (!word || !query) return;
+    const command = `I search the ${word} carefully — I'm looking for ${query}. What do I find?`;
+    sendPlayerMessage(command);
+  };
   const [isLoading, setIsLoading] = useState(false);
   const [intentMode, setIntentMode] = useState('action');
   const [pendingCheck, setPendingCheck] = useState(null);
@@ -1819,6 +1854,11 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                             </div>
                           )}
                           {/* Entity Links + Hooks: parse entity markup AND inline DM hook spans */}
+                          <div
+                            onClick={handleNarrationClick}
+                            className={targetMode ? 'select-text' : ''}
+                            data-testid="dm-narration-clickable"
+                          >
                           {(
                             (entry.entity_mentions && entry.entity_mentions.length > 0) ||
                             (entry.hooks && entry.hooks.length > 0)
@@ -1840,6 +1880,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                           ) : (
                             formatMessage(entry.text)
                           )}
+                          </div>
                         </div>
                         {/* Canon references — pulsing emerald chips for any
                             canonized entity this narration just touched. */}
@@ -2041,6 +2082,15 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           xpPenalty={defeatInfo.xpPenalty || 0}
         />
       )}
+
+      {/* Search Target — "what are you looking for?" prompt when the
+          player picked a word while in Search mode */}
+      <SearchTargetModal
+        open={!!searchTarget}
+        target={searchTarget}
+        onClose={() => setSearchTarget(null)}
+        onSubmit={submitTargetedSearch}
+      />
       
       {/* Entity Quick Inspect Panel - Opens when clicking entity links */}
       {selectedEntity && (

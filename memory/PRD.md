@@ -38,6 +38,12 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Mission Types — Structured Storyline Blueprints (Feb 13, 2026)
+- Backend (prior session): `mission_types` collection seeded with 4 system blueprints — Heist 🎯, Rescue 🛟, Assassination 🗡, Political Intrigue 🏛. Each defines 4 phases (goal, check palette, target palette, DC range, signature rewards). `render_blueprint_for_prompt()` injects the arc into storyline generation.
+- Backend (this session): `CampaignDraftRequest` now persists optional `mission_type_id` / `mission_type_slug` on the campaign doc. `_resolve_mission_type` in storylines router falls back to the campaign-level selection when storyline draft body has none — every storyline in the campaign automatically inherits the blueprint.
+- Frontend (this session): new `MissionTypePicker.jsx` Card section in `/campaign-setup` shows 4 default mission cards + Freeform option + a "Generate Custom Mission" prompt input wired to `POST /api/mission-types/from-prompt`. Selection is persisted in `useSessionCore.campaignIntent.mission_type`. `CampaignGenerate.jsx` forwards `mission_type_id`/`mission_type_slug` to `POST /api/campaigns/draft`.
+- Verified end-to-end by testing agent (iteration_13.json) — 100% backend & frontend pass.
+
 #### Intel-Locked Pitch Grading + Auto-Reveal NPC Sheet on Passed Social Checks (Feb 2026)
 Closing the loop on the redacted-NPC-card system: passing a social check now actually MATTERS — it uncloaks fields on the NPC's identity sheet, and those revealed fields are the ONLY ones the pitch judge can credit. Intel becomes a mechanical advantage.
 

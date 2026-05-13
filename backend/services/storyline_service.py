@@ -43,6 +43,9 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
 
+from services.mission_types import render_blueprint_for_prompt
+from services.time_service import bucket_for_hour
+
 
 def _intent_get(intent, key: str, default: str = ""):
     """Read a field from a CampaignIntent (Pydantic) OR plain dict."""
@@ -342,6 +345,7 @@ async def draft_initial_scene(
     character: Dict,
     hook: Dict,
     narration_context: str = "",
+    mission_type: Optional[Dict] = None,
 ) -> Dict:
     """Open-ended scene-driven flow.
 
@@ -351,6 +355,12 @@ async def draft_initial_scene(
     roll, type a creative approach, or skip. Subsequent beats are generated
     dynamically by `generate_next_scene` based on what the player actually
     does.
+
+    Args:
+        campaign, character, hook, narration_context: see draft_storyline.
+        mission_type: optional blueprint; when given, the FIRST scene is
+            shaped to fit the FIRST PHASE of the arc (e.g. Heist→Discovery:
+            knowledge reveal of the target via Investigation/Perception).
 
     Returns {title, beats:[scene1], total_dc: scene1.dc}.
     """
@@ -426,6 +436,9 @@ async def draft_initial_scene(
             f"=== RECENT NARRATION CONTEXT (background — do NOT just re-paint ambient) ===\n{(narration_context or '')[:600]}\n\n"
             f"{time_block}\n\n"
             f"{pp_block}\n\n"
+            f"{_campaign_theme_block(campaign)}"
+            f"{render_blueprint_for_prompt(mission_type)}\n\n"
+            f"{_plausibility_gate_block(campaign, hook)}"
             "=== HARD GROUNDING RULES (non-negotiable) ===\n"
             "- The 'title' MUST reference the hook subject (e.g. hook='wooden sign about a "
             "lost family heirloom' -> title 'The Heirloom Notice' or 'The Posted Sign', NOT "
@@ -770,13 +783,107 @@ async def generate_next_scene(
 # -------------------- LLM-driven draft (legacy multi-beat) --------------------
 
 
+def _campaign_theme_block(campaign: Dict) -> str:
+    """Inject the player-defined campaign theme (free text) into the
+    storyline prompt. The theme is a campaign-level vibe ('comedic caper',
+    'gothic horror', 'high seas roguery') that biases every storyline.
+    """
+    theme = (campaign.get("theme") or "").strip()
+    if not theme:
+        return ""
+    return (
+        "=== CAMPAIGN THEME (player's high-level vibe — bias prose, tone, hooks toward this) ===\n"
+        f"{theme[:600]}\n\n"
+    )
+
+
+def _plausibility_gate_block(campaign: Dict, hook: Dict) -> str:
+    """Hard-rule block that prevents nonsense beats: morning scenarios at
+    midnight, secret events in crowded scenes, races that don't live in
+    the region appearing as NPCs. The DM must check every beat against
+    this before emitting it.
+    """
+    world = campaign.get("world") or {}
+    world_state = campaign.get("world_state") or {}
+    clock_hour = int(world_state.get("clock_hour", 9))
+    period = bucket_for_hour(clock_hour)
+
+    # Crowd density inferred from time-of-day + hook topic. Hook topics like
+    # 'tavern', 'market', 'square' are inherently crowded during daylight;
+    # 'alley', 'docks at night', 'crypt', 'library' are inherently private.
+    hook_text = (hook.get("text") or "").lower()
+    hook_topic = (hook.get("topic") or "").lower()
+    crowded_words = ("market", "tavern", "square", "festival", "parade", "crowd", "court", "fair")
+    private_words = ("alley", "cellar", "crypt", "library", "back room", "wharf at night", "rooftop")
+    crowd_density = "private"
+    if any(w in hook_text or w in hook_topic for w in crowded_words):
+        crowd_density = "crowded"
+    elif any(w in hook_text or w in hook_topic for w in private_words):
+        crowd_density = "private"
+    # Time also drives density — midnight defaults to empty even at a market.
+    if period["key"] in ("evening", "midnight", "night"):
+        if crowd_density == "crowded":
+            crowd_density = "thin"   # tavern after curfew, watchmen at the gate
+        else:
+            crowd_density = "empty"
+
+    # Regional races — drawn from world_blueprint if present.
+    region_races_raw = world.get("region_races") or world.get("primary_races") or []
+    if isinstance(region_races_raw, list) and region_races_raw:
+        region_races = ", ".join(str(r) for r in region_races_raw[:6])
+    else:
+        region_races = "Human (default); other races are RARE — name them only when justified."
+
+    return (
+        "=== PLAUSIBILITY GATE (HARD RULE — every beat must pass this) ===\n"
+        f"Current time-of-day: {period['label']} ({period['icon']}, hour {period['hour']:02d}/24).\n"
+        f"Scene crowd density: {crowd_density}.\n"
+        f"Region demographics: {region_races}.\n\n"
+        "Before emitting a beat, check ALL of these:\n"
+        "  1) TIME-OF-DAY: NPC activities must fit the current period. At "
+        "     night/midnight: no merchants 'setting up', no children, no "
+        "     market crowds, no dawn light. At midday: no lanterns lit, no "
+        "     twilight chill. Reread the TIME OF DAY block above.\n"
+        f"  2) CROWD DENSITY ({crowd_density}): \n"
+        "     - 'crowded'  → secret/private exchanges are IMPLAUSIBLE here; "
+        "       use overheard fragments, signals, dead-drops, or move "
+        "       the beat to a quieter sub-location.\n"
+        "     - 'empty/thin' → public-spectacle hooks are IMPLAUSIBLE; "
+        "       use a single witness, a lone watchman, or a deserted "
+        "       stall instead of crowds.\n"
+        "  3) REGION RACES: only feature NPC races that PLAUSIBLY live in "
+        "     this region. If the region is Human-default, do NOT invent "
+        "     Tiefling/Tabaxi/Drow walking the streets unless the campaign "
+        "     theme explicitly permits it. Travellers and outliers are OK "
+        "     but must be flagged as foreign or notable in the prose.\n"
+        "  4) Hook fit: every beat must remain LOGICALLY connected to the "
+        "     hook. Don't pivot to an unrelated topic just to vary it.\n\n"
+        "If a phase's natural goal is impossible here (e.g. 'Scouting a "
+        "crowded square at midnight'), REWRITE the beat into the right "
+        "sub-location (the watchman's lantern-lit corner, the closed "
+        "stall's back door) instead of breaking the rule.\n\n"
+    )
+
+
+
 async def draft_storyline(
     campaign: Dict,
     character: Dict,
     hook: Dict,
     narration_context: str = "",
+    mission_type: Optional[Dict] = None,
 ) -> Dict:
     """Draft a 3-5 beat linear investigation chain rooted in `hook`.
+
+    Args:
+        campaign:           campaign doc (provides world, intent, theme,
+                            world_clock, mission types selected by player)
+        character:          character doc
+        hook:               the player-clicked hook this storyline grows from
+        narration_context:  optional recent-narration string
+        mission_type:       optional mission-type blueprint — when given,
+                            beats are shaped to follow the phase arc
+                            (Heist: Discovery → Scouting → Tools → Strike).
 
     Returns a dict with `title`, `beats`, `total_dc`. Caller (router) wraps it
     with ids, status, timestamps before persisting.
@@ -819,6 +926,9 @@ async def draft_storyline(
             f"{hook.get('text','')}\n"
             f"(topic: {hook.get('topic','')}, suggested verb: {hook.get('verb_hint','examine')})\n\n"
             f"=== RECENT NARRATION CONTEXT ===\n{(narration_context or '')[:600]}\n\n"
+            f"{_campaign_theme_block(campaign)}"
+            f"{render_blueprint_for_prompt(mission_type)}"
+            f"{_plausibility_gate_block(campaign, hook)}"
             "=== REQUIREMENTS ===\n"
             "- 3-5 beats. Linear order. Each beat is a discrete TASK with a DC.\n"
             "- Beat 1 must be the literal first step of investigating the hook.\n"

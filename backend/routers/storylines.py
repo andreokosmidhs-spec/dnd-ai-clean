@@ -142,6 +142,28 @@ def _format_action_summary(
 # -------------------- request bodies --------------------
 
 
+from services.mission_types import get_mission_type, get_mission_type_by_slug
+
+
+async def _resolve_mission_type(
+    campaign_id: str,
+    mission_type_id: Optional[str],
+    mission_type_slug: Optional[str],
+) -> Optional[Dict]:
+    """Look up a mission-type blueprint by id-or-slug; returns None when
+    not given or not found. Slug lookup includes both the system seeds
+    AND any user-defined types owned by THIS campaign."""
+    if mission_type_id:
+        doc = await get_mission_type(_get_db(), mission_type_id=mission_type_id)
+        if doc:
+            return doc
+    if mission_type_slug:
+        return await get_mission_type_by_slug(
+            _get_db(), slug=mission_type_slug, campaign_id=campaign_id,
+        )
+    return None
+
+
 class DraftStorylineBody(BaseModel):
     character_id: str
     hook_text: str
@@ -149,6 +171,10 @@ class DraftStorylineBody(BaseModel):
     hook_topic: Optional[str] = None
     hook_verb: Optional[str] = None
     narration_context: Optional[str] = None
+    # Optional mission-type id (or slug) — when set, the storyline is
+    # shaped to follow that blueprint's phase arc.
+    mission_type_id: Optional[str] = None
+    mission_type_slug: Optional[str] = None
 
 
 class ResolveStorylineBody(BaseModel):
@@ -202,6 +228,9 @@ async def draft_storyline_endpoint(campaign_id: str, body: DraftStorylineBody):
         character=character,
         hook=hook,
         narration_context=body.narration_context or "",
+        mission_type=await _resolve_mission_type(
+            campaign_id, body.mission_type_id, body.mission_type_slug,
+        ),
     )
 
     now = datetime.now(timezone.utc)

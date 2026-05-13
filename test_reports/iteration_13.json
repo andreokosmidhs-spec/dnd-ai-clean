@@ -1,0 +1,33 @@
+{
+  "summary": "Mission Type picker integration tested end-to-end (backend + frontend). All 4 system blueprints (heist/rescue/assassination/political_intrigue) list correctly, Freeform option present. POST /api/mission-types/from-prompt returns a structured draft. POST /api/campaigns/draft with mission_type_slug='heist' persists on campaign doc. Storyline draft with no mission_type in body successfully falls back to campaign's saved mission_type (heist) — no errors, beat generated.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/campaigns/{id}/storylines/draft", "issue": "Open-ended storyline returned only 1 beat with dc=0 and phase=None on initial draft — cannot directly verify mission_type blueprint phase tagging on the response surface. Mission resolution did execute (no error and campaign-level fallback path exercised). Suggest exposing resolved mission_type or phase_name on the storyline response for observability."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: surface resolved mission_type_slug / phase tag on storyline draft response for easier QA verification.",
+    "Optional: confirm storyline_service persists mission_type into campaign_storylines doc for downstream observability."
+  ],
+  "critical_code_review_comments": [
+    "MissionTypePicker handles auto_save failure gracefully with friendly error — good.",
+    "_resolve_mission_type fallback to campaign_doc is clean and correctly invoked at storyline draft.",
+    "CampaignDraftRequest correctly carries optional mission_type_id + slug; campaign doc persists both fields verified via GET /api/campaigns/{id}.",
+    "Freeform card click sets value=null which deselects — implementation matches spec."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "characterId=69fc667f579c1db376ac58db; new campaign created during test: db270ce1-336e-422e-9e15-597e55af479a (mission_type_slug=heist persisted).",
+  "seed_data_creation": "Created one test campaign db270ce1-336e-422e-9e15-597e55af479a via /api/campaigns/draft.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Mission picker UI requires seeding localStorage 'session-core-v2' (and legacy 'session-core') with activeCharacterId before navigating to /campaign-setup, since the page redirects to '/' when no character is active. Backend list endpoint /api/mission-types returns 4 seeded blueprints by slug. Storyline fallback resolution works but the response surface doesn't expose the resolved mission_type — verify via DB campaign_storylines collection if deeper assertion needed.",
+  "rca of the issue": "N/A — all tested flows pass."
+}

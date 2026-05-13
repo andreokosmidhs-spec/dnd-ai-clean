@@ -15,6 +15,10 @@ class CampaignIntent(BaseModel):
 class CampaignDraftRequest(BaseModel):
     characterId: str
     intent: CampaignIntent
+    # Optional mission-type blueprint chosen at setup (id or slug). Stored
+    # on the campaign so all storyline drafts inherit it unless overridden.
+    mission_type_id: Optional[str] = None
+    mission_type_slug: Optional[str] = None
 
 
 class CampaignDraftResponse(BaseModel):

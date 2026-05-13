@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { useSessionCore } from "../store/useSessionCore";
 import { Eye } from "lucide-react";
 import CampaignDeckPreview from "../components/CampaignDeckPreview";
+import MissionTypePicker from "../components/MissionTypePicker";
 
 const CATEGORY_CONFIG = [
   {
@@ -56,6 +57,7 @@ const DEFAULT_INTENT = {
   focus: "Story",
   scope: "City",
   danger: "Medium",
+  mission_type: null, // { id, slug, name, icon } | null
 };
 
 const CampaignSetup = () => {
@@ -89,6 +91,17 @@ const CampaignSetup = () => {
 
   const handleSelect = (key, value) => {
     const updated = { ...selections, [key]: value };
+    setSelections(updated);
+    updateSession({
+      campaignIntent: {
+        ...updated,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  };
+
+  const handleMissionTypeChange = (missionType) => {
+    const updated = { ...selections, mission_type: missionType };
     setSelections(updated);
     updateSession({
       campaignIntent: {
@@ -164,6 +177,11 @@ const CampaignSetup = () => {
               </CardContent>
             </Card>
           ))}
+
+          <MissionTypePicker
+            value={selections.mission_type}
+            onChange={handleMissionTypeChange}
+          />
         </div>
 
         <div className="flex justify-between items-center gap-3 flex-wrap">

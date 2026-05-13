@@ -34,6 +34,8 @@ const CampaignGenerate = () => {
             scope: intentPayload.scope,
             danger: intentPayload.danger,
           },
+          mission_type_id: intentPayload.mission_type?.id || null,
+          mission_type_slug: intentPayload.mission_type?.slug || null,
         });
 
         const campaignId = draftRes.data.campaignId;

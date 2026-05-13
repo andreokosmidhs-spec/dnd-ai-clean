@@ -149,18 +149,38 @@ async def _resolve_mission_type(
     campaign_id: str,
     mission_type_id: Optional[str],
     mission_type_slug: Optional[str],
+    campaign_doc: Optional[Dict] = None,
 ) -> Optional[Dict]:
     """Look up a mission-type blueprint by id-or-slug; returns None when
     not given or not found. Slug lookup includes both the system seeds
-    AND any user-defined types owned by THIS campaign."""
+    AND any user-defined types owned by THIS campaign.
+
+    When neither id nor slug is supplied on the request, falls back to
+    the mission type chosen at campaign setup (stored on the campaign doc)."""
     if mission_type_id:
         doc = await get_mission_type(_get_db(), mission_type_id=mission_type_id)
         if doc:
             return doc
     if mission_type_slug:
-        return await get_mission_type_by_slug(
+        doc = await get_mission_type_by_slug(
             _get_db(), slug=mission_type_slug, campaign_id=campaign_id,
         )
+        if doc:
+            return doc
+    # Fallback: read from the campaign-level selection captured at setup.
+    if campaign_doc:
+        fb_id = campaign_doc.get("mission_type_id")
+        fb_slug = campaign_doc.get("mission_type_slug")
+        if fb_id:
+            doc = await get_mission_type(_get_db(), mission_type_id=fb_id)
+            if doc:
+                return doc
+        if fb_slug:
+            doc = await get_mission_type_by_slug(
+                _get_db(), slug=fb_slug, campaign_id=campaign_id,
+            )
+            if doc:
+                return doc
     return None
 
 
@@ -230,6 +250,7 @@ async def draft_storyline_endpoint(campaign_id: str, body: DraftStorylineBody):
         narration_context=body.narration_context or "",
         mission_type=await _resolve_mission_type(
             campaign_id, body.mission_type_id, body.mission_type_slug,
+            campaign_doc=campaign,
         ),
     )
 

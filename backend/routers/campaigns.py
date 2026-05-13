@@ -151,6 +151,8 @@ async def create_campaign_draft(request: CampaignDraftRequest):
         "campaign_id": campaign_id,
         "character_id": request.characterId,
         "intent": request.intent.model_dump(),
+        "mission_type_id": request.mission_type_id,
+        "mission_type_slug": request.mission_type_slug,
         "status": "draft",
         "created_at": now,
         "updated_at": now,

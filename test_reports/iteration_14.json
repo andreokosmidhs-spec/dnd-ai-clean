@@ -1,0 +1,36 @@
+{
+  "summary": "Tested the new 'Active Mission Phase' badge feature end-to-end at the API contract level + verified frontend wiring. 6 backend pytest cases all PASS, covering: (1) campaign draft with mission_type_slug='heist' persists, (2) storyline draft (no body mission_type) inherits campaign's heist blueprint and returns the full mission_type snapshot {slug,name,icon,phases:[Discovery,Scouting,Tools & Allies,Plan & Execution]} on the response, (3) first beat is tagged phase_index=0 / phase_name='Discovery', (4) GET storyline returns the same persisted snapshot + tagged beat, (5) rescue blueprint first beat correctly tagged phase_name='Locate', (6) regression — freeform campaign (no mission_type) produces storyline with mission_type=null and beats without phase_index/phase_name. Frontend: MissionPhaseBadge.jsx exists with data-testid='mission-phase-badge', is correctly imported + mounted in AdventureLogWithDM.jsx header under guard `activeStoryline?.mission_type`. Home page loads with zero console/page errors. Full click-through e2e (character→campaign-setup→generate→adventure→engage hook) intentionally skipped per request — backend response shape is the source of truth for this badge feature.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_mission_phase_badge.py",
+    "/app/test_reports/pytest/mission_phase_badge.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_tag_phase clamps phase_index into [0, len(phases)-1] which is the correct defensive behaviour for LLM-supplied indices.",
+    "_mission_type_snapshot stores only {id,slug,name,icon,phases:[{name}]} — minimal payload, good. No risk of leaking full blueprint internals to the frontend.",
+    "Storyline doc persists mission_type=null when no blueprint is bound — frontend guard `activeStoryline?.mission_type` correctly suppresses the badge.",
+    "MissionPhaseBadge.jsx defensively clamps phaseIdx and falls back to `mt.phases[idx].name` when the beat doesn't carry phase_name — robust against partial data.",
+    "AdventureLogWithDM.jsx renders <MissionPhaseBadge/> inside an extra guard `{activeStoryline?.mission_type && ...}` even though the component itself short-circuits — defense-in-depth is fine but mildly redundant.",
+    "POST /api/campaigns/{id}/storylines/draft returns the storyline payload directly with mission_type at top level (not wrapped). Frontend reads `activeStoryline.mission_type` — contract matches.",
+    "Backend correctly resolves campaign-level mission_type fallback when storyline draft body omits mission_type_id/slug — exercised in heist test and works."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_mission_phase_badge.py"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% (smoke + static wiring verified)"},
+  "test_credentials": "characterId=69f2985e0999201c3edfaa3a (per request). Each test creates fresh campaign drafts via /api/campaigns/draft.",
+  "seed_data_creation": "Several throwaway campaigns + storylines were created via /api/campaigns/draft and /storylines/draft with TEST_-prefixed hook text/topics for the 6 backend tests. Safe to leave behind.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "If a future iteration needs to verify the badge visually in the running app, the simplest path is: (a) seed localStorage `session-core-v2` and `session-core` with {activeCharacterId:'69f2985e0999201c3edfaa3a'} on the page origin; (b) call POST /api/campaigns/draft with mission_type_slug='heist' to get a campaign_id; (c) call POST /api/campaigns/{id}/storylines/draft with a synthetic hook to ensure activeStoryline is bound; (d) navigate to /adventure?campaign={id}. The Adventure Log header should then render `[data-testid=mission-phase-badge]` with text containing '🎯 Heist · Phase 1/4: Discovery'. Backend snapshot contract is locked in by /app/backend/tests/test_mission_phase_badge.py.",
+  "rca of the issue": "N/A — feature works correctly."
+}

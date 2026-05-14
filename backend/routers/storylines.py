@@ -243,15 +243,17 @@ async def draft_storyline_endpoint(campaign_id: str, body: DraftStorylineBody):
         "verb_hint": (body.hook_verb or "examine"),
     }
 
+    resolved_mission_type = await _resolve_mission_type(
+        campaign_id, body.mission_type_id, body.mission_type_slug,
+        campaign_doc=campaign,
+    )
+
     drafted = await draft_initial_scene(
         campaign=campaign,
         character=character,
         hook=hook,
         narration_context=body.narration_context or "",
-        mission_type=await _resolve_mission_type(
-            campaign_id, body.mission_type_id, body.mission_type_slug,
-            campaign_doc=campaign,
-        ),
+        mission_type=resolved_mission_type,
     )
 
     now = datetime.now(timezone.utc)
@@ -277,6 +279,11 @@ async def draft_storyline_endpoint(campaign_id: str, body: DraftStorylineBody):
     quest_doc = {**quest_card.model_dump(), "campaign_id": campaign_id, "storyline_id": storyline_id}
     await _cards_collection().insert_one(quest_doc)
 
+    # Lightweight snapshot stored on the storyline so future generate_next_scene
+    # calls + the frontend Active-Phase badge can read it without a join.
+    from services.storyline_service import _mission_type_snapshot
+    mission_type_snapshot = _mission_type_snapshot(resolved_mission_type)
+
     storyline_doc = {
         "id": storyline_id,
         "campaign_id": campaign_id,
@@ -294,6 +301,7 @@ async def draft_storyline_endpoint(campaign_id: str, body: DraftStorylineBody):
         "complication": None,
         "reward": None,
         "quest_card_id": quest_card.id,
+        "mission_type": mission_type_snapshot,
         "created_at": now,
         "updated_at": now,
     }

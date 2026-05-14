@@ -198,6 +198,50 @@ def _world_facts_block(world: Dict, cards: Optional[List[Dict]] = None, limit: i
     return "=== WORLD FACTS (use these names when possible — invent only if needed) ===\n" + "\n".join(lines)
 
 
+
+def _tag_phase(
+    beat: Dict,
+    mission_type: Optional[Dict],
+    phase_index_raw,
+    default_index: int = 0,
+) -> None:
+    """Tag a beat with `phase_index` and `phase_name` derived from the
+    mission-type blueprint. Mutates `beat` in place. No-op when no
+    mission_type is bound to this storyline."""
+    if not mission_type or not isinstance(mission_type, dict):
+        return
+    phases = mission_type.get("phases") or []
+    if not phases:
+        return
+    try:
+        idx = int(phase_index_raw) if phase_index_raw is not None else default_index
+    except (TypeError, ValueError):
+        idx = default_index
+    idx = max(0, min(len(phases) - 1, idx))
+    beat["phase_index"] = idx
+    beat["phase_name"] = (phases[idx] or {}).get("name") or ""
+
+
+def _mission_type_snapshot(mission_type: Optional[Dict]) -> Optional[Dict]:
+    """Lightweight subset of a mission-type stored on the storyline doc so
+    the frontend "Active Phase" badge can read phase names without an
+    extra round-trip."""
+    if not mission_type or not isinstance(mission_type, dict):
+        return None
+    return {
+        "id": mission_type.get("id"),
+        "slug": mission_type.get("slug"),
+        "name": mission_type.get("name"),
+        "icon": mission_type.get("icon"),
+        "phases": [
+            {"name": (p or {}).get("name", "")}
+            for p in (mission_type.get("phases") or [])
+        ],
+    }
+
+
+
+
 def _story_fact_rules() -> str:
     """Hard rules forcing POV-anchored, realistic exposition in every storyline
     beat. Reused by draft_initial_scene and generate_next_scene. The DM should
@@ -395,6 +439,7 @@ async def draft_initial_scene(
     if not api_key:
         from services.time_service import bucket_for_hour
         fallback["beats"][0]["time_of_day"] = bucket_for_hour(clock_hour)
+        _tag_phase(fallback["beats"][0], mission_type, None, default_index=0)
         return fallback
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
@@ -470,6 +515,7 @@ async def draft_initial_scene(
             "    \"dc\": 0,  // 0 = no roll needed (public/visible info — rule #6); else 10-18\n"
             "    \"reveal_type\": \"action|knowledge\",  // 'action' for public reveals (description shown openly); 'knowledge' ONLY when description is gated behind the roll\n"
             "    \"prompt\": \"(knowledge beats only) public-facing tease shown before the roll, no spoilers\",\n"
+            "    \"phase_index\": 0,  // (only when MISSION TYPE BLUEPRINT is provided) 0-based index of the phase this beat belongs to (the FIRST scene is almost always phase 0)\n"
             "    \"targets\": [{\"type\": \"npc|faction|location|direction\", \"name\": \"<actual named entity from your description>\"}]\n"
             "  }\n"
             "}\n"
@@ -536,11 +582,14 @@ async def draft_initial_scene(
         # Tag the scene with the current time-of-day for the UI.
         from services.time_service import bucket_for_hour
         beat["time_of_day"] = bucket_for_hour(clock_hour)
+        # Tag with mission-arc phase info (frontend "Active Phase" badge).
+        _tag_phase(beat, mission_type, rb.get("phase_index"), default_index=0)
         return {"title": title[:60], "beats": [beat], "total_dc": dc}
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"Initial scene draft failed, using fallback: {exc}")
         from services.time_service import bucket_for_hour
         fallback["beats"][0]["time_of_day"] = bucket_for_hour(clock_hour)
+        _tag_phase(fallback["beats"][0], mission_type, None, default_index=0)
         return fallback
 
 
@@ -572,6 +621,35 @@ async def generate_next_scene(
     beats = storyline.get("beats") or []
     # Hard stop after 7 beats — keeps storylines from running away.
     too_long = len(beats) >= 7
+
+    # Mission-type blueprint snapshot — when this storyline was drafted with
+    # a chosen blueprint, every continuation beat should keep advancing the
+    # phase arc instead of drifting off-mission.
+    mission_type = storyline.get("mission_type")
+    current_phase_idx = 0
+    for b in reversed(beats):
+        if isinstance(b, dict) and isinstance(b.get("phase_index"), int):
+            current_phase_idx = b["phase_index"]
+            break
+    mission_block = ""
+    if mission_type:
+        try:
+            phases = mission_type.get("phases") or []
+            cur_name = (phases[current_phase_idx] or {}).get("name", "") if phases else ""
+            nxt_name = (phases[current_phase_idx + 1] or {}).get("name", "") if current_phase_idx + 1 < len(phases) else ""
+            mission_block = (
+                f"=== MISSION TYPE CONTEXT ===\n"
+                f"Type: {mission_type.get('icon','')} {mission_type.get('name','')}\n"
+                f"Most-recent beat sits in PHASE {current_phase_idx + 1}"
+                f"{(' (' + cur_name + ')') if cur_name else ''}.\n"
+                f"{('The next natural phase is PHASE ' + str(current_phase_idx + 2) + (' (' + nxt_name + ')') if nxt_name else '') if nxt_name else 'No further phase — drive toward resolution.'}\n"
+                f"{render_blueprint_for_prompt(mission_type)}\n\n"
+                "When emitting the next beat, set `phase_index` to the 0-based "
+                "phase this beat belongs to. Stay in the current phase if its "
+                "goal isn't reached yet; advance to the next phase when it is.\n\n"
+            )
+        except Exception:  # noqa: BLE001
+            mission_block = ""
 
     fallback_beat = _finalize_beat({
         "title": "The Path Forward",
@@ -643,6 +721,7 @@ async def generate_next_scene(
             f"{(player_action_summary or '')[:500]}\n\n"
             f"{time_block}\n\n"
             f"{pp_block}\n\n"
+            f"{mission_block}"
             "=== RULES ===\n"
             f"- Storyline has been running {len(beats)} beat(s). "
             f"{'You SHOULD resolve here unless absolutely critical to continue.' if too_long else 'Aim for 3-5 beats total; resolve only when narratively earned.'}\n"
@@ -696,6 +775,7 @@ async def generate_next_scene(
             "    \"dc\": 0,  // 0 = no roll needed (rule #6); else 10-18\n"
             "    \"reveal_type\": \"action|knowledge\",  // 'action' = description shown openly; 'knowledge' ONLY when content is gated by the roll\n"
             "    \"prompt\": \"(knowledge only) public tease before the roll\",\n"
+            "    \"phase_index\": 0,  // (only when MISSION TYPE CONTEXT is provided) 0-based phase index this beat belongs to\n"
             "    \"targets\": [{\"type\": \"npc|faction|location|direction\", \"name\": \"<actual named entity from your description>\"}]\n"
             "  }\n"
             "}\n"
@@ -771,12 +851,16 @@ async def generate_next_scene(
         beat["roll_optional"] = (dc == 0)
         # Tag with time-of-day for the UI.
         beat["time_of_day"] = bucket_for_hour(clock_hour)
+        # Tag with mission-arc phase. Default to the prior beat's phase so
+        # the badge keeps a stable phase when the LLM omits it.
+        _tag_phase(beat, mission_type, rb.get("phase_index"), default_index=current_phase_idx)
         return {"is_final": False, "beat": beat}
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"Next-scene generation failed, using fallback: {exc}")
         if too_long:
             return {"is_final": True, "epilogue": "The trail goes quiet, and what you've gathered is what you'll carry forward."}
         fallback_beat["time_of_day"] = bucket_for_hour(clock_hour)
+        _tag_phase(fallback_beat, mission_type, None, default_index=current_phase_idx)
         return {"is_final": False, "beat": fallback_beat}
 
 

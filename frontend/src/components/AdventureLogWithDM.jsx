@@ -20,6 +20,7 @@ import DefeatModal from './DefeatModal';
 import CanonBar from './CanonBar';
 import CanonReferences from './CanonReferences';
 import AutoSaveIndicator from './AutoSaveIndicator';
+import MissionPhaseBadge from './MissionPhaseBadge';
 import useCanonTerms, { findCanonMentions } from '../hooks/useCanonTerms';
 import { useTargetMode, pickWordFromClick } from '../contexts/TargetModeContext';
 import { SearchTargetModal } from './TargetModeBanner';
@@ -1468,12 +1469,17 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
         
         {/* Header */}
         <div className="p-3 border-b border-amber-600/20 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <h2 className="adv-papyrus-title text-amber-400 font-semibold text-sm flex items-center gap-2">
-              <Dice6 className="h-4 w-4" />
-              Adventure Log
-            </h2>
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="adv-papyrus-title text-amber-400 font-semibold text-sm flex items-center gap-2 shrink-0">
+                <Dice6 className="h-4 w-4" />
+                Adventure Log
+              </h2>
+              {activeStoryline?.mission_type && (
+                <MissionPhaseBadge storyline={activeStoryline} />
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
               {/* TTS Toggle */}
               <Button
                 onClick={toggleTTS}

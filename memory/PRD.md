@@ -38,6 +38,11 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Active Mission Phase Badge (Feb 14, 2026)
+- Backend (this session): every storyline now snapshots its bound mission_type onto the `storyline_doc` ({slug, name, icon, phases:[{name}]}). Each beat is tagged with `phase_index` + `phase_name` via the new `_tag_phase()` helper. `generate_next_scene` reads the snapshot from the storyline, injects a "MISSION TYPE CONTEXT" block (current phase + suggested next phase), and asks the LLM to emit a `phase_index` per beat — keeping continuations on-arc.
+- Frontend (this session): new `MissionPhaseBadge.jsx` mounted in the Adventure Log header next to the title. Reads `activeStoryline.mission_type` + current beat's `phase_index`/`phase_name` and renders e.g. **🎯 Heist · Phase 1/4: Discovery**. Hidden when no mission type is bound to the storyline.
+- Tested end-to-end via `testing_agent_v3_fork` (iteration_14.json) — 6/6 backend pytest pass + frontend wiring verified. Pytest at `/app/backend/tests/test_mission_phase_badge.py`.
+
 #### Mission Types — Structured Storyline Blueprints (Feb 13, 2026)
 - Backend (prior session): `mission_types` collection seeded with 4 system blueprints — Heist 🎯, Rescue 🛟, Assassination 🗡, Political Intrigue 🏛. Each defines 4 phases (goal, check palette, target palette, DC range, signature rewards). `render_blueprint_for_prompt()` injects the arc into storyline generation.
 - Backend (this session): `CampaignDraftRequest` now persists optional `mission_type_id` / `mission_type_slug` on the campaign doc. `_resolve_mission_type` in storylines router falls back to the campaign-level selection when storyline draft body has none — every storyline in the campaign automatically inherits the blueprint.

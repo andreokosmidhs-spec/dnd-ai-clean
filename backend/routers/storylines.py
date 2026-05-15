@@ -102,6 +102,80 @@ async def _load_character(character_id: str) -> Optional[Dict]:
     return char
 
 
+async def _apply_storyline_reward_xp(
+    character: Dict, reward: Optional[Dict]
+) -> Optional[Dict]:
+    """Apply the storyline reward's XP to the character document in mongo.
+
+    Returns a `player_updates` dict the storyline endpoint surfaces back
+    to the frontend so it can refresh the XP bar + show toasts:
+
+        {
+            "xp_gained": int,
+            "current_xp": int,             # NEW value after applying
+            "xp_to_next": int,             # threshold for the new level
+            "level": int,                  # NEW level (may differ if level-up)
+            "level_up_events": [str, ...], # e.g. ["LEVEL_UP:2"]
+            "xp_reason": str,
+        }
+
+    Returns None when there's no XP to apply (e.g. reward is None or 0).
+    Failures are logged + swallowed — XP application must NEVER block the
+    storyline-completion response."""
+    if not reward or not character:
+        return None
+    xp_gain = int((reward or {}).get("xp") or 0)
+    if xp_gain <= 0:
+        return None
+    try:
+        from services.progression_service import apply_xp_to_character
+        # Work on a copy — apply_xp_to_character mutates in place.
+        working = dict(character)
+        # Normalize fields the progression service expects. The character
+        # docs in characters_v2 historically use `experience` (D&D 5e style
+        # cumulative total) but the progression service uses
+        # `current_xp` + `xp_to_next` (per-level bucket). Honor whichever
+        # is present; default both to 0/level1.
+        if "current_xp" not in working:
+            working["current_xp"] = int(working.get("experience") or 0)
+        if "level" not in working:
+            working["level"] = 1
+        updated, level_up_events = apply_xp_to_character(working, xp_gain)
+        # Persist back to mongo on characters_v2. Use $set on the same
+        # ObjectId; tolerate missing/invalid id (e.g. dev character).
+        try:
+            oid = ObjectId(character["id"])
+            await _get_db().characters_v2.update_one(
+                {"_id": oid},
+                {"$set": {
+                    "current_xp": updated.get("current_xp", 0),
+                    "xp_to_next": updated.get("xp_to_next", 0),
+                    "level": updated.get("level", 1),
+                    "experience": (
+                        int(working.get("experience") or 0) + xp_gain
+                    ),
+                    "max_hp": updated.get("max_hp", working.get("max_hp", 10)),
+                    "attack_bonus": updated.get(
+                        "attack_bonus", working.get("attack_bonus", 0)
+                    ),
+                }},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"persist XP update failed: {exc}")
+        return {
+            "xp_gained": xp_gain,
+            "current_xp": updated.get("current_xp", 0),
+            "xp_to_next": updated.get("xp_to_next", 0),
+            "level": updated.get("level", 1),
+            "level_up_events": level_up_events,
+            "xp_reason": reward.get("title") or "Investigation resolved",
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"apply storyline reward XP failed: {exc}")
+        return None
+
+
+
 def _format_action_summary(
     beat: Dict,
     *,
@@ -1377,9 +1451,13 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
 
     completed = storyline.get("status") == "completed"
     reward: Optional[Dict] = None
+    player_updates: Optional[Dict] = None
     if completed:
         reward = await generate_storyline_reward(campaign, character, storyline)
         storyline["reward"] = reward
+        # Apply the awarded XP to the character + persist it. Surfaced back
+        # to the frontend as `player_updates` so the XP bar can animate.
+        player_updates = await _apply_storyline_reward_xp(character, reward)
         # Mark the linked quest card based on pass ratio: completed if any
         # beats passed, else failed.
         passed_any = any(b.get("status") == "passed" for b in (storyline.get("beats") or []))
@@ -1431,6 +1509,7 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
         "mode": "fail-forward" if body.outcome == "failed" else "advance",
         "complication": complication_text,
         "reward": reward,
+        "player_updates": player_updates,
         "lead": lead_card,
         "target_cards": target_cards,
         "npc_field_reveals": npc_field_reveals,
@@ -1613,9 +1692,11 @@ async def creative_approach_endpoint(
 
     completed = storyline.get("status") == "completed"
     reward: Optional[Dict] = None
+    player_updates: Optional[Dict] = None
     if completed:
         reward = await generate_storyline_reward(campaign, character, storyline)
         storyline["reward"] = reward
+        player_updates = await _apply_storyline_reward_xp(character, reward)
         passed_any = any(b.get("status") == "passed" for b in (storyline.get("beats") or []))
         quest_status = "completed" if passed_any else "failed"
         quest_card_id = storyline.get("quest_card_id")
@@ -1638,6 +1719,7 @@ async def creative_approach_endpoint(
         "applied_check": judgment.get("applied_check"),
         "complication": complication_text,  # only when judged_outcome == 'failed'
         "reward": reward,
+        "player_updates": player_updates,
         "lead": lead_card,
         "target_cards": target_cards,
         "npc_field_reveals": npc_field_reveals,

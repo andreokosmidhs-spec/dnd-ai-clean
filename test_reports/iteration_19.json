@@ -1,0 +1,58 @@
+{
+  "summary": "Iter 19 (Storyline XP → character XP bar) backend testing: created /app/backend/tests/test_storyline_xp_grant.py with 8 pytest cases covering import contract, helper-level XP application + persistence, /resolve and /creative response shape, mongo persistence, and L1→L2 rollover. 3 PASSED, 3 FAILED, 2 SKIPPED. All 3 failures + both skips trace to a single root cause: services/progression_service.py does NOT export the function name `apply_xp_to_character` that routers/storylines.py:131 imports — it exports `apply_xp_gain` instead. The ImportError is silently swallowed by the bare-except in _apply_storyline_reward_xp, so player_updates is ALWAYS None on completion and the characters_v2 document is NEVER updated, even when reward.xp > 0 (verified: a completed storyline returned reward.xp=50 but player_updates=None).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/campaigns/{cid}/storylines/{sid}/resolve  &  /creative",
+        "issue": "player_updates is ALWAYS null on completion (even when reward.xp > 0); characters_v2.current_xp / xp_to_next / level / experience are NEVER updated. Root cause: routers/storylines.py line 131 does `from services.progression_service import apply_xp_to_character`, but progression_service.py only defines `apply_xp_gain`. The resulting ImportError is swallowed by `except Exception` at storylines.py:173 (logged as a warning) and the helper returns None.  Repro: pytest tests/test_storyline_xp_grant.py::TestApplyStorylineRewardXpHelper::test_helper_applies_and_persists.  Fix: either (A) add `apply_xp_to_character = apply_xp_gain` alias at the bottom of services/progression_service.py, or (B) change the import in routers/storylines.py to `apply_xp_gain`. Option A is preferred because it matches the request-stated function name and avoids touching the router.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "routers/storylines.py:_apply_storyline_reward_xp",
+        "issue": "Bare `except Exception` at line 173 masks setup-time bugs (such as the missing-import above) with only a logger.warning. Recommend narrowing to ImportError + AttributeError + PyMongoError, or at minimum re-raising in dev when XP_DEBUG is set. This would have made the iter 19 regression surface immediately instead of silently returning None for every completion."
+      },
+      {
+        "endpoint": "characters_v2/69f2985e0999201c3edfaa3a",
+        "issue": "The shared test character doc has name=None — unrelated to this iteration but worth noting if any test ever relies on character.name."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Storyline completion → XP bar animation",
+        "issue": "Frontend wiring (ActiveInvestigationPanel → AdventureLogWithDM → gameStateContext.characterState → XPBar) was reviewed via code inspection — looks correct per request. However, because the backend always returns player_updates=null due to the import bug above, the XP bar will NEVER advance on storyline completion in the current build. Fix the backend import first, then this flow should work end-to-end.",
+        "affected_selectors": ["XPBar in FocusedRPG.jsx"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_storyline_xp_grant.py",
+    "/app/test_reports/pytest/iter19_xp.xml"
+  ],
+  "action_items": [
+    "FIX (1-line): Add `apply_xp_to_character = apply_xp_gain` at the bottom of /app/backend/services/progression_service.py (preferred) OR change the import in /app/backend/routers/storylines.py:131 from `apply_xp_to_character` → `apply_xp_gain`.",
+    "Narrow the bare `except Exception` in /app/backend/routers/storylines.py:_apply_storyline_reward_xp (line ~173) so import/contract bugs surface in logs as ERROR, not warning; ideally re-raise outside production.",
+    "After fix, re-run `pytest /app/backend/tests/test_storyline_xp_grant.py -v` — all 8 tests should pass (the 2 currently-skipped tests will then exercise rollover end-to-end)."
+  ],
+  "critical_code_review_comments": [
+    "routers/storylines.py:131 — imports a name that does not exist in services/progression_service.py. CRITICAL.",
+    "routers/storylines.py:173 — bare `except Exception` swallows ImportError silently. Anti-pattern; masked iter 19's regression entirely.",
+    "routers/storylines.py is 2652 lines — exceeds the 700-line guideline. Recommend splitting beat/resolve/creative/abandon/canon-scene logic into separate modules.",
+    "services/progression_service.py is fine; only minor suggestion: also export an alias `apply_xp_to_character` if that's the intended public name across modules, to keep call-sites consistent."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_storyline_xp_grant.py (new)"
+  ],
+  "success_rate": {"backend": "37% (3/8 pytest cases pass; 3 fail and 2 skip due to one root-cause backend bug)", "frontend": "not tested (request was backend-only)"},
+  "test_credentials": "n/a — used existing character 69f2985e0999201c3edfaa3a + campaign a19b5ff2-e859-4cef-9019-b36e2dbfdd39 (no auth required for these endpoints)",
+  "seed_data_creation": "Created 3 throwaway TEST_xp_ storylines (one per resolve-completion test, one for creative, plus extra rollover attempts). Each draft auto-creates a linked quest_card_id in campaign_cards which the test does not delete (matches the pattern used by the existing test_storylines.py file). The character doc was reset to L1/0xp before each XP test and restored to its pre-test snapshot on teardown.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "After the main agent applies the fix (rename or alias `apply_xp_gain` → `apply_xp_to_character`), simply re-run `cd /app/backend && pytest tests/test_storyline_xp_grant.py -v --tb=short`. All 8 tests should pass: the two currently-SKIPPED tests will then exercise the L1→L2 rollover both at the unit-helper level (200 XP → L2/50xp) and via the public /resolve API chain. If the rollover-via-API test still skips, it's because the reward generator awarded <150 XP across 3 storylines — that's an LLM-variance issue, not a regression.",
+  "rca_of_the_issue": "ROOT CAUSE: routers/storylines.py:131 does `from services.progression_service import apply_xp_to_character`, but progression_service.py defines the function as `apply_xp_gain` (no alias for the new name). The resulting ImportError is caught by `except Exception` at storylines.py:173, which only emits a warning log. As a result, _apply_storyline_reward_xp returns None on every storyline completion, the characters_v2 document never gets its XP fields persisted, and the API always returns `player_updates: null` even when reward.xp > 0. REPRO STEPS: (1) `pytest /app/backend/tests/test_storyline_xp_grant.py::TestApplyStorylineRewardXpHelper::test_helper_applies_and_persists -v` — fails with `pu is None`. (2) `pytest …::TestResolvePlayerUpdates::test_resolve_completion_returns_player_updates_and_persists -v` — completes a real storyline, reward.xp=50, but player_updates=None. MITIGATION: 1-line fix — append `apply_xp_to_character = apply_xp_gain` to /app/backend/services/progression_service.py."
+}

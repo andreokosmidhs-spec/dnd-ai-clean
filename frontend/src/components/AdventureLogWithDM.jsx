@@ -1763,7 +1763,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                 return next;
               });
             }}
-            onComplete={(sl, reward, completionNarration) => {
+            onComplete={(sl, reward, completionNarration, playerUpdates) => {
               // Inject a small "investigation closes…" DM beat into the
               // Adventure Log so the player sees the wrap-up land
               // before the reward modal opens.
@@ -1786,6 +1786,30 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                   return next;
                 });
               }
+
+              // Wire the storyline reward XP into the character state so
+              // the XP bar in FocusedRPG animates forward. The backend has
+              // already persisted these values + handled level-up rollover.
+              if (playerUpdates && playerUpdates.xp_gained > 0) {
+                updateCharContext({
+                  current_xp: playerUpdates.current_xp,
+                  xp_to_next: playerUpdates.xp_to_next,
+                  level: playerUpdates.level,
+                  // Mirror to `experience` for any consumer still reading
+                  // the cumulative D&D 5e-style total.
+                  experience: (gameStateContext.characterState?.experience || 0)
+                    + playerUpdates.xp_gained,
+                });
+                const xpMsg = `+${playerUpdates.xp_gained} XP — ${playerUpdates.xp_reason || 'Investigation resolved'}`;
+                if (window.showToast) window.showToast(xpMsg, 'success');
+                (playerUpdates.level_up_events || []).forEach((evt) => {
+                  const lvl = (evt || '').split(':')[1];
+                  if (lvl && window.showToast) {
+                    window.showToast(`🎉 LEVEL UP! You are now level ${lvl}!`, 'success');
+                  }
+                });
+              }
+
               setActiveStoryline(null);
               setShowRewardModal(reward);
               if (campaignId) {

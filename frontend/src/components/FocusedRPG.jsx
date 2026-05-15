@@ -40,7 +40,7 @@ const FocusedRPGInner = ({
   const [isAdventureLoading, setIsAdventureLoading] = useState(false);
   const inputRef = useRef();
   
-  const { isDirty, updateCharacter, campaignId } = useGameState();
+  const { isDirty, updateCharacter, campaignId, characterState } = useGameState();
   
   // Callback to receive loading state from AdventureLog
   const handleAdventureLoadingChange = (loading) => {
@@ -499,13 +499,23 @@ const FocusedRPGInner = ({
             />
           </div>
 
-          {/* XP Bar - Between narration and actions */}
-          {character && (
+          {/* XP Bar - Between narration and actions
+              Reads from gameStateContext.characterState so any update from
+              the storyline-reward flow (or combat) refreshes the bar live. */}
+          {(character || characterState?.id) && (
             <div className="flex-shrink-0 px-8 py-2">
               <XPBar 
-                level={character.level || 1}
-                currentXp={character.experience || 0}
-                xpForNextLevel={calculateXpForNextLevel(character.level || 1)}
+                level={characterState?.level ?? character?.level ?? 1}
+                currentXp={
+                  characterState?.current_xp ??
+                  character?.current_xp ??
+                  character?.experience ??
+                  0
+                }
+                xpForNextLevel={
+                  characterState?.xp_to_next ??
+                  calculateXpForNextLevel(characterState?.level ?? character?.level ?? 1)
+                }
               />
             </div>
           )}

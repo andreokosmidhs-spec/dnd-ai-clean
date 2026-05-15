@@ -210,7 +210,7 @@ const ActiveInvestigationPanel = ({
         } catch {}
       }
       if (data.completed) {
-        onComplete && onComplete(data.storyline, data.reward, data.completion_narration);
+        onComplete && onComplete(data.storyline, data.reward, data.completion_narration, data.player_updates);
       } else {
         onUpdate && onUpdate(data.storyline);
       }
@@ -342,7 +342,7 @@ const ActiveInvestigationPanel = ({
         } catch {}
       }
       if (data.completed) {
-        onComplete && onComplete(data.storyline, data.reward, data.completion_narration);
+        onComplete && onComplete(data.storyline, data.reward, data.completion_narration, data.player_updates);
       } else {
         onUpdate && onUpdate(data.storyline);
       }

@@ -38,6 +38,16 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Paused Threads Quest Log + DM-Ruled Resumption (Feb 14, 2026)
+- **Problem solved**: when a storyline was paused (off-hook spawner), the player had no UI to see what was paused, and would have teleported back to it if given a "Resume" button. Now the player must *earn* the reconnect through plausible in-fiction action; the DM rules whether the thread is still alive.
+- **Backend**:
+  - Enriched `pending_obligations` with `urgency` (critical/high/medium/patient) + `deadline_hours` derived from the mission-type slug (rescue=48h, heist=72h, assassination=120h, political_intrigue=168h, custom=96h).
+  - New service `services/storyline_resumption.py` — single LLM call returns one of three rulings: **active** (warm reconnect), **cold** (resume with costs), **expired** (thread dead; DM may emit a fresh `new_lead`).
+  - New endpoint `POST /api/campaigns/{id}/storylines/{sid}/attempt-resume` — flips status to `active` for active/cold rulings, `expired` (with `expired_at`) on expiry, mints a `rumor` knowledge card when the DM emits a fallback lead, and persists `last_resume_ruling` on the storyline.
+  - Per product decision 3a: `pending_obligations` are **never** removed on expiry — NPCs hold permanent grudges and keep appearing in `lean_dm` narration.
+- **Frontend**: new `PausedThreadsPanel.jsx` slide-over with urgency chips, NPC/location summaries, and a "Try to find them →" dialog (data-testid'd throughout). Mounted in `CampaignTopBar` as a `Paused` pill (only visible when count > 0) that polls every 30s. Resume narration auto-injects into the Adventure Log as a DM beat (`source='storyline-resume'`), and on active/cold rulings the active storyline + MissionPhaseBadge auto-update.
+- **Tested** via `testing_agent_v3_fork` (iteration_16.json) → 6/6 new pytest pass + 20/20 regression. Pytest at `/app/backend/tests/test_resume_attempt.py`.
+
 #### Off-Hook Storyline Spawner — DM-on-the-Fly Storylines (Feb 14, 2026)
 - **Problem solved**: when the player typed a freeform action unrelated to the current scene (e.g. "I look for a beggar" during a Guild-whispers beat), the DM used to glue it onto the current beat. Now the DM detects the off-hook intent and **spawns a brand-new storyline using the closest existing mission-type blueprint**.
 - **Backend (this session)**:

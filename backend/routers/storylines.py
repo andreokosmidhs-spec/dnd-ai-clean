@@ -491,6 +491,74 @@ async def spawn_storyline_from_action(campaign_id: str, body: SpawnFromActionBod
             "is_off_hook": bool(decision and decision.get("is_off_hook")),
         }
 
+    # --- AMBIGUITY GATE — ask a clarification question first ---
+    # Heuristic per product decision 3b: if the player's action is < 6 words
+    # AND leads with a vague verb (look/find/check/see/go/search/explore),
+    # we ask "What are you trying to do?" before spawning. The frontend
+    # captures the reply and re-calls this endpoint with the original
+    # action + reply joined as `player_action`.
+    if not (body.narration_context or "").strip():
+        # narration_context being non-empty means this IS the second call
+        # (player has already clarified), so we should spawn outright.
+        words = [w for w in action.lower().split() if w]
+        VAGUE_VERBS = {
+            "look", "find", "check", "see", "go", "search", "explore",
+            "wander", "scout", "watch", "head",
+        }
+        first_word = words[0] if words else ""
+        # Strip leading filler ("i", "im", "i'll", "i am")
+        if first_word in {"i", "im", "i'm", "i'll", "ill", "i am"}:
+            first_word = words[1] if len(words) > 1 else ""
+        # "looking" / "searching" → normalize
+        first_word = first_word.rstrip(".,!?")
+        if first_word.endswith("ing"):
+            first_word = first_word[:-3]
+        first_word = first_word.rstrip("e")  # "search" already; "look"→"look"
+        is_short = len(words) < 6
+        is_vague_verb = first_word in VAGUE_VERBS or (first_word + "k") in VAGUE_VERBS
+        if is_short and is_vague_verb:
+            # Reuse the same LLM call's chosen mission type to phrase the
+            # clarification with on-theme options. Falls back to a generic
+            # 3-option question when no mission_type matched.
+            slug = decision.get("mission_type_slug") or ""
+            topic = (decision.get("hook_topic") or action).strip().rstrip(".")
+            CLARIFY_TEMPLATES = {
+                "rescue": (
+                    f"You scan the street for {topic}. What are you actually trying to do — "
+                    "**find someone** in particular, **rescue** someone you suspect is in trouble, or just **scout the area**?"
+                ),
+                "heist": (
+                    f"Your eyes settle on {topic}. What's the play — "
+                    "**case it** for a future job, **steal** something specific, or **buy passage / hire it**?"
+                ),
+                "assassination": (
+                    f"You move quietly toward {topic}. What's your aim — "
+                    "**eliminate someone** tied to it, **shadow them** to learn more, or just **pass through unnoticed**?"
+                ),
+                "political_intrigue": (
+                    f"You weigh {topic} in your mind. What angle are you working — "
+                    "**leverage** someone, **gather information**, or **make a contact** for later?"
+                ),
+            }
+            clarification_question = CLARIFY_TEMPLATES.get(
+                slug,
+                (
+                    f"You set off looking for {topic}. Help me ground the scene — "
+                    "what are you trying to do? "
+                    "**Find** something specific, **buy / hire / negotiate**, "
+                    "**investigate** a lead, or just **pass time / scout**?"
+                ),
+            )
+            return {
+                "spawned": False,
+                "is_off_hook": True,
+                "needs_clarification": True,
+                "clarification_question": clarification_question,
+                "pending_action": action,
+                "tentative_mission_type_slug": slug or None,
+                "reasoning": decision.get("reasoning"),
+            }
+
     # --- OFF-HOOK: pause the current storyline + record pending obligations ---
     paused_obligation = None
     paused_summary_narration: Optional[str] = None
@@ -623,6 +691,15 @@ async def spawn_storyline_from_action(campaign_id: str, body: SpawnFromActionBod
     }
     await _storylines_collection().insert_one(dict(storyline_doc))
 
+    # 1-2 sentence "DM plays along" transition narration (template, no LLM
+    # call — already spent one on the classifier). Bridges the player's
+    # original action into the new scene so the log doesn't feel jumpy.
+    mt_name = (mission_type_snapshot or {}).get("name") or "investigation"
+    transition_narration = (
+        f"You set out on this — {action[:120].rstrip('.')}. "
+        f"The world shifts in response, and a new {mt_name.lower()} thread takes shape."
+    )
+
     return {
         "spawned": True,
         "storyline": storyline_to_dict(storyline_doc),
@@ -631,6 +708,7 @@ async def spawn_storyline_from_action(campaign_id: str, body: SpawnFromActionBod
         "paused_storyline_id": current_storyline.get("id") if current_storyline else None,
         "paused_obligation": paused_obligation,
         "paused_summary_narration": paused_summary_narration,
+        "transition_narration": transition_narration,
         "reasoning": decision.get("reasoning"),
     }
 

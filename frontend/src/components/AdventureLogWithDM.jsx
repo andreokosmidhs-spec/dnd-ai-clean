@@ -203,6 +203,11 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   // existing server-side and shows up in the Quest Log either way.
   const [activeStoryline, setActiveStoryline] = useState(null);
   const [showRewardModal, setShowRewardModal] = useState(null);
+  // Pending off-hook clarification — when the spawn probe asks the DM to
+  // clarify what the player is trying to do (e.g. "I look for a sloop"),
+  // we hold the original action here and join the player's next reply to
+  // it on a second spawn-from-action call.
+  const [pendingClarification, setPendingClarification] = useState(null);
   // Lightweight "hook hint" popover: when the player hovers/clicks an inline
   // hook in a DM message, we surface a small tip suggesting how to engage.
   const [hookHint, setHookHint] = useState(null);
@@ -1214,6 +1219,128 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
     }
 
     console.log('🚀 Sending DUNGEON FORGE action payload:', actionPayload);
+
+    // ─── OFF-HOOK SPAWN PROBE ───────────────────────────────────────────
+    // Before falling through to lean_dm, see if the player's action is
+    // off-hook enough to deserve its own storyline. Only fire for typed
+    // "action" messages — skip narrate/dialogue intents and short check
+    // confirmations.
+    const isProbeEligible = (
+      campaignId &&
+      actualType === 'action' &&
+      !checkResult &&
+      playerMessage.trim().length >= 4 &&
+      !/^(roll|i roll|check|proceed)\b/i.test(playerMessage.trim())
+    );
+    if (isProbeEligible) {
+      // If we already asked the player to clarify and this IS the reply,
+      // join the original action + the clarification into one richer
+      // payload so the spawn endpoint can ground the storyline.
+      const probeAction = pendingClarification
+        ? pendingClarification.originalAction
+        : playerMessage;
+      const probeNarrationContext = pendingClarification
+        ? `Player clarification: ${playerMessage}`
+        : '';
+
+      try {
+        const probeRes = await fetch(
+          `${BACKEND_URL}/api/campaigns/${campaignId}/storylines/spawn-from-action`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              character_id: actionPayload.character_id,
+              player_action: probeAction,
+              current_storyline_id: activeStoryline?.id || null,
+              narration_context: probeNarrationContext || null,
+            }),
+          }
+        );
+        if (probeRes.ok) {
+          const probe = await probeRes.json();
+
+          // ── Clarification branch (vague verb, < 6 words) ──
+          if (probe.needs_clarification && probe.clarification_question) {
+            setPendingClarification({
+              originalAction: probeAction,
+              tentativeSlug: probe.tentative_mission_type_slug || null,
+            });
+            const askBeat = {
+              type: 'dm',
+              text: probe.clarification_question,
+              message: probe.clarification_question,
+              timestamp: Date.now(),
+              isCinematic: false,
+              source: 'spawn-clarify',
+            };
+            setMessages((prev) => {
+              const next = [...prev, askBeat].slice(-200);
+              if (sessionId) {
+                try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+              }
+              return next;
+            });
+            return; // wait for player's clarification reply
+          }
+
+          // ── Spawn branch ──
+          if (probe.spawned && probe.storyline) {
+            // Clear any pending clarification — we've used it.
+            setPendingClarification(null);
+            // 1. Pause-summary cue (if applicable)
+            if (probe.paused_summary_narration) {
+              const b = {
+                type: 'dm', text: probe.paused_summary_narration,
+                message: probe.paused_summary_narration, timestamp: Date.now(),
+                isCinematic: true, source: 'storyline-paused',
+                meta: { storylineTitle: probe.storyline.title },
+              };
+              setMessages((prev) => [...prev, b].slice(-200));
+            }
+            // 2. Transition narration ("DM plays along")
+            if (probe.transition_narration) {
+              const b = {
+                type: 'dm', text: probe.transition_narration,
+                message: probe.transition_narration, timestamp: Date.now() + 1,
+                isCinematic: true, source: 'spawn-transition',
+                meta: { missionType: probe.mission_type?.name },
+              };
+              setMessages((prev) => [...prev, b].slice(-200));
+            }
+            // 3. First beat of the new storyline
+            const firstBeat = (probe.storyline.beats || [])[0] || {};
+            if (firstBeat.description) {
+              const b = {
+                type: 'dm', text: firstBeat.description,
+                message: firstBeat.description, timestamp: Date.now() + 2,
+                isCinematic: true, source: 'spawn-first-beat',
+                meta: { storylineTitle: probe.storyline.title },
+              };
+              setMessages((prev) => [...prev, b].slice(-200));
+            }
+            setActiveStoryline(probe.storyline);
+            const mt = probe.mission_type || {};
+            if (window.showToast) {
+              window.showToast(
+                `${mt.icon || '🎯'} New thread: ${probe.storyline.title}`,
+                'success'
+              );
+            }
+            // Don't fall through to lean_dm — the spawn IS the response.
+            return;
+          }
+        }
+      } catch (probeErr) {
+        console.warn('Spawn probe failed (falling back to lean_dm):', probeErr);
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────
+
+    // Clear pending clarification if the player's input went through
+    // without triggering the spawn path (e.g. they answered with check input).
+    if (pendingClarification) setPendingClarification(null);
+
     await sendToAPI(actionPayload);
   };
 
@@ -1871,13 +1998,19 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                                         ? `⏸ Thread Set Aside${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
                                         : entry.source === 'storyline-resume'
                                           ? `🔁 Reconnect${entry.meta?.ruling ? ` (${entry.meta.ruling})` : ''}`
-                                          : entry.source === 'lead-revealed'
-                                            ? `🪄 New Lead — ${entry.meta?.leadTitle || ''}`
-                                            : entry.source === 'lead-sealed'
-                                              ? `🔒 Sealed Lead — ${entry.meta?.leadTitle || ''}`
-                                              : entry.isCinematic
-                                                ? '🎭 The Adventure Begins'
-                                                : 'Dungeon Master'}
+                                          : entry.source === 'spawn-clarify'
+                                            ? '❓ DM asks…'
+                                            : entry.source === 'spawn-transition'
+                                              ? `🧭 New Direction${entry.meta?.missionType ? ` — ${entry.meta.missionType}` : ''}`
+                                              : entry.source === 'spawn-first-beat'
+                                                ? `🪶 Scene Opens${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
+                                                : entry.source === 'lead-revealed'
+                                                  ? `🪄 New Lead — ${entry.meta?.leadTitle || ''}`
+                                                  : entry.source === 'lead-sealed'
+                                                    ? `🔒 Sealed Lead — ${entry.meta?.leadTitle || ''}`
+                                                    : entry.isCinematic
+                                                      ? '🎭 The Adventure Begins'
+                                                      : 'Dungeon Master'}
                           </span>
                           {entry.isCinematic && !entry.isWorldBrief && (
                             <Sparkles className="h-3 w-3 text-violet-400 animate-pulse" />

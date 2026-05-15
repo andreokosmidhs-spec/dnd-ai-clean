@@ -371,19 +371,20 @@ const ExpandedFace = ({
             </div>
           ) : (
             <div
-              className="rounded-md border border-amber-500/30 bg-stone-950/70 px-4 py-3.5 shadow-inner shadow-amber-900/20
-                         text-[15.5px] text-amber-50 italic font-serif leading-relaxed tracking-wide
-                         selection:bg-amber-500/40 selection:text-amber-50"
+              className="rounded-md border border-amber-800/40 px-4 py-3.5
+                         text-[15.5px] italic font-serif leading-relaxed tracking-wide
+                         beat-papyrus-panel
+                         selection:bg-amber-700/30 selection:text-stone-900"
               data-testid="beat-description-expanded"
             >
               {beat.description || (resolved
-                ? <span className="not-italic text-amber-200/80">— {beat.outcome_text || 'No revelation recorded.'}</span>
+                ? <span className="not-italic text-amber-900/80">— {beat.outcome_text || 'No revelation recorded.'}</span>
                 : 'The scene unfolds before you…')}
             </div>
           )}
 
           {beat.outcome_text && !isKnowledgeLocked && (
-            <div className="mt-2 text-[13.5px] text-amber-200 border-l-2 border-amber-400/70 pl-3 italic">
+            <div className="mt-2 text-[13.5px] text-amber-900 border-l-2 border-amber-700/70 pl-3 italic">
               {beat.outcome_text}
             </div>
           )}

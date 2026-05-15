@@ -184,6 +184,9 @@ def extract_pending_obligations_from_storyline(storyline: Dict) -> Dict:
           "location_names": [str],   # named places (max 3)
           "paused_at_beat": int,
           "paused_at": iso str,
+          "urgency": str,            # "critical" | "high" | "medium" | "patient"
+          "deadline_hours": int,     # informational only — DM rules with discretion
+          "mission_type_slug": str,
         }
     """
     from datetime import datetime, timezone
@@ -221,6 +224,17 @@ def extract_pending_obligations_from_storyline(storyline: Dict) -> Dict:
         f"It hasn't been resolved."
     )
 
+    # Urgency derived from the mission-type slug — purely informational; the
+    # resume endpoint's LLM call uses it as soft guidance, not a hard gate.
+    slug = (storyline.get("mission_type") or {}).get("slug") or ""
+    URGENCY_TABLE = {
+        "rescue":             ("critical", 48),   # 2 days — life on the line
+        "heist":              ("high",     72),   # 3 days — target may move
+        "assassination":      ("high",     120),  # 5 days — mark may flee
+        "political_intrigue": ("patient",  168),  # 7 days — slow burn
+    }
+    urgency_label, deadline_hours = URGENCY_TABLE.get(slug, ("medium", 96))
+
     return {
         "storyline_id": storyline.get("id"),
         "storyline_title": storyline.get("title") or "",
@@ -229,7 +243,9 @@ def extract_pending_obligations_from_storyline(storyline: Dict) -> Dict:
         "location_names": locs,
         "paused_at_beat": current,
         "paused_at": datetime.now(timezone.utc).isoformat(),
-        "mission_type_slug": (storyline.get("mission_type") or {}).get("slug"),
+        "urgency": urgency_label,
+        "deadline_hours": deadline_hours,
+        "mission_type_slug": slug,
     }
 
 

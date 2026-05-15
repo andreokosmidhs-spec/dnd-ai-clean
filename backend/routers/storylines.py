@@ -500,6 +500,143 @@ async def spawn_storyline_from_action(campaign_id: str, body: SpawnFromActionBod
 
 
 
+# -------------------- Paused-storyline resumption ruling --------------------
+#
+# The player cannot teleport back to a paused storyline — they must EARN
+# the reconnect through plausible in-fiction action. The DM rules whether
+# the thread is still recoverable based on real-time elapsed, mission
+# urgency, and the player's stated approach.
+
+class AttemptResumeBody(BaseModel):
+    character_id: str
+    player_action: str
+
+
+@router.post("/{campaign_id}/storylines/{storyline_id}/attempt-resume")
+async def attempt_resume_storyline(
+    campaign_id: str, storyline_id: str, body: AttemptResumeBody
+):
+    action = (body.player_action or "").strip()
+    if not action:
+        raise HTTPException(status_code=400, detail="player_action is required")
+
+    campaign = await _load_campaign(campaign_id)
+    paused = await _storylines_collection().find_one(
+        {"campaign_id": campaign_id, "id": storyline_id}, {"_id": 0}
+    )
+    if not paused:
+        raise HTTPException(status_code=404, detail="Storyline not found")
+    if paused.get("status") not in {"paused", "expired", "cold"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot resume a storyline with status '{paused.get('status')}'",
+        )
+    if paused.get("status") == "expired":
+        raise HTTPException(
+            status_code=409,
+            detail="This thread has expired permanently — find a new lead via play.",
+        )
+
+    # Find the matching pending_obligation (carries urgency + paused_at).
+    obligations: List[Dict] = list(campaign.get("pending_obligations") or [])
+    obligation = next(
+        (o for o in obligations if (o or {}).get("storyline_id") == storyline_id),
+        None,
+    )
+
+    # Current clock hour, for the DM ruling.
+    from services.time_service import get_world_clock
+    clock_hour = get_world_clock(campaign)
+
+    from services.storyline_resumption import rule_on_resume_attempt
+    ruling = await rule_on_resume_attempt(
+        paused_storyline=paused,
+        pending_obligation=obligation,
+        player_action=action,
+        campaign_tone=(campaign.get("intent") or {}).get("tone", "Balanced"),
+        clock_hour=clock_hour,
+    )
+    if not ruling:
+        # Conservative fallback when the LLM is unavailable — keep the thread
+        # cold so the player can try again without permanent damage.
+        ruling = {
+            "ruling": "cold",
+            "narration": "The trail's gone quiet. You'll need to try a different angle.",
+            "consequence": "No clear progress, but no door closed yet.",
+            "new_lead": None,
+            "reasoning": "llm unavailable",
+            "hours_elapsed": 0,
+            "urgency": (obligation or {}).get("urgency"),
+        }
+
+    now = datetime.now(timezone.utc)
+    decision = ruling.get("ruling") or "cold"
+    new_status_for_doc = "active" if decision == "active" else (
+        "active" if decision == "cold" else "expired"
+    )
+
+    update_payload = {
+        "status": new_status_for_doc,
+        "updated_at": now,
+        "last_resume_ruling": {
+            "ruling": decision,
+            "narration": ruling.get("narration"),
+            "consequence": ruling.get("consequence"),
+            "hours_elapsed": ruling.get("hours_elapsed"),
+            "player_action": action[:240],
+            "ruled_at": now.isoformat(),
+        },
+    }
+    if decision == "expired":
+        update_payload["expired_at"] = now
+    await _storylines_collection().update_one(
+        {"campaign_id": campaign_id, "id": storyline_id},
+        {"$set": update_payload},
+    )
+
+    # If the DM gave the player a NEW lead while ruling expired, surface it
+    # as a hook card so the player can engage it as a fresh storyline.
+    new_lead_card_id = None
+    new_lead = ruling.get("new_lead")
+    if decision == "expired" and isinstance(new_lead, dict) and new_lead.get("hook_text"):
+        lead_card = KnowledgeCard(
+            type="rumor",
+            title=new_lead.get("hook_topic") or "A New Angle",
+            description=new_lead["hook_text"],
+            source="resume-fallback-lead",
+            confidence="medium",
+            tags=["lead", "active", "fallback", "resumption"],
+            status="active",
+            updatedAt=now,
+        )
+        lead_doc = {
+            **lead_card.model_dump(),
+            "campaign_id": campaign_id,
+            "spawned_from_storyline_id": storyline_id,
+        }
+        await _cards_collection().insert_one(lead_doc)
+        new_lead_card_id = lead_card.id
+
+    # Refresh the storyline doc to return its post-update state.
+    refreshed = await _storylines_collection().find_one(
+        {"campaign_id": campaign_id, "id": storyline_id}, {"_id": 0}
+    ) or paused
+
+    # Per product decision 3a — NPCs hold grudges permanently. We do NOT
+    # remove the pending_obligation from the campaign on expiry. Storyline
+    # status flips to 'expired'; the obligation entry stays so NPCs keep
+    # reacting in lean_dm narration.
+
+    return {
+        "storyline": storyline_to_dict(refreshed),
+        "ruling": ruling,
+        "new_lead_card_id": new_lead_card_id,
+    }
+
+
+
+
+
 @router.get("/{campaign_id}/storylines")
 async def list_storylines(campaign_id: str):
     cursor = _storylines_collection().find({"campaign_id": campaign_id}, {"_id": 0}).sort("updated_at", -1)

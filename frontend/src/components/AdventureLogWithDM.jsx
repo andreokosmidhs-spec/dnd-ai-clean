@@ -1539,6 +1539,45 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
             worldState={worldState}
             characterId={gameStateContext.characterState?.id || gameStateContext.characterState?.character_id}
             characterName={gameStateContext.characterState?.identity?.name || gameStateContext.characterState?.name}
+            onPausedThreadResumed={(payload) => {
+              const { storyline, ruling } = payload || {};
+              if (ruling?.narration) {
+                const dmBeat = {
+                  type: 'dm',
+                  text: ruling.narration,
+                  message: ruling.narration,
+                  timestamp: Date.now(),
+                  isCinematic: true,
+                  source: 'storyline-resume',
+                  meta: {
+                    ruling: ruling.ruling,
+                    storylineTitle: storyline?.title,
+                    consequence: ruling.consequence,
+                  },
+                };
+                setMessages((prev) => {
+                  const next = [...prev, dmBeat].slice(-200);
+                  if (sessionId) {
+                    try {
+                      localStorage.setItem(
+                        `dm-log-messages-${sessionId}`,
+                        JSON.stringify(next)
+                      );
+                    } catch {}
+                  }
+                  return next;
+                });
+              }
+              // If the DM ruled it active, swap the active storyline so the
+              // ActiveInvestigationPanel + MissionPhaseBadge update.
+              if (
+                storyline &&
+                storyline.status === 'active' &&
+                (ruling?.ruling === 'active' || ruling?.ruling === 'cold')
+              ) {
+                setActiveStoryline(storyline);
+              }
+            }}
           />
         )}
 

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Globe, Scroll, Eye, Flame } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Globe, Scroll, Eye, Flame, Hourglass } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -11,6 +11,8 @@ import { Badge } from './ui/badge';
 import WorldInfoPanel from './WorldInfoPanel';
 import QuestLogPanel from './QuestLogPanel';
 import CharacterDeck from './CharacterDeck';
+import PausedThreadsPanel from './PausedThreadsPanel';
+import api from '../api/axiosConfig';
 
 /**
  * Compact top-bar with two pill buttons (Realm + Quests). Each opens a
@@ -27,9 +29,37 @@ const CampaignTopBar = ({
   worldState,
   characterId,
   characterName,
+  onPausedThreadResumed,
 }) => {
   const [realmOpen, setRealmOpen] = useState(false);
   const [questsOpen, setQuestsOpen] = useState(false);
+  const [pausedOpen, setPausedOpen] = useState(false);
+  const [pausedCount, setPausedCount] = useState(0);
+
+  // Lightweight poll for the paused-thread count so the pill shows a live
+  // badge even when the slide-over is closed. Refreshes when the sheet
+  // closes (player just acted) and every 30s as a fallback.
+  const refreshPausedCount = useCallback(async () => {
+    if (!campaignId) return;
+    try {
+      const res = await api.get(`/api/campaigns/${campaignId}/storylines`);
+      const list = res.data?.storylines || [];
+      setPausedCount(list.filter((s) => s?.status === 'paused').length);
+    } catch {
+      // Non-fatal — leave the count at its previous value.
+    }
+  }, [campaignId]);
+
+  useEffect(() => {
+    refreshPausedCount();
+    if (!campaignId) return undefined;
+    const id = setInterval(refreshPausedCount, 30000);
+    return () => clearInterval(id);
+  }, [campaignId, refreshPausedCount]);
+
+  useEffect(() => {
+    if (!pausedOpen) refreshPausedCount();
+  }, [pausedOpen, refreshPausedCount]);
 
   const realmLabel =
     worldBlueprint?.world_core?.name ||
@@ -182,6 +212,54 @@ const CampaignTopBar = ({
 
       {showDeck && (
         <CharacterDeck characterId={characterId} characterName={characterName} />
+      )}
+
+      {campaignId && pausedCount > 0 && (
+        <Sheet open={pausedOpen} onOpenChange={setPausedOpen}>
+          <SheetTrigger asChild>
+            <button
+              type="button"
+              data-testid="paused-threads-button"
+              className="group inline-flex items-center gap-2 rounded-full border border-rose-500/40 bg-rose-950/30 hover:bg-rose-900/40 hover:border-rose-400/60 transition-colors px-3 py-1.5 text-xs font-medium text-rose-100 shadow-sm"
+              title="Paused storylines — try to find your way back to them"
+            >
+              <Hourglass size={14} className="text-rose-300" />
+              <span>Paused</span>
+              <Badge
+                variant="outline"
+                className="h-5 px-1.5 text-[10px] border-rose-400/50 text-rose-200 bg-rose-900/30"
+              >
+                {pausedCount}
+              </Badge>
+            </button>
+          </SheetTrigger>
+          <SheetContent
+            side="right"
+            className="w-full sm:max-w-md bg-gray-900 border-gray-700 text-white overflow-y-auto"
+            data-testid="paused-threads-sheet"
+          >
+            <SheetHeader>
+              <SheetTitle className="text-rose-300 flex items-center gap-2">
+                <Hourglass size={18} />
+                Paused Threads
+                <span className="ml-1 text-[11px] font-normal text-stone-400">
+                  The DM will rule whether each is still alive.
+                </span>
+              </SheetTitle>
+            </SheetHeader>
+            <div className="mt-4">
+              <PausedThreadsPanel
+                campaignId={campaignId}
+                characterId={characterId}
+                onResumed={(payload) => {
+                  if (onPausedThreadResumed) onPausedThreadResumed(payload);
+                  refreshPausedCount();
+                }}
+                embedded
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
       )}
 
       {showTime && (

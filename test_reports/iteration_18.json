@@ -1,0 +1,38 @@
+{
+  "summary": "Iter 18 — GLOBAL DM Lessons persistence verified end-to-end. New pytest at /app/backend/tests/test_global_dm_lessons.py: 13/13 passed. Covers (1) POST creates lessons with scope='global', (2) GET on camp B returns lessons born in camp A — union of scope=global + missing-scope legacy + own-campaign-scoped — verified end-to-end against a fresh CAMP_A/CAMP_B pair AND a direct-insert legacy doc (no `scope` field), (3) campaign-scoped lessons stay hidden from other campaigns, (4) PATCH from camp B can toggle/edit a camp-A lesson via match-by-id only (PATCH on unknown id still 404s), (5) merge_or_create_lesson dedupes across campaigns — duplicate POST from CAMP_B with the same type+keywords as a CAMP_A lesson returns the SAME id rather than creating a 2nd record, (6) legacy (no scope) lessons get promoted to scope='global' when reinforced by a similar POST — verified by direct Mongo re-read, (7) load_active_lessons returns union of global + legacy + own-campaign-scoped lessons sorted by weight desc then created_at desc, capped at limit; campaign-scoped-elsewhere and disabled lessons are filtered out, (8) reaction endpoint also defaults stored lessons to scope='global'. DELETE via foreign campaign URL also works (match-by-id) and removes the lesson from all campaigns. REGRESSION: test_mission_phase_badge 6/6 PASS, test_resume_attempt 6/6 PASS, test_offhook_spawn 14/14 PASS, test_storyline_summaries 10/10 PASS + 1 skipped (single-beat short-circuit). 49/50 total backend tests pass (1 expected skip).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_global_dm_lessons.py",
+    "/app/test_reports/pytest/iter18_global.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/dm_lessons.py merge_or_create_lesson (L247-337): Cross-campaign dedup query correctly unions {scope:'global'} + {scope:$exists:false} + {campaign_id:campaign_id} as candidates for similarity. After a merge, the doc is force-promoted to scope='global' (L301-304) — exactly the documented behavior. New inserts hard-code scope='global' (L324) so deletion of any single campaign/character document cannot orphan the lesson.",
+    "services/dm_lessons.py load_active_lessons (L340-367): The $or union is correct; the campaign-scoped branch requires BOTH scope='campaign' AND matching campaign_id, which prevents campaign-scoped lessons from leaking into other campaigns. Sort order (weight desc, created_at desc) verified in test. Important: bump_apply_counts at L418-429 STILL filters by `campaign_id`, so a lesson born in campaign A and applied while playing campaign B will NOT get its apply_count bumped — bug-grade-MINOR. Recommend dropping the campaign_id filter there too (match by id only) to align with the rest of the global-lessons contract.",
+    "routers/dm_lessons.py list_lessons (L108-132): The GET union matches the service-layer query. Sort spec uses ('enabled', -1) first so enabled=true (1) sorts ahead of false (0) — correct.",
+    "routers/dm_lessons.py update_lesson/delete_lesson (L162-196): Match-by-id only; campaign_id from the URL is informational. Confirmed via tests — toggling from a 3rd unrelated campaign URL works.",
+    "Cleanup hygiene: legacy doc seeded directly to mongo had no scope field and survived through reinforcement to become scope='global' — backward-compat path works without a migration.",
+    "Test infra note for next agent: keyword normalization in the POST handler is `.strip().lower()[:40]`. Any legacy seed data that stored MixedCase keywords will NOT match new POST inputs via Jaccard. Real legacy data presumably went through the same lowercase path so this is theoretical only."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_global_dm_lessons.py"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 new global-lessons + 36/36 regression — 1 expected skip in storyline_summaries single-beat short-circuit)",
+    "frontend": "not tested per review request (testing_type=backend only)"
+  },
+  "test_credentials": "characterId 69f2985e0999201c3edfaa3a available; not required by these tests — they use synthetic CAMP_A/CAMP_B UUIDs and direct mongo seeds.",
+  "seed_data_creation": "Test module creates 2 throwaway campaign IDs (TEST_camp_a_*, TEST_camp_b_*), 1 direct legacy mongo doc (TEST_LEGACY_*), 1 campaign-scoped doc, 13 lessons total. All TEST_-prefixed data is wiped pre+post via the autouse cleanup fixture so reruns are clean.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iter 18 global-lessons feature is locked in. The dm_lessons collection schema now carries an optional `scope` field; pre-iter18 docs (no `scope`) are treated as global at READ time and promoted to scope='global' on reinforcement. To manually verify: (a) POST /api/campaigns/<anyId>/dm-lessons with any valid type+text — response.lesson.scope must equal 'global'; (b) POST a similar lesson from a different campaign id — response.lesson.id must equal the first id (dedup); (c) PATCH/DELETE that id via a 3rd unrelated campaign url — should 200; (d) GET /api/campaigns/<anyId>/dm-lessons returns all global+legacy lessons regardless of the URL campaign id. One MINOR follow-up worth tracking: services/dm_lessons.py::bump_apply_counts (L418-429) still filters by campaign_id; lessons that are global but raised in campaign A won't have apply_count incremented when applied during campaign B. Recommend the main agent drop the campaign_id filter there too. Doesn't break any test or user-visible behavior — apply_count is informational — but the inconsistency with the rest of the global-lessons contract is worth resolving in a follow-up.",
+  "rca of the issue": "N/A — feature works correctly. During test development the 2 initial failures were test bugs (legacy seed used MixedCase keyword that didn't survive the POST handler's .lower() normalization, breaking Jaccard match; load_active_lessons union test used limit=10 in a non-isolated DB so seeded weight-3 legacy lesson got pushed out by pre-existing higher-weight global lessons). Both fixed by lowercasing the seed keyword and bumping the limit to 500 + asserting weight-order on the seeded subset only. No application code changed; all 13 new tests + all 36 regression tests pass."
+}

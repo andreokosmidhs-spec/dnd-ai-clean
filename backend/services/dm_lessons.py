@@ -251,18 +251,29 @@ async def merge_or_create_lesson(
     """Look for an existing similar lesson (same type, Jaccard >= 0.4 on
     keywords) and bump its weight + refresh its text instead of creating a
     duplicate. Otherwise insert a fresh lesson. Returns the stored doc.
+
+    By default, lessons are stored with `scope="global"` so the DM's brain
+    grows collectively across every character + campaign the user runs.
+    Dedup matches across ALL global lessons (regardless of which campaign
+    raised them) so a lesson the user teaches once doesn't get re-learned
+    on every new campaign.
     """
     coll = db["dm_lessons"]
+    # Match across the user's entire history of global lessons, plus any
+    # campaign-scoped duplicates that may exist in this campaign.
     cursor = coll.find(
         {
-            "campaign_id": campaign_id,
-            "character_id": character_id,
             "type": lesson["type"],
             "enabled": True,
+            "$or": [
+                {"scope": "global"},
+                {"scope": {"$exists": False}},  # legacy docs are treated as global
+                {"campaign_id": campaign_id},
+            ],
         },
         {"_id": 0},
     )
-    existing = await cursor.to_list(length=50)
+    existing = await cursor.to_list(length=200)
     best = None
     best_score = 0.0
     for e in existing:
@@ -287,6 +298,9 @@ async def merge_or_create_lesson(
                     "trigger_keywords": merged_keywords,
                     "weight": new_weight,
                     "updated_at": now,
+                    # Promote legacy/campaign-scoped lessons to global once
+                    # they get reinforced — they've earned global status.
+                    "scope": "global",
                 },
                 "$inc": {"apply_count": 1},
             },
@@ -296,15 +310,18 @@ async def merge_or_create_lesson(
             "trigger_keywords": merged_keywords,
             "weight": new_weight,
             "updated_at": now,
+            "scope": "global",
             "apply_count": int(best.get("apply_count", 0)) + 1,
         })
         return best
 
-    # Create new
+    # Create new — default scope is GLOBAL so deletion of any single
+    # campaign or character never costs the player their DM's growth.
     doc = {
         "id": f"lsn_{uuid4().hex[:10]}",
-        "campaign_id": campaign_id,
-        "character_id": character_id,
+        "campaign_id": campaign_id,         # provenance — which campaign raised it
+        "character_id": character_id,        # provenance — which character raised it
+        "scope": "global",                   # applies to ALL future campaigns
         "type": lesson["type"],
         "text": lesson["text"],
         "trigger_keywords": lesson.get("trigger_keywords") or [],
@@ -323,18 +340,29 @@ async def merge_or_create_lesson(
 async def load_active_lessons(
     db, *, campaign_id: str, character_id: Optional[str] = None, limit: int = 12,
 ) -> List[Dict]:
-    """Top N enabled lessons by weight, then recency. Includes both
-    campaign-scoped and character-scoped lessons when character_id is given.
+    """Top N enabled lessons by weight, then recency.
+
+    Lessons are pulled from THREE pools and unioned:
+      1. Global lessons (`scope="global"`) — apply to every campaign the
+         player runs, persist even after a character/campaign is deleted.
+      2. Legacy lessons (no `scope` field) — backfilled as global at read
+         time so existing data survives without a migration.
+      3. Campaign-scoped lessons (`scope="campaign"` and matching
+         `campaign_id`) — only used in this campaign.
+
+    Character_id is honored only as a tie-breaker — global lessons are
+    never filtered out by character_id (the user wants the DM to grow
+    across every character they play).
     """
     coll = db["dm_lessons"]
-    query: Dict = {"campaign_id": campaign_id, "enabled": True}
-    if character_id:
-        query["$or"] = [
-            {"character_id": character_id},
-            {"character_id": None},
-        ]
-    else:
-        query["character_id"] = None
+    query: Dict = {
+        "enabled": True,
+        "$or": [
+            {"scope": "global"},
+            {"scope": {"$exists": False}},   # legacy → treat as global
+            {"campaign_id": campaign_id, "scope": "campaign"},
+        ],
+    }
     cursor = coll.find(query, {"_id": 0}).sort([("weight", -1), ("created_at", -1)]).limit(limit)
     return await cursor.to_list(length=limit)
 

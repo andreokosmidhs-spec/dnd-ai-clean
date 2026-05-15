@@ -107,13 +107,28 @@ class UpdateLessonBody(BaseModel):
 
 @router.get("/{campaign_id}/dm-lessons")
 async def list_lessons(campaign_id: str, character_id: Optional[str] = None):
-    query: dict = {"campaign_id": campaign_id}
-    if character_id:
-        query["$or"] = [{"character_id": character_id}, {"character_id": None}]
+    """List lessons visible from inside this campaign.
+
+    Returns the union of:
+      • Global lessons (`scope='global'` — apply to every campaign)
+      • Legacy lessons (no `scope` field — backward-compat as global)
+      • Campaign-scoped lessons matching this `campaign_id`
+
+    The DM Notebook panel renders ALL of these so the player can see (and
+    toggle off) every lesson the DM is currently learning from, even ones
+    born in other campaigns/characters.
+    """
+    query: dict = {
+        "$or": [
+            {"scope": "global"},
+            {"scope": {"$exists": False}},
+            {"campaign_id": campaign_id},
+        ],
+    }
     cursor = _coll().find(query, {"_id": 0}).sort(
         [("enabled", -1), ("weight", -1), ("created_at", -1)]
     )
-    docs = await cursor.to_list(length=200)
+    docs = await cursor.to_list(length=400)
     return {"lessons": [_to_out(d) for d in docs]}
 
 
@@ -161,18 +176,21 @@ async def update_lesson(campaign_id: str, lesson_id: str, body: UpdateLessonBody
         ][:8]
     if not updates:
         raise HTTPException(status_code=400, detail="no updates provided")
-    res = await _coll().update_one(
-        {"campaign_id": campaign_id, "id": lesson_id}, {"$set": updates}
-    )
+    # Match by lesson id ONLY — lessons are global, the URL campaign_id is
+    # informational. Without this, toggling a lesson learned in campaign A
+    # from inside campaign B would 404.
+    res = await _coll().update_one({"id": lesson_id}, {"$set": updates})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="lesson not found")
-    doc = await _coll().find_one({"campaign_id": campaign_id, "id": lesson_id}, {"_id": 0})
+    doc = await _coll().find_one({"id": lesson_id}, {"_id": 0})
     return {"lesson": _to_out(doc) if doc else None}
 
 
 @router.delete("/{campaign_id}/dm-lessons/{lesson_id}")
 async def delete_lesson(campaign_id: str, lesson_id: str):
-    res = await _coll().delete_one({"campaign_id": campaign_id, "id": lesson_id})
+    # Same rationale as PATCH — lessons are global; match by id only so
+    # the user can clean up the DM Notebook from any campaign.
+    res = await _coll().delete_one({"id": lesson_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="lesson not found")
     return {"ok": True}

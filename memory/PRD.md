@@ -38,6 +38,19 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Global DM Notebook — DM Brain Persists Across All Characters (Feb 14, 2026)
+- **Problem solved**: DM lessons (rule corrections, DC calibrations, style preferences) were scoped per-campaign. Deleting a character or campaign effectively orphaned those corrections — the DM had to relearn the same lessons in every fresh playthrough.
+- **Schema**: added `scope: "global"|"campaign"` to `dm_lessons` (defaults to `global`). Legacy documents (no `scope` field) are treated as global at READ time and promoted on reinforcement — no migration needed.
+- **Backend**:
+  - `merge_or_create_lesson()` now dedupes ACROSS campaigns (Jaccard on keywords + same type) and writes `scope='global'`. Reinforcing a legacy/campaign-scoped lesson promotes it to global.
+  - `load_active_lessons()` unions globals + legacy + same-campaign-scoped lessons. Used by `lean_dm` to inject DM Notebook into the system prompt.
+  - `bump_apply_counts()` now matches by lesson id only, so apply_count reflects use across all campaigns.
+  - List/PATCH/DELETE endpoints on `/api/campaigns/{cid}/dm-lessons` now match by id only — toggle/delete from any campaign.
+- **Tested** via `testing_agent_v3_fork` (iteration_18.json) → 13/13 new pytest pass + 36/36 regression. Pytest at `/app/backend/tests/test_global_dm_lessons.py`. One MINOR follow-up flagged (`bump_apply_counts` campaign filter) — fixed in the same iteration.
+
+#### Beat Card Description — Parchment Background (Feb 14, 2026)
+- Replaced the dark `bg-stone-950/70` description panel inside the expanded `BeatEventCard` with a parchment-textured `.beat-papyrus-panel` (cream + radial blotches + SVG noise grain) so the italic IM Fell English text reads clearly. Matches the Adventure Log's parchment aesthetic.
+
 #### Storyline Summary Narrations (Feb 14, 2026)
 - **Pause cue**: `/spawn-from-action` now returns a `paused_summary_narration` (e.g. *"You set aside the matter of the whispering merchant for now — Hester will be waiting, and not patiently."*) injected into the Adventure Log BEFORE the new storyline's first beat. Comma-roles in NPC names are stripped client-side.
 - **Completion cue**: `/storylines/{id}/resolve` and `/creative` now return a `completion_narration` field. Frontend `onComplete(sl, reward, completion_narration)` injects the cue as a DM beat (`source='storyline-complete'`, isCinematic) BEFORE the reward modal opens. Helper `_build_completion_narration` prefers `storyline.epilogue`, falls back to a deterministic template.

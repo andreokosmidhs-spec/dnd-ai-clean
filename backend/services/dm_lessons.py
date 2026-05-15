@@ -417,12 +417,19 @@ def render_lessons_for_prompt(lessons: List[Dict]) -> str:
 
 async def bump_apply_counts(db, *, campaign_id: str, lesson_ids: List[str]) -> None:
     """Bump apply_count + last_applied_at for the lessons we actually fed to
-    the DM this turn. Fire-and-forget — failures are non-fatal."""
+    the DM this turn. Fire-and-forget — failures are non-fatal.
+
+    Match by lesson id ONLY (not campaign_id) so a global lesson born in
+    campaign A still gets its apply_count incremented when applied while
+    playing campaign B. campaign_id is kept in the signature so existing
+    callers don't break.
+    """
+    del campaign_id  # noqa: F841 — kept for signature compat
     if not lesson_ids:
         return
     try:
         await db["dm_lessons"].update_many(
-            {"campaign_id": campaign_id, "id": {"$in": lesson_ids}},
+            {"id": {"$in": lesson_ids}},
             {"$set": {"last_applied_at": _now()}, "$inc": {"apply_count": 1}},
         )
     except Exception as exc:  # noqa: BLE001

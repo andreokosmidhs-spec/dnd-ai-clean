@@ -509,13 +509,14 @@ async def spawn_storyline_from_action(campaign_id: str, body: SpawnFromActionBod
         # Strip leading filler ("i", "im", "i'll", "i am")
         if first_word in {"i", "im", "i'm", "i'll", "ill", "i am"}:
             first_word = words[1] if len(words) > 1 else ""
-        # "looking" / "searching" → normalize
+        # "looking" / "searching" → normalize so the verb table stays small.
         first_word = first_word.rstrip(".,!?")
-        if first_word.endswith("ing"):
+        if first_word.endswith("ing") and len(first_word) > 4:
+            # 'looking' -> 'look', 'searching' -> 'search'. Skip 1-2-letter
+            # roots so 'sing' doesn't become 's'.
             first_word = first_word[:-3]
-        first_word = first_word.rstrip("e")  # "search" already; "look"→"look"
         is_short = len(words) < 6
-        is_vague_verb = first_word in VAGUE_VERBS or (first_word + "k") in VAGUE_VERBS
+        is_vague_verb = first_word in VAGUE_VERBS
         if is_short and is_vague_verb:
             # Reuse the same LLM call's chosen mission type to phrase the
             # clarification with on-theme options. Falls back to a generic
@@ -702,6 +703,7 @@ async def spawn_storyline_from_action(campaign_id: str, body: SpawnFromActionBod
 
     return {
         "spawned": True,
+        "is_off_hook": True,
         "storyline": storyline_to_dict(storyline_doc),
         "quest_card_id": quest_card.id,
         "mission_type": mission_type_snapshot,

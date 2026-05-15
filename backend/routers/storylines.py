@@ -170,6 +170,13 @@ async def _apply_storyline_reward_xp(
             "level_up_events": level_up_events,
             "xp_reason": reward.get("title") or "Investigation resolved",
         }
+    except (ImportError, AttributeError) as exc:
+        # Contract bug — surface loudly so it's never swallowed silently.
+        logger.error(
+            f"apply storyline reward XP failed (contract): {exc}",
+            exc_info=True,
+        )
+        return None
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"apply storyline reward XP failed: {exc}")
         return None

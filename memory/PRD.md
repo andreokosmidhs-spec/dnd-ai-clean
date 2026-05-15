@@ -38,6 +38,14 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Storyline XP → Character XP Bar (Feb 14, 2026)
+- **Wired storyline completion rewards to the live XP bar** above the action buttons. Previously, `reward.xp` was generated but never applied to the character — the bar stayed at 0 forever.
+- **Backend**: new helper `_apply_storyline_reward_xp` in `routers/storylines.py` applies XP via `services/progression_service.apply_xp_to_character` (alias added — was `apply_xp_gain`), persists to `characters_v2.{current_xp, xp_to_next, level, experience, max_hp, attack_bonus}`, and returns a structured `player_updates` block on `/resolve` + `/creative` responses.
+- **Level-up rollover**: if the reward crosses the threshold (L1→L2 at 150 XP per `progression_service.XP_TO_NEXT_LEVEL`), level increments, current_xp resets to the remainder, max_hp +6, and `level_up_events=['LEVEL_UP:N']` is emitted.
+- **Frontend**: `FocusedRPG.jsx` XPBar now reads `level/current_xp/xp_to_next` from `gameStateContext.characterState` (single source of truth). `AdventureLogWithDM.onComplete` updates the context with the returned `player_updates`, fires a `+N XP — <reason>` toast, and emits a `LEVEL UP!` toast for each level-up event. Bar animates forward via the existing 500ms transition.
+- **Defensive hardening**: narrowed `except` in the helper logs `ImportError`/`AttributeError` at ERROR level with stack traces so contract bugs never silently swallow XP grants.
+- **Tested** via `testing_agent_v3_fork` (iteration_19.json → flagged import bug; iteration_20: alias fix applied + self-verified). 31+ pytest cases pass (4 LLM-bound `/resolve` API tests are slow and were not exhaustively timed-out re-run). Pytest at `/app/backend/tests/test_storyline_xp_grant.py`.
+
 #### Global DM Notebook — DM Brain Persists Across All Characters (Feb 14, 2026)
 - **Problem solved**: DM lessons (rule corrections, DC calibrations, style preferences) were scoped per-campaign. Deleting a character or campaign effectively orphaned those corrections — the DM had to relearn the same lessons in every fresh playthrough.
 - **Schema**: added `scope: "global"|"campaign"` to `dm_lessons` (defaults to `global`). Legacy documents (no `scope` field) are treated as global at READ time and promoted on reinforcement — no migration needed.

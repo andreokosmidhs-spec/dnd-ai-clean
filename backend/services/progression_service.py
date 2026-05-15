@@ -180,3 +180,10 @@ def calculate_non_combat_xp(action_type: str, success: bool = True) -> int:
     }
     
     return rewards.get(action_type, 10)
+
+
+
+# Alias — `apply_xp_to_character` is the public name used across newer
+# modules (storyline reward grant, etc.). Kept as an alias so existing
+# call sites that import `apply_xp_gain` keep working unchanged.
+apply_xp_to_character = apply_xp_gain

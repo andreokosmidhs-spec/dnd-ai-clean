@@ -293,6 +293,13 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
     from services.canon_scenes import render_canon_for_prompt
     canon_block = render_canon_for_prompt(canon_scenes or [])
 
+    # PENDING OBLIGATIONS — storylines the player walked away from. NPCs
+    # involved REMEMBER and react when the player crosses their path.
+    from services.storyline_spawner import render_pending_obligations_for_prompt
+    obligations_block = render_pending_obligations_for_prompt(
+        campaign.get("pending_obligations") or []
+    )
+
     tone = intent.get("tone", "heroic")
 
     return (
@@ -337,6 +344,7 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{feedback_block}\n\n"
         f"{lessons_block}\n\n"
         f"{canon_block}\n\n"
+        f"{obligations_block}\n"
         "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "

@@ -232,6 +232,55 @@ const ActiveInvestigationPanel = ({
     }
     setBusy(true);
     try {
+      // PHASE 1 — Off-hook check. If the action proposes a NEW thread
+      // (not just resolving the current beat), the backend pauses this
+      // storyline and drafts a fresh one rooted in the action, using
+      // the closest existing mission-type blueprint.
+      let spawned = false;
+      try {
+        const spawnRes = await fetch(
+          `${BACKEND_URL}/api/campaigns/${campaignId}/storylines/spawn-from-action`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              character_id: character?.id || character?._id,
+              player_action: approach,
+              current_storyline_id: storyline.id,
+            }),
+          }
+        );
+        if (spawnRes.ok) {
+          const spawnData = await spawnRes.json();
+          if (spawnData.spawned && spawnData.storyline) {
+            spawned = true;
+            const mt = spawnData.mission_type || {};
+            toast.success(
+              `New thread: ${spawnData.storyline.title}`,
+              {
+                description: `${mt.icon || '🎲'} ${mt.name || 'Investigation'} — your previous lead is paused; its NPCs will remember.`,
+                duration: 6500,
+              }
+            );
+            if (onUpdate) onUpdate(spawnData.storyline);
+            if (onCreativeNarration) {
+              const firstBeat = (spawnData.storyline.beats || [])[0] || {};
+              if (firstBeat.description) {
+                onCreativeNarration(firstBeat.description, null, spawnData.storyline);
+              }
+            }
+            setCreativeOpen(false);
+            setCreativeText('');
+            return;
+          }
+        }
+      } catch (spawnErr) {
+        // Non-fatal — fall through to the normal creative-approach flow.
+        console.warn('Spawn-from-action probe failed (falling back):', spawnErr);
+      }
+
+      if (spawned) return;
+
       const res = await fetch(
         `${BACKEND_URL}/api/campaigns/${campaignId}/storylines/${storyline.id}/creative`,
         {

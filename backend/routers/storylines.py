@@ -313,6 +313,193 @@ async def draft_storyline_endpoint(campaign_id: str, body: DraftStorylineBody):
     }
 
 
+
+# -------------------- Off-hook storyline spawner --------------------
+#
+# When the player's action doesn't fit the current beat, this endpoint pauses
+# the current storyline (preserving "pending obligations" so NPCs the player
+# walked away from can react later) and drafts a NEW storyline rooted in the
+# action, using the CLOSEST existing mission-type blueprint.
+
+class SpawnFromActionBody(BaseModel):
+    character_id: str
+    player_action: str
+    current_storyline_id: Optional[str] = None
+    narration_context: Optional[str] = None
+
+
+@router.post("/{campaign_id}/storylines/spawn-from-action")
+async def spawn_storyline_from_action(campaign_id: str, body: SpawnFromActionBody):
+    action = (body.player_action or "").strip()
+    if not action:
+        raise HTTPException(status_code=400, detail="player_action is required")
+
+    campaign = await _load_campaign(campaign_id)
+    character = await _load_character(body.character_id)
+    if not character:
+        raise HTTPException(status_code=404, detail=f"Character not found: {body.character_id}")
+
+    # Load the current storyline (if the caller provided an id) so we can
+    # describe the CURRENT beat to the classifier.
+    current_storyline: Optional[Dict] = None
+    if body.current_storyline_id:
+        current_storyline = await _storylines_collection().find_one(
+            {"campaign_id": campaign_id, "id": body.current_storyline_id}, {"_id": 0}
+        )
+    current_beat_desc = ""
+    current_title = ""
+    if current_storyline:
+        cur_idx = int(current_storyline.get("current_beat") or 0)
+        beats = current_storyline.get("beats") or []
+        if 0 <= cur_idx < len(beats):
+            cb = beats[cur_idx] or {}
+            current_beat_desc = (cb.get("description") or "")
+        current_title = current_storyline.get("title") or ""
+
+    # Available mission types — system + this campaign's owned customs.
+    from services.mission_types import list_mission_types, get_mission_type_by_slug
+    mission_types = await list_mission_types(_get_db(), campaign_id=campaign_id)
+
+    from services.storyline_spawner import (
+        classify_action_for_spawn,
+        extract_pending_obligations_from_storyline,
+    )
+    decision = await classify_action_for_spawn(
+        player_action=action,
+        current_beat_description=current_beat_desc,
+        current_storyline_title=current_title,
+        mission_types=mission_types,
+        narration_context=body.narration_context or "",
+    )
+    if not decision or not decision.get("is_off_hook"):
+        # Not off-hook OR classifier unavailable — let the caller fall back
+        # to the normal creative-approach flow.
+        return {
+            "spawned": False,
+            "reason": (decision or {}).get("reasoning") or "action fits the current scene",
+            "is_off_hook": bool(decision and decision.get("is_off_hook")),
+        }
+
+    # --- OFF-HOOK: pause the current storyline + record pending obligations ---
+    paused_obligation = None
+    if current_storyline and current_storyline.get("status") == "active":
+        paused_obligation = extract_pending_obligations_from_storyline(current_storyline)
+        now = datetime.now(timezone.utc)
+        await _storylines_collection().update_one(
+            {"campaign_id": campaign_id, "id": current_storyline["id"]},
+            {"$set": {
+                "status": "paused",
+                "paused_at": now,
+                "paused_reason": "player_pivoted",
+                "updated_at": now,
+            }},
+        )
+        # Append to the campaign's pending_obligations list so lean_dm picks
+        # it up across storylines.
+        await _campaigns_collection().update_one(
+            {"campaign_id": campaign_id},
+            {"$push": {"pending_obligations": paused_obligation}},
+        )
+
+    # --- Resolve the chosen mission type blueprint (full doc) ---
+    slug = decision.get("mission_type_slug") or ""
+    mission_type = None
+    if slug:
+        mission_type = await get_mission_type_by_slug(
+            _get_db(), slug=slug, campaign_id=campaign_id,
+        )
+
+    hook_text = decision.get("hook_text") or action
+    hook_topic = decision.get("hook_topic") or action[:40]
+    hook = {
+        "id": f"hook_{uuid4().hex[:8]}",
+        "text": hook_text,
+        "topic": hook_topic,
+        "verb_hint": "investigate",
+    }
+
+    # Ground the new scene in current cards so it shares NPC/place names.
+    try:
+        cards_cursor = _cards_collection().find(
+            {"campaign_id": campaign_id, "status": {"$ne": "failed"}}, {"_id": 0}
+        ).sort("updatedAt", -1).limit(20)
+        recent_cards = await cards_cursor.to_list(length=20)
+        campaign["_recent_cards"] = recent_cards
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"spawn: failed to load recent cards: {exc}")
+
+    drafted = await draft_initial_scene(
+        campaign=campaign,
+        character=character,
+        hook=hook,
+        narration_context=body.narration_context or "",
+        mission_type=mission_type,
+    )
+
+    now = datetime.now(timezone.utc)
+    storyline_id = f"sl_{uuid4().hex[:10]}"
+    first_beat = (drafted.get("beats") or [{}])[0]
+
+    quest_card = KnowledgeCard(
+        type="quest",
+        title=drafted.get("title") or hook_topic or "New Thread",
+        description=(
+            f"{first_beat.get('description','')} (Active scene — "
+            f"suggested {first_beat.get('check_type','Investigation')} DC {first_beat.get('dc',12)}.)"
+        ),
+        source="off-hook-spawn",
+        confidence="high",
+        tags=["quest", "active", "investigation", "storyline", "spawned"],
+        status="active",
+        updatedAt=now,
+    )
+    quest_doc = {**quest_card.model_dump(), "campaign_id": campaign_id, "storyline_id": storyline_id}
+    await _cards_collection().insert_one(quest_doc)
+
+    from services.storyline_service import _mission_type_snapshot
+    mission_type_snapshot = _mission_type_snapshot(mission_type)
+
+    storyline_doc = {
+        "id": storyline_id,
+        "campaign_id": campaign_id,
+        "character_id": body.character_id,
+        "title": drafted.get("title") or hook_topic or "New Thread",
+        "hook_text": hook["text"],
+        "hook_id": hook["id"],
+        "hook_topic": hook["topic"],
+        "status": "active",
+        "current_beat": 0,
+        "beats": drafted["beats"],
+        "total_dc": drafted["total_dc"],
+        "open_ended": True,
+        "press_on_used": False,
+        "complication": None,
+        "reward": None,
+        "quest_card_id": quest_card.id,
+        "mission_type": mission_type_snapshot,
+        "spawned_from": {
+            "trigger": "off_hook_player_action",
+            "paused_storyline_id": current_storyline.get("id") if current_storyline else None,
+            "player_action": action[:240],
+            "reasoning": decision.get("reasoning"),
+        },
+        "created_at": now,
+        "updated_at": now,
+    }
+    await _storylines_collection().insert_one(dict(storyline_doc))
+
+    return {
+        "spawned": True,
+        "storyline": storyline_to_dict(storyline_doc),
+        "quest_card_id": quest_card.id,
+        "mission_type": mission_type_snapshot,
+        "paused_storyline_id": current_storyline.get("id") if current_storyline else None,
+        "paused_obligation": paused_obligation,
+        "reasoning": decision.get("reasoning"),
+    }
+
+
+
 @router.get("/{campaign_id}/storylines")
 async def list_storylines(campaign_id: str):
     cursor = _storylines_collection().find({"campaign_id": campaign_id}, {"_id": 0}).sort("updated_at", -1)

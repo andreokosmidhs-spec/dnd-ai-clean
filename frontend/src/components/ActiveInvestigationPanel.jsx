@@ -210,7 +210,7 @@ const ActiveInvestigationPanel = ({
         } catch {}
       }
       if (data.completed) {
-        onComplete && onComplete(data.storyline, data.reward);
+        onComplete && onComplete(data.storyline, data.reward, data.completion_narration);
       } else {
         onUpdate && onUpdate(data.storyline);
       }
@@ -262,7 +262,18 @@ const ActiveInvestigationPanel = ({
                 duration: 6500,
               }
             );
+            // (1) Inject the small "you set aside …" pause summary into the
+            //     Adventure Log FIRST so the transition reads naturally.
+            if (spawnData.paused_summary_narration && onCreativeNarration) {
+              onCreativeNarration(
+                spawnData.paused_summary_narration,
+                { kind: 'storyline-paused' },
+                spawnData.storyline
+              );
+            }
             if (onUpdate) onUpdate(spawnData.storyline);
+            // (2) Then drop the new storyline's first-beat description as a
+            //     follow-up DM beat so the player sees the new scene.
             if (onCreativeNarration) {
               const firstBeat = (spawnData.storyline.beats || [])[0] || {};
               if (firstBeat.description) {
@@ -331,7 +342,7 @@ const ActiveInvestigationPanel = ({
         } catch {}
       }
       if (data.completed) {
-        onComplete && onComplete(data.storyline, data.reward);
+        onComplete && onComplete(data.storyline, data.reward, data.completion_narration);
       } else {
         onUpdate && onUpdate(data.storyline);
       }

@@ -1759,7 +1759,29 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                 return next;
               });
             }}
-            onComplete={(sl, reward) => {
+            onComplete={(sl, reward, completionNarration) => {
+              // Inject a small "investigation closes…" DM beat into the
+              // Adventure Log so the player sees the wrap-up land
+              // before the reward modal opens.
+              const text = completionNarration || sl?.epilogue;
+              if (text) {
+                const beat = {
+                  type: 'dm',
+                  text,
+                  message: text,
+                  timestamp: Date.now(),
+                  isCinematic: true,
+                  source: 'storyline-complete',
+                  meta: { storylineTitle: sl?.title },
+                };
+                setMessages((prev) => {
+                  const next = [...prev, beat].slice(-200);
+                  if (sessionId) {
+                    try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+                  }
+                  return next;
+                });
+              }
               setActiveStoryline(null);
               setShowRewardModal(reward);
               if (campaignId) {

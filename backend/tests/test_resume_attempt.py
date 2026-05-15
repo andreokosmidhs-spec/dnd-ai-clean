@@ -29,7 +29,7 @@ if not BASE_URL:
 
 CHARACTER_ID = "69f2985e0999201c3edfaa3a"
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-DB_NAME = os.environ.get("DB_NAME", "dnd_dm")
+DB_NAME = os.environ.get("DB_NAME", "dnd_ai_db")
 
 
 @pytest.fixture(scope="module")

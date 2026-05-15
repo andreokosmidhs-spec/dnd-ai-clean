@@ -139,6 +139,35 @@ def _format_action_summary(
     return "\n".join(lines)
 
 
+def _build_completion_narration(storyline: Dict) -> str:
+    """Render a short closing narration for the Adventure Log when a
+    storyline completes. Prefers the LLM-emitted `epilogue` from
+    generate_next_scene's final beat; falls back to a deterministic
+    Mercer-style template citing the storyline title + key NPCs."""
+    epilogue = (storyline.get("epilogue") or "").strip()
+    title = (storyline.get("title") or "the thread").strip().rstrip(".")
+    if epilogue:
+        # Prepend a quiet "Investigation closed:" cue so the player can
+        # see at a glance that this beat is the wrap-up.
+        return f"{epilogue}"
+    # Fallback: name NPCs/locations from final beat targets when present.
+    beats = storyline.get("beats") or []
+    last = beats[-1] if beats else {}
+    targets = last.get("targets") or []
+    names = [t.get("name") for t in targets if isinstance(t, dict) and t.get("name")]
+    if names:
+        anchor = names[0]
+        return (
+            f"The matter of {title.lower()} resolves around you. "
+            f"{anchor} fades back into the day — and whatever you carry from this stays with you."
+        )
+    return (
+        f"The thread of {title.lower()} closes. "
+        "Whatever was open is settled, for now — the world moves on."
+    )
+
+
+
 # -------------------- request bodies --------------------
 
 
@@ -382,6 +411,7 @@ async def spawn_storyline_from_action(campaign_id: str, body: SpawnFromActionBod
 
     # --- OFF-HOOK: pause the current storyline + record pending obligations ---
     paused_obligation = None
+    paused_summary_narration: Optional[str] = None
     if current_storyline and current_storyline.get("status") == "active":
         paused_obligation = extract_pending_obligations_from_storyline(current_storyline)
         now = datetime.now(timezone.utc)
@@ -400,6 +430,29 @@ async def spawn_storyline_from_action(campaign_id: str, body: SpawnFromActionBod
             {"campaign_id": campaign_id},
             {"$push": {"pending_obligations": paused_obligation}},
         )
+
+        # Compose a 1-2 sentence pause summary for the Adventure Log. Uses a
+        # template (no LLM call) so the latency stays in the single LLM call
+        # already spent on classification. The narration cites the NPC the
+        # player is leaving hanging when possible.
+        sl_title = current_storyline.get("title") or "an investigation"
+        npcs_clean = [
+            (n or "").split(",")[0].strip()
+            for n in (paused_obligation.get("npc_names") or [])
+            if n
+        ]
+        npcs_clean = [n for n in npcs_clean if n]
+        if npcs_clean:
+            who = npcs_clean[0] if len(npcs_clean) == 1 else f"{npcs_clean[0]} and the others"
+            paused_summary_narration = (
+                f"You set aside the matter of {sl_title.lower()} for now — "
+                f"{who} will be waiting, and not patiently."
+            )
+        else:
+            paused_summary_narration = (
+                f"You set aside {sl_title.lower()} for now. "
+                "The thread will keep — but the world won't pause with you."
+            )
 
     # --- Resolve the chosen mission type blueprint (full doc) ---
     slug = decision.get("mission_type_slug") or ""
@@ -495,6 +548,7 @@ async def spawn_storyline_from_action(campaign_id: str, body: SpawnFromActionBod
         "mission_type": mission_type_snapshot,
         "paused_storyline_id": current_storyline.get("id") if current_storyline else None,
         "paused_obligation": paused_obligation,
+        "paused_summary_narration": paused_summary_narration,
         "reasoning": decision.get("reasoning"),
     }
 
@@ -1380,6 +1434,7 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
         "target_cards": target_cards,
         "npc_field_reveals": npc_field_reveals,
         "canon_scene": canon_scene,
+        "completion_narration": _build_completion_narration(storyline) if completed else None,
     }
 
 
@@ -1586,6 +1641,7 @@ async def creative_approach_endpoint(
         "target_cards": target_cards,
         "npc_field_reveals": npc_field_reveals,
         "canon_scene": canon_scene,
+        "completion_narration": _build_completion_narration(storyline) if completed else None,
     }
 
 

@@ -1,0 +1,50 @@
+{
+  "summary": "Iter 17 — narration polish (paused_summary_narration + completion_narration) verified end-to-end. New pytest at /app/backend/tests/test_storyline_summaries.py: 10 passed, 1 skipped (single-beat short-circuit). Spawn-from-action contract holds: when current_storyline_id is supplied and the action is off-hook, response.paused_summary_narration is a 1-3 sentence Mercer-style cue citing the paused storyline title and (when present) the obligation NPC with comma-roles stripped (verified via regex match against the template's `— {name} will be waiting` slot — no commas leak through the n.split(',')[0] cleaner). When spawned=false (on-hook or no current storyline), the paused_summary_narration is null/absent so the frontend skips the injection. Resolve endpoint always returns completion_narration key (null on non-completing, string on completing — direct unit test on _build_completion_narration confirms it prefers storyline.epilogue, then falls back to a title + last-beat-target template). Creative endpoint also returns the key. Regression suites all pass: test_offhook_spawn.py 14/14, test_resume_attempt.py 6/6, test_mission_phase_badge.py 6/6. Frontend wiring verified by inspection at the line numbers cited in the review request: ActiveInvestigationPanel.jsx L213+L345 pass data.completion_narration as the 3rd arg to onComplete; L267-273 inject paused_summary_narration via onCreativeNarration BEFORE the first-beat description (L277-282); AdventureLogWithDM.jsx L1762-1793 accepts the 3rd arg, pushes a DM beat with source='storyline-complete' + isCinematic=true into messages BEFORE opening the reward modal. Cinematic violet gradient styling (L1817-1818) applies because it keys off isCinematic flag. Frontend home loads with 0 errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "AdventureLogWithDM render switch (L1834-1846)",
+        "issue": "There is no case for `source === 'storyline-complete'` in the label-selector switch — a completed-storyline beat with isCinematic=true will fall through to the cinematic default label '🎭 The Adventure Begins' (designed for the campaign-intro world-brief). Styling/gradient is correct; only the title COPY is wrong. Recommend adding a branch like `: entry.source === 'storyline-complete' ? `🎬 Investigation Closes${entry.meta?.storylineTitle ? ' — ' + entry.meta.storylineTitle : ''}`` before the final isCinematic fallback.",
+        "selector": "entry.source === 'storyline-complete'",
+        "priority": "MINOR"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_storyline_summaries.py",
+    "/app/test_reports/pytest/test_storyline_summaries.xml",
+    "/app/test_reports/pytest/iter17_full.xml"
+  ],
+  "action_items": [
+    "Optional: add a `storyline-complete` case to the AdventureLogWithDM source-label switch (L1834-1846) so the label reads e.g. '🎬 Investigation Closes — {title}' instead of the default '🎭 The Adventure Begins'. The cinematic styling itself is correct.",
+    "Optional: align _build_completion_narration return shape — currently when epilogue is present the helper returns it as-is (no 'Investigation closed:' prefix despite the docstring comment at L150-151). Either drop the misleading comment OR add the prefix. Functionally fine either way."
+  ],
+  "critical_code_review_comments": [
+    "routers/storylines.py _build_completion_narration (L142-167): correct precedence (epilogue → title+target → bare title fallback). Note: docstring/comment at L150-151 promises an 'Investigation closed:' prefix which is NOT actually applied to the epilogue branch (returns f'{epilogue}' verbatim). Minor doc/code drift; functional behavior matches the spec ('prefers storyline.epilogue').",
+    "routers/storylines.py spawn-from-action (L438-455): clean composition — comma-roles stripped via n.split(',')[0].strip(); single vs. multi-NPC branches handled distinctly with 'and the others' shaping; storyline title is lower-cased so the sentence flows. paused_summary_narration is only set inside the `if current_storyline and current_storyline.get('status') == 'active'` block (L415) — so when no current storyline is supplied OR the supplied storyline is already paused/completed, the field stays None (good — matches the contract that the frontend skips injection).",
+    "routers/storylines.py resolve + creative endpoints (L1437, L1644): both already wire `completion_narration: _build_completion_narration(storyline) if completed else None` — the key is ALWAYS present, which is exactly the documented contract for the frontend to read safely without optional-chaining.",
+    "Frontend AdventureLogWithDM.jsx onComplete (L1762-1793): correctly orders log insertion BEFORE setShowRewardModal(reward) at L1786, so the completion beat lands on screen before the modal pops. The fallback chain `completionNarration || sl?.epilogue` (L1766) keeps backward compat with pre-iter17 callsites that only pass 2 args.",
+    "Frontend ActiveInvestigationPanel.jsx callCreative (L265-285): pause-summary injection happens FIRST (L267-273), then onUpdate (L274), then the new-storyline first-beat description (L277-282) — matches the spec ordering for the Adventure Log.",
+    "Test infrastructure: test_resume_attempt.py had a stale default `DB_NAME='dnd_dm'` which mismatched backend's `dnd_ai_db` — caused 3 false failures when MONGO_URL/DB_NAME aren't exported. Fixed the default to 'dnd_ai_db' (line 32). Iter 16 likely passed only because env was sourced at the time of run."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_storyline_summaries.py",
+    "/app/backend/tests/test_resume_attempt.py"
+  ],
+  "success_rate": {
+    "backend": "100% (10/10 new + 26/26 regression, 1 skipped on single-beat short-circuit)",
+    "frontend": "100% on smoke load + code-inspection verification of the 3 wiring points cited in the review"
+  },
+  "test_credentials": "characterId=69f2985e0999201c3edfaa3a (carried over from iter 13-16). All tests create throwaway campaigns via POST /api/campaigns/draft with intent={tone:gritty,focus:intrigue,scope:city,danger:medium} + mission_type_slug=heist|rescue.",
+  "seed_data_creation": "None — tests are self-contained and create fresh campaigns per class. TEST_-prefixed hook_text used for grep-friendly cleanup.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iter 17 polish is locked in. Run order for end-to-end manual verification: (1) draft campaign+storyline; (2) POST /storylines/spawn-from-action with off-hook player_action+current_storyline_id — confirm response.paused_summary_narration is a non-empty string; (3) POST /storylines/{sid}/resolve with outcome='passed' — confirm response.completion_narration key is present (null mid-arc, string when storyline.completed flips true). Note for the test_resume_attempt.py fixture: default DB_NAME in the file is now 'dnd_ai_db' (was 'dnd_dm' which silently bypassed the backend's DB causing 3 false-failures); export DB_NAME from backend/.env if running outside the standard cwd. Frontend wiring is verified by inspection only — recommend a manual smoke at the moment of the next storyline completion to confirm the violet gradient beat renders with the correct label (or apply the optional fix to add a `storyline-complete` case at AdventureLogWithDM.jsx L1834-1846 first).",
+  "rca of the issue": "N/A — feature works correctly. Two cosmetic/doc nits documented in action_items: (a) AdventureLogWithDM label switch has no `storyline-complete` case so the title copy will read '🎭 The Adventure Begins' on a completion beat; styling itself is correct because it keys off isCinematic; (b) _build_completion_narration's L150-151 comment promises an 'Investigation closed:' prefix that isn't actually applied — drift between comment and code."
+}

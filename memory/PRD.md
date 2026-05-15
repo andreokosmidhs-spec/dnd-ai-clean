@@ -38,6 +38,12 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Storyline Summary Narrations (Feb 14, 2026)
+- **Pause cue**: `/spawn-from-action` now returns a `paused_summary_narration` (e.g. *"You set aside the matter of the whispering merchant for now — Hester will be waiting, and not patiently."*) injected into the Adventure Log BEFORE the new storyline's first beat. Comma-roles in NPC names are stripped client-side.
+- **Completion cue**: `/storylines/{id}/resolve` and `/creative` now return a `completion_narration` field. Frontend `onComplete(sl, reward, completion_narration)` injects the cue as a DM beat (`source='storyline-complete'`, isCinematic) BEFORE the reward modal opens. Helper `_build_completion_narration` prefers `storyline.epilogue`, falls back to a deterministic template.
+- **Adventure Log labels**: added cases for `storyline-complete` (🎬 Investigation Closes — …), `storyline-paused` (⏸ Thread Set Aside — …), and `storyline-resume` (🔁 Reconnect (active|cold)) so the violet cinematic beats read with the right header copy.
+- **Tested** via `testing_agent_v3_fork` (iteration_17.json) → 10/10 new pytest + 26/26 regression all green. Pytest at `/app/backend/tests/test_storyline_summaries.py`.
+
 #### Paused Threads Quest Log + DM-Ruled Resumption (Feb 14, 2026)
 - **Problem solved**: when a storyline was paused (off-hook spawner), the player had no UI to see what was paused, and would have teleported back to it if given a "Resume" button. Now the player must *earn* the reconnect through plausible in-fiction action; the DM rules whether the thread is still alive.
 - **Backend**:

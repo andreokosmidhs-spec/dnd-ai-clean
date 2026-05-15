@@ -1631,12 +1631,16 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
             }}
             onCreativeNarration={(text, judgment, sl) => {
               if (!text) return;
+              // Caller may signal a non-creative source via judgment.kind
+              // (e.g. {kind:'storyline-paused'}). Default to 'storyline-creative'.
+              const sourceKind = (judgment && judgment.kind) ? judgment.kind : 'storyline-creative';
+              const judgmentLabel = (judgment && !judgment.kind) ? judgment : null;
               const beat = {
                 type: 'dm', text, message: text,
                 timestamp: Date.now(),
                 isCinematic: true,
-                source: 'storyline-creative',
-                meta: { judgment, storylineTitle: sl?.title },
+                source: sourceKind,
+                meta: { judgment: judgmentLabel, storylineTitle: sl?.title },
               };
               setMessages((prev) => {
                 const next = [...prev, beat].slice(-200);
@@ -1837,13 +1841,19 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                                   ? `⚠️ Complication${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
                                   : entry.source === 'storyline-creative'
                                     ? `✨ A Different Approach${entry.meta?.judgment ? ` (${entry.meta.judgment})` : ''}`
-                                    : entry.source === 'lead-revealed'
-                                      ? `🪄 New Lead — ${entry.meta?.leadTitle || ''}`
-                                      : entry.source === 'lead-sealed'
-                                        ? `🔒 Sealed Lead — ${entry.meta?.leadTitle || ''}`
-                                        : entry.isCinematic
-                                          ? '🎭 The Adventure Begins'
-                                          : 'Dungeon Master'}
+                                    : entry.source === 'storyline-complete'
+                                      ? `🎬 Investigation Closes${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
+                                      : entry.source === 'storyline-paused'
+                                        ? `⏸ Thread Set Aside${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
+                                        : entry.source === 'storyline-resume'
+                                          ? `🔁 Reconnect${entry.meta?.ruling ? ` (${entry.meta.ruling})` : ''}`
+                                          : entry.source === 'lead-revealed'
+                                            ? `🪄 New Lead — ${entry.meta?.leadTitle || ''}`
+                                            : entry.source === 'lead-sealed'
+                                              ? `🔒 Sealed Lead — ${entry.meta?.leadTitle || ''}`
+                                              : entry.isCinematic
+                                                ? '🎭 The Adventure Begins'
+                                                : 'Dungeon Master'}
                           </span>
                           {entry.isCinematic && !entry.isWorldBrief && (
                             <Sparkles className="h-3 w-3 text-violet-400 animate-pulse" />

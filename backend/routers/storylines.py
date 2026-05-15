@@ -147,8 +147,9 @@ def _build_completion_narration(storyline: Dict) -> str:
     epilogue = (storyline.get("epilogue") or "").strip()
     title = (storyline.get("title") or "the thread").strip().rstrip(".")
     if epilogue:
-        # Prepend a quiet "Investigation closed:" cue so the player can
-        # see at a glance that this beat is the wrap-up.
+        # Return the LLM-emitted epilogue verbatim — the Adventure Log's
+        # source-label switch ('🎬 Investigation Closes — …') already
+        # frames it as the wrap-up; no prefix needed.
         return f"{epilogue}"
     # Fallback: name NPCs/locations from final beat targets when present.
     beats = storyline.get("beats") or []

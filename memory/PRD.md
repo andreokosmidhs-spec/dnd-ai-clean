@@ -38,6 +38,15 @@ RPG Forge is an AI-powered text RPG adventure application that allows users to c
 
 ### ✅ Recent Additions (Feb 2026)
 
+#### Off-Hook Storyline Spawner — DM-on-the-Fly Storylines (Feb 14, 2026)
+- **Problem solved**: when the player typed a freeform action unrelated to the current scene (e.g. "I look for a beggar" during a Guild-whispers beat), the DM used to glue it onto the current beat. Now the DM detects the off-hook intent and **spawns a brand-new storyline using the closest existing mission-type blueprint**.
+- **Backend (this session)**:
+  - New service `services/storyline_spawner.py` — `classify_action_for_spawn()` does a single LLM call (gpt-4o-mini) returning `{is_off_hook, mission_type_slug, hook_text, hook_topic, reasoning}`. The slug is validated against the campaign's available mission types — never invented.
+  - New endpoint `POST /api/campaigns/{id}/storylines/spawn-from-action`. When off-hook: pauses the current storyline (`status='paused'`, `paused_at`), drafts a fresh storyline with the chosen blueprint via `draft_initial_scene`, and records a `pending_obligation` on the campaign capturing NPCs the player walked away from.
+  - `lean_dm._build_system_prompt` now injects a **PENDING OBLIGATIONS** block — the DM treats those NPCs as remembering the player. They may seek the player out, glare, send messengers, or confront them, *reacting per personality*.
+- **Frontend (this session)**: `ActiveInvestigationPanel.callCreative()` now hits `/spawn-from-action` first. If `spawned=true` → toast `🎯 New thread: …` + replace the active storyline (the MissionPhaseBadge auto-updates to the new mission type). If `spawned=false` → fall through to the existing creative-approach flow unchanged.
+- Tested end-to-end via `testing_agent_v3_fork` (iteration_15.json) → 14/14 new backend pytest pass + all 6 regression cases from iteration 14 still green. Pytest at `/app/backend/tests/test_offhook_spawn.py`.
+
 #### Active Mission Phase Badge (Feb 14, 2026)
 - Backend (this session): every storyline now snapshots its bound mission_type onto the `storyline_doc` ({slug, name, icon, phases:[{name}]}). Each beat is tagged with `phase_index` + `phase_name` via the new `_tag_phase()` helper. `generate_next_scene` reads the snapshot from the storyline, injects a "MISSION TYPE CONTEXT" block (current phase + suggested next phase), and asks the LLM to emit a `phase_index` per beat — keeping continuations on-arc.
 - Frontend (this session): new `MissionPhaseBadge.jsx` mounted in the Adventure Log header next to the title. Reads `activeStoryline.mission_type` + current beat's `phase_index`/`phase_name` and renders e.g. **🎯 Heist · Phase 1/4: Discovery**. Hidden when no mission type is bound to the storyline.

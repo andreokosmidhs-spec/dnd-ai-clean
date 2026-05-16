@@ -45,6 +45,7 @@ from services.time_service import (
     get_world_clock,
     time_context_block,
 )
+from services.narrative_tick_service import narrative_tick_service
 from utils.entity_mentions import extract_entity_mentions
 
 logger = logging.getLogger(__name__)
@@ -711,6 +712,35 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     # Update in-memory campaign so any downstream code (storyline draft) sees it.
     campaign.setdefault("world_state", {})["clock_hour"] = new_clock_hour
 
+    narrative_ticks = []
+    tick_triggers = []
+    if advance_h >= 8:
+        tick_triggers.append("long_rest")
+    elif advance_h >= 3:
+        tick_triggers.append("travel")
+    if advance_h > 0 and new_clock_hour < clock_hour:
+        tick_triggers.append("next_day")
+    for tick_trigger in tick_triggers:
+        try:
+            tick = await narrative_tick_service.run_tick(
+                db,
+                campaign_id,
+                tick_trigger,
+                context={
+                    "clock_hour": new_clock_hour,
+                    "previous_clock_hour": clock_hour,
+                    "time_advanced_hours": advance_h,
+                },
+            )
+            narrative_ticks.append(tick)
+            if tick.get("ok"):
+                campaign["world_state"] = {
+                    **campaign.get("world_state", {}),
+                    **((await db.campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0}) or {}).get("world_state") or {}),
+                }
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Narrative tick failed ({tick_trigger}): {exc}")
+
     # ===== Roleplay alignment check + chaos meter =====
     alignment = await evaluate_alignment(character, req.player_action)
     new_chaos = apply_alignment_delta(chaos_value, alignment.get("severity", 0))
@@ -911,6 +941,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
                 "time_of_day": time_bucket["key"],     # string — legacy compatibility
                 "time_bucket": time_bucket,            # full {key, label, icon, hour} for new UI
                 "time_advanced_hours": advance_h,
+                "narrative_ticks": narrative_ticks,
                 "passive_perception": passive_perception,  # {score, tier, wis_mod, proficient, prof_bonus}
                 "chaos": chaos_payload,                # {value, delta, tier, alignment, drafted_curse}
             },

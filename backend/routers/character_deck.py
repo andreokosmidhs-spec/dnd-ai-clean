@@ -26,6 +26,7 @@ from services.character_deck import (
     merge_deck,
     seed_deck_for_character,
 )
+from services.narrative_tick_service import narrative_tick_service
 
 router = APIRouter(prefix="/api/characters", tags=["character-deck"])
 logger = logging.getLogger(__name__)
@@ -161,7 +162,23 @@ async def long_rest(character_id: str):
         {"character_id": character_id},
         {"$set": {"cards": cards, "updated_at": datetime.now(timezone.utc)}},
     )
-    return {"ok": True, "restored": restored, "cards": cards}
+    tick = None
+    try:
+        campaign = await db.campaigns.find_one(
+            {"character_id": character_id},
+            {"_id": 0},
+            sort=[("updated_at", -1)],
+        )
+        if campaign and campaign.get("campaign_id"):
+            tick = await narrative_tick_service.run_tick(
+                db,
+                campaign["campaign_id"],
+                "long_rest",
+                context={"character_id": character_id},
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Narrative tick failed after long rest for {character_id}: {exc}")
+    return {"ok": True, "restored": restored, "cards": cards, "narrative_tick": tick}
 
 
 class DrawCardBody(BaseModel):

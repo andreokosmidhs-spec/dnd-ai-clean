@@ -71,6 +71,9 @@ class NpcKnowledge(BaseModel):
     
     # Quest & Story Ties
     related_quest_ids: List[str] = Field(default_factory=list)
+
+    # Backend-only narrative retention metadata.
+    narrative_importance: Dict[str, Any] = Field(default_factory=dict)
     
     # Discovery
     first_met: datetime = Field(default_factory=lambda: datetime.utcnow())
@@ -139,6 +142,9 @@ class QuestKnowledge(BaseModel):
     related_location_ids: List[str] = Field(default_factory=list)
     related_npc_ids: List[str] = Field(default_factory=list)
     related_faction_ids: List[str] = Field(default_factory=list)
+
+    # Backend-only narrative retention metadata.
+    narrative_importance: Dict[str, Any] = Field(default_factory=dict)
     
     # Discovery
     discovered: datetime = Field(default_factory=lambda: datetime.utcnow())
@@ -245,6 +251,9 @@ class LeadEntry(BaseModel):
     
     # Player Notes
     player_notes: str = ""  # Optional player-added context
+
+    # Backend-only narrative retention metadata.
+    narrative_importance: Dict[str, Any] = Field(default_factory=dict)
     
     # Timestamps
     created_at: datetime = Field(default_factory=lambda: datetime.utcnow())

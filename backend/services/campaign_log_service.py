@@ -27,6 +27,7 @@ from models.log_models import (
     DecisionDelta,
     LeadDelta
 )
+from services.narrative_importance import score_lead, score_npc, score_quest
 
 logger = logging.getLogger(__name__)
 
@@ -122,8 +123,9 @@ class CampaignLogService:
             if npc_delta.id in log.npcs:
                 existing = log.npcs[npc_delta.id]
                 self._merge_npc(existing, npc_delta)
+                existing.narrative_importance = score_npc(existing)
             else:
-                log.npcs[npc_delta.id] = NpcKnowledge(
+                npc = NpcKnowledge(
                     id=npc_delta.id,
                     name=npc_delta.name or npc_delta.id,
                     role=npc_delta.role or "",
@@ -135,6 +137,8 @@ class CampaignLogService:
                     faction_id=npc_delta.faction_id,
                     relationship_to_party=npc_delta.relationship_to_party or "neutral"
                 )
+                npc.narrative_importance = score_npc(npc)
+                log.npcs[npc_delta.id] = npc
         
         # Merge Factions
         for faction_delta in delta.factions:
@@ -158,8 +162,9 @@ class CampaignLogService:
             if quest_delta.id in log.quests:
                 existing = log.quests[quest_delta.id]
                 self._merge_quest(existing, quest_delta)
+                existing.narrative_importance = score_quest(existing)
             else:
-                log.quests[quest_delta.id] = QuestKnowledge(
+                quest = QuestKnowledge(
                     id=quest_delta.id,
                     title=quest_delta.title or quest_delta.id,
                     quest_giver_npc_id=quest_delta.quest_giver_npc_id,
@@ -168,6 +173,8 @@ class CampaignLogService:
                     status=quest_delta.status or "active",
                     objectives=quest_delta.new_objectives
                 )
+                quest.narrative_importance = score_quest(quest)
+                log.quests[quest_delta.id] = quest
         
         # Add Rumors (always new entries)
         for rumor_delta in delta.rumors:
@@ -214,9 +221,10 @@ class CampaignLogService:
                 # Update existing lead (status changes, notes additions)
                 existing = log.leads[lead_delta.id]
                 self._merge_lead(existing, lead_delta)
+                existing.narrative_importance = score_lead(existing)
             else:
                 # Create new lead entry
-                log.leads[lead_delta.id] = LeadEntry(
+                lead = LeadEntry(
                     id=lead_delta.id,
                     short_text=lead_delta.short_text,
                     location_id=lead_delta.location_id,
@@ -227,6 +235,8 @@ class CampaignLogService:
                     related_location_ids=lead_delta.related_location_ids,
                     related_faction_ids=lead_delta.related_faction_ids
                 )
+                lead.narrative_importance = score_lead(lead)
+                log.leads[lead_delta.id] = lead
         
         # Save updated log
         await self.save_log(log)
@@ -535,6 +545,7 @@ class CampaignLogService:
                 lead.player_notes = f"{lead.player_notes}\n\n{player_notes}"
             else:
                 lead.player_notes = player_notes
+        lead.narrative_importance = score_lead(lead)
         
         # Save updated log
         await self.save_log(log)

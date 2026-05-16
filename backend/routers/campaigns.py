@@ -26,6 +26,8 @@ from services.campaign_service import (
     setting_knowledge_cards,
 )
 from services.world_graph import generate_world_graph, hydrate_region, generate_event_arrival_beat
+from services.narrative_importance import score_knowledge_card
+from services.narrative_tick_service import narrative_tick_service
 from utils.entity_mentions import extract_entity_mentions
 
 import logging
@@ -58,6 +60,11 @@ def get_cards_collection():
     if _db is None:
         raise RuntimeError("Database not initialized. Call set_database() first.")
     return _db["campaign_cards"]
+
+
+def _score_card(card: KnowledgeCard) -> KnowledgeCard:
+    card.narrative_importance = score_knowledge_card(card)
+    return card
 
 
 async def _fetch_character(character_id: str) -> Optional[Dict]:
@@ -98,6 +105,7 @@ async def _get_campaign(campaign_id: str) -> Optional[Dict]:
 
 
 async def _replace_cards(campaign_id: str, cards: List[KnowledgeCard]):
+    cards = [_score_card(card) for card in cards]
     card_dicts = [card.model_dump() for card in cards]
     if is_db_available():
         collection = get_cards_collection()
@@ -115,7 +123,36 @@ async def _get_cards(campaign_id: str) -> List[Dict]:
     return _in_memory_cards.get(campaign_id, [])
 
 
+async def _run_narrative_tick(
+    campaign_id: str,
+    trigger: str,
+    context: Optional[Dict] = None,
+) -> Optional[Dict]:
+    try:
+        if is_db_available():
+            return await narrative_tick_service.run_tick(_db, campaign_id, trigger, context=context)
+        campaign = _in_memory_campaigns.get(campaign_id)
+        if not campaign:
+            return None
+        cards = _in_memory_cards.get(campaign_id, [])
+        updated_campaign, result = narrative_tick_service.tick_campaign_document(
+            campaign=campaign,
+            cards=cards,
+            campaign_log={},
+            legacy_quests=[],
+            trigger=trigger,
+            context=context,
+        )
+        _in_memory_campaigns[campaign_id] = updated_campaign
+        return result
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Narrative tick failed for {campaign_id} ({trigger}): {exc}")
+        return None
+
+
 async def _upsert_cards(campaign_id: str, new_cards: List[KnowledgeCard], updated_cards: List[KnowledgeCard]):
+    new_cards = [_score_card(card) for card in new_cards]
+    updated_cards = [_score_card(card) for card in updated_cards]
     collection_data = _in_memory_cards.setdefault(campaign_id, []) if not is_db_available() else None
 
     if is_db_available():
@@ -540,7 +577,8 @@ async def visit_region(campaignId: str, regionId: str):
     campaign["world"] = world
     campaign["updated_at"] = datetime.utcnow()
     await _save_campaign_doc(campaign)
-    return {"ok": True, "region": regions[idx], "current_region_id": regionId}
+    tick = await _run_narrative_tick(campaignId, "travel", {"region_id": regionId})
+    return {"ok": True, "region": regions[idx], "current_region_id": regionId, "narrative_tick": tick}
 
 
 @router.post("/{campaignId}/world/events/{eventId}/accept")
@@ -828,7 +866,14 @@ async def update_quest_status(
     updated.status = status
     updated.updatedAt = datetime.utcnow()
     await _upsert_cards(campaignId, [], [updated])
-    return {"ok": True, "quest": _quest_card_to_ui(updated.model_dump())}
+    tick = None
+    if status == "completed":
+        tick = await _run_narrative_tick(
+            campaignId,
+            "major_quest_completion",
+            {"quest_id": questId},
+        )
+    return {"ok": True, "quest": _quest_card_to_ui(updated.model_dump()), "narrative_tick": tick}
 
 
 @router.post("/{campaignId}/log/cards/remember-as-quest")

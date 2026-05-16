@@ -13,6 +13,7 @@ from models.quest_models import (
     quest_to_dict, dict_to_quest
 )
 from services import quest_generator, quest_manager
+from services.narrative_tick_service import narrative_tick_service
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,19 @@ def get_db():
     if _db is None:
         raise RuntimeError("Database not initialized. Call set_database() first.")
     return _db
+
+
+async def _run_major_quest_completion_tick(db, campaign_id: str, quest_id: str):
+    try:
+        return await narrative_tick_service.run_tick(
+            db,
+            campaign_id,
+            "major_quest_completion",
+            context={"quest_id": quest_id},
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Narrative tick failed for completed quest {quest_id}: {exc}")
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -358,12 +372,21 @@ async def advance_quest(request: QuestAdvanceRequest):
         
         logger.info(f"✅ Quest progress updated: {updated_quest.name}, {len(updated_objectives)} objectives updated")
         
+        tick = None
+        if updated_quest.status == "completed":
+            tick = await _run_major_quest_completion_tick(
+                db,
+                updated_quest.campaign_id,
+                updated_quest.quest_id,
+            )
+
         return {
             "success": True,
             "data": {
                 "quest": updated_quest.dict(),
                 "objectives_updated": updated_objectives,
-                "quest_completed": updated_quest.status == "completed"
+                "quest_completed": updated_quest.status == "completed",
+                "narrative_tick": tick,
             },
             "error": None
         }
@@ -438,11 +461,14 @@ async def complete_quest(request: QuestCompleteRequest):
         
         logger.info(f"🎊 Quest completed: {quest.name}, rewards applied")
         
+        tick = await _run_major_quest_completion_tick(db, quest.campaign_id, quest.quest_id)
+
         return {
             "success": True,
             "data": {
                 "quest": quest.dict(),
                 "rewards_applied": rewards_applied,
+                "narrative_tick": tick,
                 "character_updates": {
                     "current_xp": character_state.get("current_xp"),
                     "level": character_state.get("level"),

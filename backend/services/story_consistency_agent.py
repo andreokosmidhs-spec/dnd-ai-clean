@@ -657,16 +657,12 @@ async def validate_dm_output(
     try:
         logger.info("🔍 Story Consistency Agent: Validating DM output...")
         
-        completion = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": STORY_CONSISTENCY_PROMPT},
-                {"role": "user", "content": context_str}
-            ],
-            temperature=0.3  # Lower temperature for consistency checking
+        from services.claude_client import call_sonnet_sync
+        content = call_sonnet_sync(
+            system_prompt=STORY_CONSISTENCY_PROMPT,
+            user_content=context_str,
+            temperature=0.3,
         )
-        
-        content = completion.choices[0].message.content.strip()
         
         # Parse JSON response
         if content.startswith("```"):

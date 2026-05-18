@@ -66,17 +66,12 @@ def generate_intro_markdown(
     )
     
     try:
-        client = get_openai_client()
-        completion = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": json.dumps(payload)},
-            ],
+        from .claude_client import call_sonnet_sync
+        intro_md = call_sonnet_sync(
+            system_prompt=system,
+            user_content=json.dumps(payload),
             temperature=0.7,
         )
-        
-        intro_md = completion.choices[0].message.content.strip()
         logger.info(f"Successfully generated intro ({len(intro_md)} chars)")
         return intro_md
         

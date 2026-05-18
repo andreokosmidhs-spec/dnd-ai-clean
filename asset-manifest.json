@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/dnd-ai-clean/static/css/main.6d68ee70.css",
+    "main.js": "/dnd-ai-clean/static/js/main.f04d6b07.js",
+    "index.html": "/dnd-ai-clean/index.html",
+    "main.6d68ee70.css.map": "/dnd-ai-clean/static/css/main.6d68ee70.css.map",
+    "main.f04d6b07.js.map": "/dnd-ai-clean/static/js/main.f04d6b07.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.6d68ee70.css",
+    "static/js/main.f04d6b07.js"
+  ]
+}

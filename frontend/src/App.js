@@ -19,6 +19,7 @@ import { useSessionCore } from "./store/useSessionCore";
 import CampaignSetup from "./pages/CampaignSetup";
 import CampaignGenerate from "./pages/CampaignGenerate";
 import DevCampaignLogPreview from "./pages/DevCampaignLogPreview";
+import PressureDashboard from "./pages/PressureDashboard";
 import { hydrateFromLegacyStorage, cleanupLegacyStorage } from "./utils/stateHydration";
 import "./devStoreDebug"; // Dev-only: expose store in console
 
@@ -62,6 +63,12 @@ const AdventureRoute = () => {
   }
 
   return <Home />;
+};
+
+const PressureRoute = () => {
+  const { activeCampaignId } = useSessionCore();
+  if (!activeCampaignId) return <div style={{ color: "#94a3b8", padding: 40 }}>No active campaign.</div>;
+  return <PressureDashboard campaignId={activeCampaignId} />;
 };
 
 const MainMenuPage = () => {
@@ -138,6 +145,9 @@ function App() {
               {/* DEV ONLY: Preview CampaignLogPanel without adventure flow */}
               {/* TODO: Remove before production release */}
               <Route path="/dev/campaign-log" element={<DevCampaignLogPreview />} />
+
+              {/* DM Tool: Living Campaign Pressure Engine dashboard */}
+              <Route path="/pressure-dashboard" element={<PressureRoute />} />
             </Routes>
             <FeedbackButton />
           </BrowserRouter>

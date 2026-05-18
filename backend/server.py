@@ -125,6 +125,7 @@ from routers import character_deck as character_deck_router
 from routers import dm_lessons as dm_lessons_router
 from routers import canon_scenes as canon_scenes_router
 from routers import mission_types as mission_types_router
+from routers import pressure_engine as pressure_engine_router
 
 # Create the main app without a prefix
 app = FastAPI(title="Sentient RPG Engine", description="AI-Powered Text RPG Framework")
@@ -4173,6 +4174,7 @@ app.include_router(character_v2_router_alias)
 # Import and mount scene refresh router (dev tool for testing advanced hooks)
 from routers import scene_refresh as scene_refresh_router
 app.include_router(scene_refresh_router.router)  # Scene Refresh endpoints
+app.include_router(pressure_engine_router.router)  # Living Campaign Pressure Engine
 
 # Inject database into routers
 dungeon_forge.set_database(db)
@@ -4187,6 +4189,7 @@ dm_lessons_router.set_database(db)
 canon_scenes_router.set_database(db)
 mission_types_router.set_database(db)
 scene_refresh_router.set_database(db)
+pressure_engine_router.set_database(db)  # Living Campaign Pressure Engine
 set_character_v2_database(db)
 
 # Import API response utilities

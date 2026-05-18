@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: dnd-ai-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements-prod.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false        # Set this in Render dashboard
+      - key: OPENAI_API_KEY
+        sync: false        # Set Emergent key here if no Anthropic key yet
+      - key: MONGO_URL
+        sync: false        # Set MongoDB Atlas connection string here
+      - key: DB_NAME
+        value: dnd_ai_clean
+      - key: PYTHONUNBUFFERED
+        value: "1"

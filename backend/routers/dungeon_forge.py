@@ -331,10 +331,8 @@ async def run_intent_tagger(player_action: str, character_state: Dict[str, Any])
     """
     INTENT TAGGER: Classify player action into structured intent.
     """
-    from services.llm_client import get_openai_client
-    
-    client = get_openai_client()
-    
+    from services.claude_client import call_haiku_async
+
     prompt = f"""You are an INTENT TAGGER for a D&D 5e RPG.
 
 Analyze this player action and output JSON with:
@@ -351,19 +349,14 @@ Player action: "{player_action}"
 Character proficiencies: {character_state.get("proficiencies", [])}
 
 Output ONLY valid JSON."""
-    
+
     try:
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a precise JSON classifier."},
-                {"role": "user", "content": prompt}
-            ],
+        content = await call_haiku_async(
+            system_prompt="You are a precise JSON classifier.",
+            user_content=prompt,
             temperature=0.1
         )
-        
-        content = completion.choices[0].message.content.strip()
-        
+
         if content.startswith("```"):
             content = content.split("```")[1]
             if content.startswith("json"):
@@ -473,16 +466,14 @@ Check result: {check_result if check_result else "None (needs check if intent_fl
 Generate the JSON response."""
     
     try:
-        completion = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            temperature=0.7
+        from services.claude_client import call_sonnet_async
+        content = await call_sonnet_async(
+            system_prompt=system_prompt,
+            user_content=user_content,
+            max_tokens=2500,
+            temperature=0.7,
+            cache=True,
         )
-        
-        content = completion.choices[0].message.content.strip()
         
         if content.startswith("```"):
             content = content.split("```")[1]
@@ -1528,17 +1519,13 @@ Select the single best-fitting location name. Consider:
 Respond with ONLY the location name, nothing else."""
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a D&D world-building assistant."},
-                {"role": "user", "content": prompt}
-            ],
+        from services.claude_client import call_haiku_sync
+        selected = call_haiku_sync(
+            system_prompt="You are a D&D world-building assistant.",
+            user_content=prompt,
+            max_tokens=50,
             temperature=0.7,
-            max_tokens=50
         )
-        
-        selected = response.choices[0].message.content.strip()
         
         # Validate selection exists in locations
         if any(loc['name'].lower() in selected.lower() for loc in locations):

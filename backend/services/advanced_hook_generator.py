@@ -155,20 +155,13 @@ Generate {max_hooks} diverse, actionable quest hooks.
 Return only the JSON array of hooks."""
 
     try:
-        client = get_openai_client()
-        
-        completion = client.chat.completions.create(
-            model="gpt-4o",  # Use full model for sophisticated reasoning
-            messages=[
-                {"role": "system", "content": ADVANCED_HOOK_GENERATOR_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.8,  # Higher temp for creative hook generation
+        from .claude_client import call_sonnet_sync
+        raw_response = call_sonnet_sync(
+            system_prompt=ADVANCED_HOOK_GENERATOR_SYSTEM_PROMPT,
+            user_content=user_prompt,
             max_tokens=1500,
-            response_format={"type": "json_object"}  # Force JSON output
+            temperature=0.8,
         )
-        
-        raw_response = completion.choices[0].message.content.strip()
         
         # Clean markdown code blocks if present
         if raw_response.startswith("```"):

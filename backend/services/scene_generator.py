@@ -76,18 +76,13 @@ def generate_scene_description(
     )
     
     try:
-        client = get_openai_client()
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",  # Use mini for faster/cheaper scene generation
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": f"Generate scene description for {scene_type} at {location_name}"}
-            ],
+        from .claude_client import call_haiku_sync
+        generated_text = call_haiku_sync(
+            system_prompt=prompt,
+            user_content=f"Generate scene description for {scene_type} at {location_name}",
+            max_tokens=300,
             temperature=0.7,
-            max_tokens=300
         )
-        
-        generated_text = completion.choices[0].message.content.strip()
         
         # Parse the generated scene
         # Expected format: Location description (2-3 sentences) + arrival context (1 sentence)

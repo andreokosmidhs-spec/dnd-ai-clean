@@ -4,6 +4,7 @@ Uses existing entity_mentions for first pass, then LLM for structured delta extr
 """
 import logging
 import json
+import os
 import re
 from typing import Dict, Any, List, Optional
 from litellm import acompletion
@@ -70,7 +71,7 @@ class CampaignLogExtractor:
         
         try:
             response = await acompletion(
-                model="gpt-4o-mini",  # Fast and cost-effective for extraction
+                model="claude-haiku-4-5-20251001",
                 messages=[
                     {
                         "role": "system",
@@ -81,8 +82,8 @@ class CampaignLogExtractor:
                         "content": prompt
                     }
                 ],
-                api_key=self.api_key,
-                temperature=0.1  # Low temp for consistent extraction
+                api_key=os.getenv("ANTHROPIC_API_KEY"),
+                temperature=0.1
             )
             
             content = response.choices[0].message.content.strip()

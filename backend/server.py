@@ -1583,17 +1583,13 @@ IMPORTANT:
 Output the COMPLETE corrected response as valid JSON (same structure as input)."""
 
     try:
-        response = await acompletion(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a precise JSON repair agent. Output only valid JSON matching the DMChatResponse structure."},
-                {"role": "user", "content": REPAIR_PROMPT}
-            ],
-            api_key=OPENAI_API_KEY,
-            temperature=0.3
+        from services.claude_client import call_sonnet_async
+        content = await call_sonnet_async(
+            system_prompt="You are a precise JSON repair agent. Output only valid JSON matching the DMChatResponse structure.",
+            user_content=REPAIR_PROMPT,
+            temperature=0.3,
+            cache=False,
         )
-        
-        content = response.choices[0].message.content.strip()
         
         # Remove markdown code blocks if present
         if content.startswith("```"):
@@ -3254,25 +3250,16 @@ Respond with ONLY the JSON output as specified in your system prompt. Do NOT inc
         
         # Build messages for AI
 
-        # Call OpenAI via LiteLLM with Emergent API base
-        logger.info(f"🤖 Calling GPT-4o via Emergent LLM...")
-        
-        response = await acompletion(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.8,
+        logger.info(f"🤖 Calling Claude Sonnet via Emergent LLM...")
+        from services.claude_client import call_sonnet_async
+        content = await call_sonnet_async(
+            system_prompt=system_prompt,
+            user_content=user_message,
             max_tokens=800,
-            api_key=OPENAI_API_KEY,
-            api_base="https://api.openai.com/v1"  # OpenAI API key
+            temperature=0.8,
+            cache=True,
         )
-        
-        # Parse response
-        content = response['choices'][0]['message']['content']
-        logger.info(f"✅ OpenAI response received: {len(content)} chars")
+        logger.info(f"✅ Claude response received: {len(content)} chars")
         
         data = json.loads(content)
         
@@ -3571,18 +3558,14 @@ async def generate_world_from_character(system_prompt: str, character_summary: s
     
     try:
         # Call OpenAI API
-        response = await asyncio.to_thread(
-            client.chat.completions.create,
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": character_summary}
-            ],
-            temperature=0.8,
-            max_tokens=2500
+        from services.claude_client import call_sonnet_sync
+        content = await asyncio.to_thread(
+            call_sonnet_sync,
+            system_prompt,
+            character_summary,
+            2500,
+            0.8,
         )
-        
-        content = response.choices[0].message.content.strip()
         
         # Try to extract JSON if wrapped in markdown
         if "```json" in content:

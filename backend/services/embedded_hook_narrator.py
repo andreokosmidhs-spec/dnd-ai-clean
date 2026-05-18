@@ -354,22 +354,17 @@ IMPORTANT INSTRUCTIONS:
 Generate the narration now (text only, no JSON):"""
     
     try:
-        client = get_openai_client()
-        
+        from .claude_client import call_sonnet_sync
+
         # STAGE 1: Generate initial narration
-        completion = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": EMBEDDED_HOOK_NARRATOR_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt}
-            ],
+        draft_narration = call_sonnet_sync(
+            system_prompt=EMBEDDED_HOOK_NARRATOR_SYSTEM_PROMPT,
+            user_content=user_prompt,
+            max_tokens=800,
             temperature=0.8,
-            max_tokens=800
         )
-        
-        draft_narration = completion.choices[0].message.content.strip()
         logger.info(f"📝 Generated draft narration for {location_name}")
-        
+
         # STAGE 2: STRICT VERIFICATION & CLEANUP
         verification_prompt = f"""Review this narration and FIX any violations of the POV rules.
 
@@ -398,18 +393,12 @@ REPLACE WITH OBSERVABLE DETAILS ONLY:
 
 Return ONLY the corrected narration, with all POV violations removed."""
 
-        # Call verification
-        verification_completion = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a strict editor that removes all 'tell' phrases and keeps only 'show' descriptions. Remove anything that interprets, explains, or reveals hidden meaning."},
-                {"role": "user", "content": verification_prompt}
-            ],
-            temperature=0.3,  # Lower temperature for stricter adherence
-            max_tokens=800
+        narration = call_sonnet_sync(
+            system_prompt="You are a strict editor that removes all 'tell' phrases and keeps only 'show' descriptions. Remove anything that interprets, explains, or reveals hidden meaning.",
+            user_content=verification_prompt,
+            max_tokens=800,
+            temperature=0.3,
         )
-        
-        narration = verification_completion.choices[0].message.content.strip()
         
         # STAGE 3: Apply regex-based cleanup as final safety net
         narration = _remove_tell_violations(narration)

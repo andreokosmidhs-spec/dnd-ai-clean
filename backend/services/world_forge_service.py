@@ -33,17 +33,12 @@ def generate_world_blueprint(world_name: str, tone: str, starting_region_hint: s
     logger.info(f"Generating world blueprint for: {world_name}")
     
     try:
-        client = get_openai_client()
-        completion = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": WORLD_FORGE_SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(user_content)},
-            ],
+        from .claude_client import call_sonnet_sync
+        raw = call_sonnet_sync(
+            system_prompt=WORLD_FORGE_SYSTEM_PROMPT,
+            user_content=json.dumps(user_content),
             temperature=0.7,
         )
-        
-        raw = completion.choices[0].message.content.strip()
         
         # Remove markdown code blocks if present
         if raw.startswith("```"):

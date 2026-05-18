@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import "./App.css";
 import "./styles/chat-fixes.css";
 import "./styles/focus-first.css";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { HashRouter as BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import axios from "axios";
 import RPGGame from "./components/RPGGame";
 import Toast from "./components/Toast";

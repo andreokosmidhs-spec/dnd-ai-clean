@@ -1241,17 +1241,68 @@ async def generate_storyline_reward(
         )
         intent = campaign.get("intent") or {}
 
-        # Collect unique named NPCs from all beat targets so the scene can name them.
+        # Collect unique named NPCs from beat targets and enrich with card personality data.
         seen_npc_names: set = set()
-        npc_list: list = []
+        npc_profiles: list = []
+        # Build a lookup from the recent cards already loaded onto the campaign dict.
+        recent_cards = campaign.get("_recent_cards") or []
+        card_by_name: dict = {
+            (c.get("title") or "").strip().lower(): c
+            for c in recent_cards
+            if c.get("type") == "character"
+        }
         for b in beats:
             for t in (b.get("targets") or []):
                 n = (t.get("name") or "").strip()
-                if n and n not in seen_npc_names:
-                    seen_npc_names.add(n)
-                    npc_list.append(f"{n} ({t.get('type','npc')})")
-        npc_block = ("=== KEY NPCs ===\n" + "\n".join(npc_list) + "\n\n") if npc_list else ""
+                if not n or n in seen_npc_names:
+                    continue
+                seen_npc_names.add(n)
+                card = card_by_name.get(n.lower())
+                profile_lines = [f"NPC: {n}  ({t.get('type','npc')})"]
+                if card:
+                    sc = card.get("secret_content") or {}
+                    revealed = set(card.get("revealed_fields") or [])
+                    speech = sc.get("speech_style") or ""
+                    mannerisms = sc.get("mannerisms") or []
+                    motivation = sc.get("current_motivation") or ""
+                    personality = sc.get("personality") or {}
+                    if speech:
+                        profile_lines.append(f"  Speech style: {speech}")
+                    if mannerisms:
+                        profile_lines.append(f"  Mannerisms: {'; '.join(mannerisms[:2])}")
+                    if motivation:
+                        profile_lines.append(f"  Motivation toward player: {motivation}")
+                    # Only include personality fields the player has actually uncovered.
+                    for key, label in [
+                        ("personality.trait", "Trait"),
+                        ("personality.ideal", "Ideal"),
+                        ("personality.bond", "Bond"),
+                        ("personality.flaw", "Flaw"),
+                    ]:
+                        if key in revealed and personality.get(key.split(".")[-1]):
+                            profile_lines.append(
+                                f"  {label} (player-revealed): {personality[key.split('.')[-1]]}"
+                            )
+                    bg = sc.get("background") or ""
+                    if "background" in revealed and bg:
+                        profile_lines.append(f"  Background: {bg[:120]}")
+                npc_profiles.append("\n".join(profile_lines))
+        npc_block = (
+            "=== NPC PROFILES ===\n"
+            "Use these to make each NPC's dialogue sound like THAT specific person.\n"
+            + "\n\n".join(npc_profiles) + "\n\n"
+        ) if npc_profiles else ""
 
+        reward_kind_guide = (
+            "- item → NPC physically unwraps/hands over the object; describe weight, "
+            "material, history in 1 sentence; NPC explains why they're giving it.\n"
+            "- info → NPC leans in, whispers, or shows a document; the revelation IS "
+            "the reward; use hushed or confessional dialogue.\n"
+            "- favor → NPC makes a solemn promise, extends a hand or meets your eyes; "
+            "dialogue is binding and personal, not casual.\n"
+            "- key → NPC hands over a physical token, writ, or badge; explains what "
+            "door it opens and any conditions."
+        )
         item_schema = (
             '{"name": "...", "description": "...", "kind": "item|info|favor|key"}'
             if award_item else 'null'
@@ -1277,6 +1328,8 @@ async def generate_storyline_reward(
             f"{intent_block}"
             f"=== OUTCOME ===\nPassed: {passed} / {len(beats)} | Failed: {failed}\n"
             f"=== CAMPAIGN TONE ===\n{intent.get('tone','Balanced')} | {intent.get('focus','Mystery')}\n\n"
+            "=== REWARD KIND DELIVERY GUIDE ===\n"
+            f"{reward_kind_guide}\n\n"
             "=== RULES ===\n"
             f"- {'Award' if award_item else 'DO NOT award'} an item (pass ratio {'≥' if award_item else '<'} 50%).\n"
             "- Output strict JSON, no code fence.\n\n"
@@ -1286,15 +1339,18 @@ async def generate_storyline_reward(
             "  \"description\": \"1 closing line ≤160 chars — Mercer-style, restrained, no fate/destiny talk\",\n"
             "  \"tone\": \"satisfaction|grim|hopeful|bitter|reverent\",\n"
             "  \"delivery_scene\": \"4-6 sentences, second person present tense. "
-            "The primary NPC approaches and delivers the reward IN CHARACTER. "
-            "Required elements: (1) brief physical setting — where you are when they find you; "
-            "(2) the NPC speaks in double-quoted dialogue — warm/relieved/somber matching outcome; "
-            "(3) the physical handover described concretely — weight, material, wrapped or sealed or worn; "
-            "(4) one final NPC line closing the relationship; "
-            "(5) one sentence that closes the arc — what you carry away. "
-            "If no item awarded: NPC closes with respect, apology, or a handshake — the moment still matters. "
-            "BANNED words: fate, destiny, the gods, the wind whispers. "
-            "Name the NPC — never 'the figure' or 'someone'.\"\n"
+            "The primary NPC from the NPC PROFILES block delivers the reward IN CHARACTER. "
+            "CRITICAL: the NPC's dialogue must sound like THEM — use their speech_style, "
+            "mannerisms, and any revealed personality traits. A gravelly dockworker and a "
+            "nervous scholar must sound completely different. "
+            "Required elements: (1) brief physical setting — where you are when they approach; "
+            "(2) the NPC speaks their FIRST line in double quotes — voice must match their profile; "
+            "(3) physical handover matched to the reward kind (see reward kind guidance above); "
+            "(4) one final NPC line — closes the relationship, references something specific "
+            "from what happened (a beat they witnessed or a choice the player made); "
+            "(5) one sentence closing the arc from the player's POV — what you walk away carrying. "
+            "If no item: NPC closes with respect or honest acknowledgement — even failure deserves a real moment. "
+            "BANNED: fate, destiny, the gods, the wind whispers, 'the figure', 'someone approaches'.\"\n"
             "}\n"
         )
         chat = LlmChat(

@@ -470,7 +470,7 @@ Generate the JSON response."""
         content = await call_sonnet_async(
             system_prompt=system_prompt,
             user_content=user_content,
-            max_tokens=2500,
+            max_tokens=1200,
             temperature=0.7,
             cache=True,
         )

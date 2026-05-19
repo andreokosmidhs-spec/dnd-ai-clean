@@ -1236,10 +1236,21 @@ async def generate_storyline_reward(
         from emergentintegrations.llm.chat import LlmChat, UserMessage
 
         beat_summary = "\n".join(
-            f"- {b.get('title','')}: {b.get('outcome_text') or b.get('description','')}"
+            f"- [{b.get('status','?')}] {b.get('title','')}: {b.get('outcome_text') or b.get('description','')}"
             for b in (storyline.get("beats") or [])
         )
         intent = campaign.get("intent") or {}
+
+        # Collect unique named NPCs from all beat targets so the scene can name them.
+        seen_npc_names: set = set()
+        npc_list: list = []
+        for b in beats:
+            for t in (b.get("targets") or []):
+                n = (t.get("name") or "").strip()
+                if n and n not in seen_npc_names:
+                    seen_npc_names.add(n)
+                    npc_list.append(f"{n} ({t.get('type','npc')})")
+        npc_block = ("=== KEY NPCs ===\n" + "\n".join(npc_list) + "\n\n") if npc_list else ""
 
         item_schema = (
             '{"name": "...", "description": "...", "kind": "item|info|favor|key"}'
@@ -1247,36 +1258,43 @@ async def generate_storyline_reward(
         )
         intent_block = (
             f"=== WHAT THE PLAYER WAS REALLY AFTER ===\n{player_intent}\n"
-            "The reward MUST serve this specific goal. If they sought protection, give "
-            "them that person's loyalty or a token of it. If they sought closure, give "
-            "them the final piece that makes it real. If they failed their true goal, "
-            "the closing line should acknowledge what almost was — not just that they "
-            "finished the task. Never give generic loot when a specific meaningful "
+            "The reward MUST serve this specific goal — if they sought protection, the "
+            "NPC's gratitude IS the reward; if they sought closure, give the final piece "
+            "that makes it real. Never give generic loot when a specific meaningful "
             "reward is possible.\n\n"
             if player_intent else ""
         )
+        identity = (character or {}).get("identity") or {}
+        hero_name = identity.get("name") or "the hero"
         prompt = (
-            "The player has resolved an investigation chain. Generate a CLOSING REWARD "
-            "that feels earned by the actual beats they played through. The reward "
-            "should reflect the BEAT OUTCOMES below — celebrate passes, acknowledge "
-            "failures honestly. If the player failed half or more of the beats, the "
-            "tone should turn bittersweet or grim and NO item should be awarded.\n\n"
-            f"=== STORYLINE ===\nTitle: {storyline.get('title','')}\n{beat_summary}\n\n"
+            "You are the DM closing an investigation arc for a D&D RPG. Generate a "
+            "reward that feels EARNED and a closing scene that makes the player feel the "
+            "story mattered and the NPCs are real people with memories.\n\n"
+            f"=== STORYLINE ===\nTitle: {storyline.get('title','')}\n"
+            f"Hook: {storyline.get('hook_text','')}\n\n"
+            f"{npc_block}"
+            f"=== WHAT HAPPENED (beat by beat) ===\n{beat_summary}\n\n"
             f"{intent_block}"
             f"=== OUTCOME ===\nPassed: {passed} / {len(beats)} | Failed: {failed}\n"
             f"=== CAMPAIGN TONE ===\n{intent.get('tone','Balanced')} | {intent.get('focus','Mystery')}\n\n"
-            f"=== TOTAL DIFFICULTY ===\nDC sum: {total_dc} (player will receive {xp} XP separately)\n\n"
             "=== RULES ===\n"
-            f"- {'Award' if award_item else 'DO NOT award'} an item.\n"
-            "- 1 short closing line (<=160 chars) that lands the resolution as narrative — "
-            "  Mercer-style, restrained, no fate talk.\n"
-            "- NO XP number in the closing line; XP is shown by the UI.\n"
+            f"- {'Award' if award_item else 'DO NOT award'} an item (pass ratio {'≥' if award_item else '<'} 50%).\n"
             "- Output strict JSON, no code fence.\n\n"
             "=== OUTPUT ===\n"
             "{\n"
             f"  \"item\": {item_schema},\n"
-            "  \"description\": \"closing line\",\n"
-            "  \"tone\": \"satisfaction|grim|hopeful|bitter|reverent\"\n"
+            "  \"description\": \"1 closing line ≤160 chars — Mercer-style, restrained, no fate/destiny talk\",\n"
+            "  \"tone\": \"satisfaction|grim|hopeful|bitter|reverent\",\n"
+            "  \"delivery_scene\": \"4-6 sentences, second person present tense. "
+            "The primary NPC approaches and delivers the reward IN CHARACTER. "
+            "Required elements: (1) brief physical setting — where you are when they find you; "
+            "(2) the NPC speaks in double-quoted dialogue — warm/relieved/somber matching outcome; "
+            "(3) the physical handover described concretely — weight, material, wrapped or sealed or worn; "
+            "(4) one final NPC line closing the relationship; "
+            "(5) one sentence that closes the arc — what you carry away. "
+            "If no item awarded: NPC closes with respect, apology, or a handshake — the moment still matters. "
+            "BANNED words: fate, destiny, the gods, the wind whispers. "
+            "Name the NPC — never 'the figure' or 'someone'.\"\n"
             "}\n"
         )
         chat = LlmChat(
@@ -1306,6 +1324,7 @@ async def generate_storyline_reward(
             }
         else:
             item = None
+        delivery_scene = str(data.get("delivery_scene") or "").strip()
         return {
             "xp": xp,
             "passed": passed,
@@ -1314,6 +1333,7 @@ async def generate_storyline_reward(
             "description": str(data.get("description") or fallback["description"])[:200],
             "item": item,
             "tone": str(data.get("tone") or fallback["tone"])[:24],
+            "delivery_scene": delivery_scene[:800] if delivery_scene else None,
         }
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"Reward LLM failed, using template: {exc}")

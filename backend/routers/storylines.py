@@ -1616,7 +1616,9 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
         "target_cards": target_cards,
         "npc_field_reveals": npc_field_reveals,
         "canon_scene": canon_scene,
-        "completion_narration": _build_completion_narration(storyline) if completed else None,
+        "completion_narration": (
+            (reward or {}).get("delivery_scene") or _build_completion_narration(storyline)
+        ) if completed else None,
     }
 
 

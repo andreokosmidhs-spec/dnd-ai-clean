@@ -593,11 +593,62 @@ async def draft_initial_scene(
         return fallback
 
 
+async def infer_player_intent(
+    storyline: Dict,
+    latest_action: str,
+) -> Optional[str]:
+    """Fast haiku pass: read every beat's outcome text + the current action and
+    infer what the player is *actually* pursuing — the goal beneath the task.
+    Returns a short internal DM note (never shown to the player).
+    Returns None on any failure so callers can degrade gracefully.
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+
+    beats = storyline.get("beats") or []
+    if not beats:
+        return None
+
+    beat_log = "\n".join(
+        f"  [{b.get('status','?')}] {b.get('title','')}: {(b.get('outcome_text') or b.get('description',''))[:180]}"
+        for b in beats
+    )
+    prompt = (
+        "You are the DM's private reasoning layer. Read the player's actions across "
+        "this storyline and infer their ACTUAL goal — the motivation beneath the surface task. "
+        "Go beyond 'they investigated' — name what they want emotionally and specifically: "
+        "protection, exposure, revenge, alliance, rescue, ownership, closure, redemption, etc. "
+        "Name who they want it from/for if the story made that clear. "
+        "Note what reward would feel genuinely earned to them.\n\n"
+        f"=== STORYLINE: {storyline.get('title','')} ===\n"
+        f"Hook: {storyline.get('hook_text','')}\n\n"
+        f"Beat history:\n{beat_log}\n\n"
+        f"Latest player action:\n{latest_action[:400]}\n\n"
+        "In 1-2 sentences, state the player's underlying goal and what would feel "
+        "meaningful as a reward. Be specific. This note is private to the DM."
+    )
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"intent-{uuid4()}",
+            system_message="You are an expert narrative designer. Respond with 1-2 sentences only.",
+        )
+        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.3, max_tokens=120)
+        result = await chat.send_message(UserMessage(text=prompt))
+        return (result or "").strip() or None
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"Intent inference failed (non-fatal): {exc}")
+        return None
+
+
 async def generate_next_scene(
     campaign: Dict,
     character: Dict,
     storyline: Dict,
     player_action_summary: str,
+    player_intent: Optional[str] = None,
 ) -> Dict:
     """After the current beat has been resolved (rolled/creative/skipped), the
     DM decides whether the scene RESOLVES here or whether to draft the NEXT
@@ -719,7 +770,14 @@ async def generate_next_scene(
             f"Beats so far ({len(beats)}):\n{beats_summary}\n\n"
             "=== PLAYER'S MOST RECENT ACTION ===\n"
             f"{(player_action_summary or '')[:500]}\n\n"
-            f"{time_block}\n\n"
+            + (
+                f"=== DM'S READ ON THE PLAYER (private — never quote this directly) ===\n"
+                f"{player_intent}\n"
+                "Weight your next beat toward this goal. The player should feel the story is "
+                "listening — not through meta-commentary, but through what the world offers them next.\n\n"
+                if player_intent else ""
+            )
+            + f"{time_block}\n\n"
             f"{pp_block}\n\n"
             f"{mission_block}"
             "=== RULES ===\n"
@@ -1143,6 +1201,7 @@ async def generate_storyline_reward(
     campaign: Dict,
     character: Dict,
     storyline: Dict,
+    player_intent: Optional[str] = None,
 ) -> Dict:
     """LLM-themed completion reward. XP is SCALED by passed-beat ratio.
     `item`, `title`, and `description` come from the LLM when available;
@@ -1170,7 +1229,7 @@ async def generate_storyline_reward(
         "tone": "satisfaction" if pass_ratio >= 0.5 else "bitter",
     }
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
     if not api_key:
         return fallback
     try:
@@ -1186,6 +1245,16 @@ async def generate_storyline_reward(
             '{"name": "...", "description": "...", "kind": "item|info|favor|key"}'
             if award_item else 'null'
         )
+        intent_block = (
+            f"=== WHAT THE PLAYER WAS REALLY AFTER ===\n{player_intent}\n"
+            "The reward MUST serve this specific goal. If they sought protection, give "
+            "them that person's loyalty or a token of it. If they sought closure, give "
+            "them the final piece that makes it real. If they failed their true goal, "
+            "the closing line should acknowledge what almost was — not just that they "
+            "finished the task. Never give generic loot when a specific meaningful "
+            "reward is possible.\n\n"
+            if player_intent else ""
+        )
         prompt = (
             "The player has resolved an investigation chain. Generate a CLOSING REWARD "
             "that feels earned by the actual beats they played through. The reward "
@@ -1193,6 +1262,7 @@ async def generate_storyline_reward(
             "failures honestly. If the player failed half or more of the beats, the "
             "tone should turn bittersweet or grim and NO item should be awarded.\n\n"
             f"=== STORYLINE ===\nTitle: {storyline.get('title','')}\n{beat_summary}\n\n"
+            f"{intent_block}"
             f"=== OUTCOME ===\nPassed: {passed} / {len(beats)} | Failed: {failed}\n"
             f"=== CAMPAIGN TONE ===\n{intent.get('tone','Balanced')} | {intent.get('focus','Mystery')}\n\n"
             f"=== TOTAL DIFFICULTY ===\nDC sum: {total_dc} (player will receive {xp} XP separately)\n\n"

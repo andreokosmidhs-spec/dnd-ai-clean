@@ -47,6 +47,7 @@ from services.storyline_service import (
     generate_complication_beat,
     generate_next_scene,
     generate_storyline_reward,
+    infer_player_intent,
     judge_creative_approach,
     storyline_to_dict,
 )
@@ -1514,12 +1515,23 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
             outcome_text=body.outcome_text,
             complication=complication_text,
         )
+        # Read between the lines: infer what the player is really pursuing.
+        # This private note shapes both the next beat and the final reward.
+        player_intent: Optional[str] = None
+        try:
+            player_intent = await infer_player_intent(
+                storyline=storyline,
+                latest_action=action_summary,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"Intent inference failed (non-fatal): {exc}")
         try:
             nxt = await generate_next_scene(
                 campaign=campaign,
                 character=character,
                 storyline=storyline,
                 player_action_summary=action_summary,
+                player_intent=player_intent,
             )
             if nxt.get("is_final"):
                 storyline["status"] = "completed"
@@ -1540,7 +1552,10 @@ async def resolve_storyline_beat(campaign_id: str, storyline_id: str, body: Reso
     reward: Optional[Dict] = None
     player_updates: Optional[Dict] = None
     if completed:
-        reward = await generate_storyline_reward(campaign, character, storyline)
+        reward = await generate_storyline_reward(
+            campaign, character, storyline,
+            player_intent=locals().get("player_intent"),
+        )
         storyline["reward"] = reward
         # Apply the awarded XP to the character + persist it. Surfaced back
         # to the frontend as `player_updates` so the XP bar can animate.

@@ -1182,10 +1182,11 @@ def _xp_for_total_dc(total_dc: int) -> int:
     return min(1200, int(round(base / 25)) * 25)
 
 
-def _scaled_xp(storyline: Dict) -> int:
-    """Scale base XP by `passed_beats / total_beats` so failed beats reduce
-    the reward proportionally. A run of 3-of-4 passes nets 75% of base XP.
-    All-fail completion still nets 0 XP (item also gated below).
+def _scaled_xp(storyline: Dict, character: Optional[Dict] = None) -> int:
+    """Scale base XP by `passed_beats / total_beats` and character level.
+    A run of 3-of-4 passes nets 75% of base XP. Level adds +6% per level
+    above 1 so higher-level characters earn proportionally more for the same
+    investigation difficulty.
     """
     base = _xp_for_total_dc(int(storyline.get("total_dc") or 0))
     beats = storyline.get("beats") or []
@@ -1193,8 +1194,11 @@ def _scaled_xp(storyline: Dict) -> int:
         return base
     passed = sum(1 for b in beats if b.get("status") == "passed")
     ratio = passed / float(len(beats))
+    level = max(1, int((character or {}).get("level") or 1))
+    level_mult = 1.0 + (level - 1) * 0.06  # +6% per level; L1=1.0x, L5=1.24x, L10=1.54x
+    scaled = int(base * ratio * level_mult)
     # Round to nearest 25 for cleanliness; never below 0.
-    return max(0, int(round(base * ratio / 25)) * 25)
+    return max(0, int(round(scaled / 25)) * 25)
 
 
 async def generate_storyline_reward(
@@ -1208,13 +1212,24 @@ async def generate_storyline_reward(
     item is only awarded when at least half the beats passed.
     """
     total_dc = int(storyline.get("total_dc") or 0)
-    xp = _scaled_xp(storyline)
+    xp = _scaled_xp(storyline, character)
     beats = storyline.get("beats") or []
     passed = sum(1 for b in beats if b.get("status") == "passed")
     failed = sum(1 for b in beats if b.get("status") == "failed")
     pass_ratio = passed / float(len(beats)) if beats else 0
-    # Item is only awarded if at least half the beats passed.
-    award_item = pass_ratio >= 0.5
+    # Graduated item tiers by pass ratio:
+    #   < 30%: no reward — barely engaged
+    #   30–70%: info/favor/key only — partial success earns non-physical rewards
+    #   >= 70%: full item — dominant pass earns a tangible object
+    if pass_ratio >= 0.7:
+        award_item = True
+        item_tier = "full"
+    elif pass_ratio >= 0.3:
+        award_item = True
+        item_tier = "partial"  # non-physical rewards only
+    else:
+        award_item = False
+        item_tier = "none"
 
     fallback = {
         "xp": xp,
@@ -1241,42 +1256,125 @@ async def generate_storyline_reward(
         )
         intent = campaign.get("intent") or {}
 
-        item_schema = (
-            '{"name": "...", "description": "...", "kind": "item|info|favor|key"}'
-            if award_item else 'null'
+        # Collect unique named NPCs from beat targets and enrich with card personality data.
+        seen_npc_names: set = set()
+        npc_profiles: list = []
+        # Build a lookup from the recent cards already loaded onto the campaign dict.
+        recent_cards = campaign.get("_recent_cards") or []
+        card_by_name: dict = {
+            (c.get("title") or "").strip().lower(): c
+            for c in recent_cards
+            if c.get("type") == "character"
+        }
+        for b in beats:
+            for t in (b.get("targets") or []):
+                n = (t.get("name") or "").strip()
+                if not n or n in seen_npc_names:
+                    continue
+                seen_npc_names.add(n)
+                card = card_by_name.get(n.lower())
+                profile_lines = [f"NPC: {n}  ({t.get('type','npc')})"]
+                if card:
+                    sc = card.get("secret_content") or {}
+                    revealed = set(card.get("revealed_fields") or [])
+                    speech = sc.get("speech_style") or ""
+                    mannerisms = sc.get("mannerisms") or []
+                    motivation = sc.get("current_motivation") or ""
+                    personality = sc.get("personality") or {}
+                    if speech:
+                        profile_lines.append(f"  Speech style: {speech}")
+                    if mannerisms:
+                        profile_lines.append(f"  Mannerisms: {'; '.join(mannerisms[:2])}")
+                    if motivation:
+                        profile_lines.append(f"  Motivation toward player: {motivation}")
+                    # Only include personality fields the player has actually uncovered.
+                    for key, label in [
+                        ("personality.trait", "Trait"),
+                        ("personality.ideal", "Ideal"),
+                        ("personality.bond", "Bond"),
+                        ("personality.flaw", "Flaw"),
+                    ]:
+                        if key in revealed and personality.get(key.split(".")[-1]):
+                            profile_lines.append(
+                                f"  {label} (player-revealed): {personality[key.split('.')[-1]]}"
+                            )
+                    bg = sc.get("background") or ""
+                    if "background" in revealed and bg:
+                        profile_lines.append(f"  Background: {bg[:120]}")
+                npc_profiles.append("\n".join(profile_lines))
+        npc_block = (
+            "=== NPC PROFILES ===\n"
+            "Use these to make each NPC's dialogue sound like THAT specific person.\n"
+            + "\n\n".join(npc_profiles) + "\n\n"
+        ) if npc_profiles else ""
+
+        reward_kind_guide = (
+            "- item → NPC physically unwraps/hands over the object; describe weight, "
+            "material, history in 1 sentence; NPC explains why they're giving it.\n"
+            "- info → NPC leans in, whispers, or shows a document; the revelation IS "
+            "the reward; use hushed or confessional dialogue.\n"
+            "- favor → NPC makes a solemn promise, extends a hand or meets your eyes; "
+            "dialogue is binding and personal, not casual.\n"
+            "- key → NPC hands over a physical token, writ, or badge; explains what "
+            "door it opens and any conditions."
         )
+        if item_tier == "full":
+            item_schema = '{"name": "...", "description": "...", "kind": "item|info|favor|key"}'
+        elif item_tier == "partial":
+            item_schema = '{"name": "...", "description": "...", "kind": "info|favor|key"}'
+        else:
+            item_schema = "null"
         intent_block = (
             f"=== WHAT THE PLAYER WAS REALLY AFTER ===\n{player_intent}\n"
-            "The reward MUST serve this specific goal. If they sought protection, give "
-            "them that person's loyalty or a token of it. If they sought closure, give "
-            "them the final piece that makes it real. If they failed their true goal, "
-            "the closing line should acknowledge what almost was — not just that they "
-            "finished the task. Never give generic loot when a specific meaningful "
+            "The reward MUST serve this specific goal — if they sought protection, the "
+            "NPC's gratitude IS the reward; if they sought closure, give the final piece "
+            "that makes it real. Never give generic loot when a specific meaningful "
             "reward is possible.\n\n"
             if player_intent else ""
         )
+        identity = (character or {}).get("identity") or {}
+        hero_name = identity.get("name") or "the hero"
         prompt = (
-            "The player has resolved an investigation chain. Generate a CLOSING REWARD "
-            "that feels earned by the actual beats they played through. The reward "
-            "should reflect the BEAT OUTCOMES below — celebrate passes, acknowledge "
-            "failures honestly. If the player failed half or more of the beats, the "
-            "tone should turn bittersweet or grim and NO item should be awarded.\n\n"
-            f"=== STORYLINE ===\nTitle: {storyline.get('title','')}\n{beat_summary}\n\n"
+            "You are the DM closing an investigation arc for a D&D RPG. Generate a "
+            "reward that feels EARNED and a closing scene that makes the player feel the "
+            "story mattered and the NPCs are real people with memories.\n\n"
+            f"=== STORYLINE ===\nTitle: {storyline.get('title','')}\n"
+            f"Hook: {storyline.get('hook_text','')}\n\n"
+            f"{npc_block}"
+            f"=== WHAT HAPPENED (beat by beat) ===\n{beat_summary}\n\n"
             f"{intent_block}"
             f"=== OUTCOME ===\nPassed: {passed} / {len(beats)} | Failed: {failed}\n"
             f"=== CAMPAIGN TONE ===\n{intent.get('tone','Balanced')} | {intent.get('focus','Mystery')}\n\n"
-            f"=== TOTAL DIFFICULTY ===\nDC sum: {total_dc} (player will receive {xp} XP separately)\n\n"
+            "=== REWARD KIND DELIVERY GUIDE ===\n"
+            f"{reward_kind_guide}\n\n"
             "=== RULES ===\n"
-            f"- {'Award' if award_item else 'DO NOT award'} an item.\n"
-            "- 1 short closing line (<=160 chars) that lands the resolution as narrative — "
-            "  Mercer-style, restrained, no fate talk.\n"
-            "- NO XP number in the closing line; XP is shown by the UI.\n"
-            "- Output strict JSON, no code fence.\n\n"
+            + (
+                f"- Award a PHYSICAL item (kind=item allowed): pass ratio {round(pass_ratio*100)}% ≥ 70%.\n"
+                if item_tier == "full" else
+                f"- Award info/favor/key ONLY — NO physical item: pass ratio {round(pass_ratio*100)}% is 30–70%. "
+                "Use kind='info' or 'favor' or 'key', never 'item'.\n"
+                if item_tier == "partial" else
+                f"- DO NOT award any item: pass ratio {round(pass_ratio*100)}% < 30%. Item must be null.\n"
+            )
+            + "- Output strict JSON, no code fence.\n\n"
             "=== OUTPUT ===\n"
             "{\n"
             f"  \"item\": {item_schema},\n"
-            "  \"description\": \"closing line\",\n"
-            "  \"tone\": \"satisfaction|grim|hopeful|bitter|reverent\"\n"
+            "  \"description\": \"1 closing line ≤160 chars — Mercer-style, restrained, no fate/destiny talk\",\n"
+            "  \"tone\": \"satisfaction|grim|hopeful|bitter|reverent\",\n"
+            "  \"delivery_scene\": \"4-6 sentences, second person present tense. "
+            "The primary NPC from the NPC PROFILES block delivers the reward IN CHARACTER. "
+            "CRITICAL: the NPC's dialogue must sound like THEM — use their speech_style, "
+            "mannerisms, and any revealed personality traits. A gravelly dockworker and a "
+            "nervous scholar must sound completely different. "
+            "Required elements: (1) brief physical setting — where you are when they approach; "
+            "(2) the NPC speaks their FIRST line in double quotes — voice must match their profile; "
+            "(3) physical handover matched to the reward kind (see reward kind guidance above); "
+            "(4) one final NPC line — closes the relationship, references something specific "
+            "from what happened (a beat they witnessed or a choice the player made); "
+            "(5) one sentence closing the arc from the player's POV — what you walk away carrying. "
+            "If no item: NPC closes with respect or honest acknowledgement — even failure deserves a real moment. "
+            "BANNED: fate, destiny, the gods, the wind whispers, 'the figure', 'someone approaches'.\"\n"
             "}\n"
         )
         chat = LlmChat(
@@ -1299,13 +1397,18 @@ async def generate_storyline_reward(
 
         item = data.get("item") if isinstance(data.get("item"), dict) else None
         if item and award_item:
+            kind = str(item.get("kind") or "item").strip().lower()[:16]
+            # Enforce partial-tier constraint: downgrade physical "item" to "info"
+            if item_tier == "partial" and kind == "item":
+                kind = "info"
             item = {
                 "name": str(item.get("name") or "Token of the Investigation")[:60],
                 "description": str(item.get("description") or "")[:240],
-                "kind": str(item.get("kind") or "item")[:16],
+                "kind": kind,
             }
         else:
             item = None
+        delivery_scene = str(data.get("delivery_scene") or "").strip()
         return {
             "xp": xp,
             "passed": passed,
@@ -1314,6 +1417,7 @@ async def generate_storyline_reward(
             "description": str(data.get("description") or fallback["description"])[:200],
             "item": item,
             "tone": str(data.get("tone") or fallback["tone"])[:24],
+            "delivery_scene": delivery_scene[:800] if delivery_scene else None,
         }
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"Reward LLM failed, using template: {exc}")

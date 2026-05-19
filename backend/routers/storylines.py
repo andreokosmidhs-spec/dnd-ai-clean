@@ -1832,22 +1832,63 @@ async def creative_approach_endpoint(
 
 @router.post("/{campaign_id}/storylines/{storyline_id}/abandon")
 async def abandon_storyline(campaign_id: str, storyline_id: str):
-    res = await _storylines_collection().update_one(
-        {"campaign_id": campaign_id, "id": storyline_id, "status": "active"},
+    doc = await _storylines_collection().find_one(
+        {"campaign_id": campaign_id, "id": storyline_id}, {"_id": 0}
+    )
+    if not doc or doc.get("status") != "active":
+        raise HTTPException(status_code=404, detail="Active storyline not found")
+
+    await _storylines_collection().update_one(
+        {"campaign_id": campaign_id, "id": storyline_id},
         {"$set": {"status": "abandoned", "updated_at": datetime.now(timezone.utc)}},
     )
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Active storyline not found")
     # Mark linked quest card failed
-    doc = await _storylines_collection().find_one(
-        {"campaign_id": campaign_id, "id": storyline_id}, {"quest_card_id": 1}
-    )
-    if doc and doc.get("quest_card_id"):
+    if doc.get("quest_card_id"):
         await _cards_collection().update_one(
             {"campaign_id": campaign_id, "id": doc["quest_card_id"]},
             {"$set": {"status": "failed", "updatedAt": datetime.now(timezone.utc)}},
         )
-    return {"ok": True}
+
+    # Template-based farewell narration — no LLM call so abandon is instant.
+    title = (doc.get("title") or "the investigation").lower().rstrip(".")
+    beats = doc.get("beats") or []
+    passed = sum(1 for b in beats if b.get("status") == "passed")
+    total = len(beats)
+
+    npc_names: List[str] = []
+    for b in beats:
+        for t in (b.get("targets") or []):
+            if isinstance(t, dict) and t.get("name"):
+                n = t["name"].strip()
+                if n and n not in npc_names:
+                    npc_names.append(n)
+
+    if passed > 0 and npc_names:
+        who = npc_names[0]
+        farewell = (
+            f"You step back from {title} — {passed} lead{'s' if passed != 1 else ''} "
+            f"followed, the rest left untouched. {who} won't forget you were here. "
+            "The thread unravels into the city's noise, neither resolved nor forgotten."
+        )
+    elif passed > 0:
+        farewell = (
+            f"You walk away from {title} with {passed} of {total} "
+            f"thread{'s' if total != 1 else ''} followed. "
+            "What you found stays with you; what you left is anyone's to find."
+        )
+    elif npc_names:
+        who = npc_names[0]
+        farewell = (
+            f"You pull back from {title}, nothing resolved. "
+            f"{who} watches you go — the silence between you will not stay quiet."
+        )
+    else:
+        farewell = (
+            f"You let {title} go. The question you started with is still open, "
+            "somewhere in the dark — waiting."
+        )
+
+    return {"ok": True, "farewell_narration": farewell}
 
 
 # ==================== Sealed Lead Cards ====================

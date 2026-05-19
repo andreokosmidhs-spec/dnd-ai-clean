@@ -2452,7 +2452,26 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
       <StorylineRewardModal
         open={!!showRewardModal}
         reward={showRewardModal}
-        onClose={() => setShowRewardModal(null)}
+        onClose={() => {
+          setShowRewardModal(null);
+          // Inject a brief "what's next" DM prompt so the player isn't left
+          // staring at a blank log after the reward modal closes.
+          const nextStepText = "The matter is settled. Pull a new card from your deck — another thread will find you, if you’re willing to pull it.";
+          const nextStep = {
+            type: 'dm',
+            text: nextStepText,
+            message: nextStepText,
+            timestamp: Date.now(),
+            source: 'storyline-next-step',
+          };
+          setMessages((prev) => {
+            const next = [...prev, nextStep].slice(-200);
+            if (sessionId) {
+              try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+            }
+            return next;
+          });
+        }}
       />
 
       {/* Hook hint popover — small tip when player clicks an inline hook */}

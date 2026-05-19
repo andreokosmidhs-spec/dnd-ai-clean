@@ -396,6 +396,11 @@ const ActiveInvestigationPanel = ({
         { method: 'POST' }
       );
       if (!res.ok) throw new Error();
+      const data = await res.json().catch(() => ({}));
+      // Pipe the farewell narration into the Adventure Log before closing
+      if (data.farewell_narration && onCreativeNarration) {
+        onCreativeNarration(data.farewell_narration, { kind: 'storyline-abandoned' }, storyline);
+      }
       toast.success('Investigation abandoned.');
       onClose && onClose();
     } catch {

@@ -1251,7 +1251,7 @@ async def generate_storyline_reward(
         from emergentintegrations.llm.chat import LlmChat, UserMessage
 
         beat_summary = "\n".join(
-            f"- {b.get('title','')}: {b.get('outcome_text') or b.get('description','')}"
+            f"- [{b.get('status','?')}] {b.get('title','')}: {b.get('outcome_text') or b.get('description','')}"
             for b in (storyline.get("beats") or [])
         )
         intent = campaign.get("intent") or {}

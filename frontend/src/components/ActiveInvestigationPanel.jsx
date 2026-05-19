@@ -671,55 +671,45 @@ const CreativeApproachDialog = ({ open, beat, busy, text, setText, onSubmit, onC
 
 export const StorylineRewardModal = ({ open, reward, onClose }) => {
   if (!reward) return null;
+  const scene = reward.delivery_scene || reward.description;
   return (
     <Dialog open={!!open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-stone-950 border-amber-500/40 text-amber-100 max-w-md" data-testid="storyline-reward-modal">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-amber-200">
-            <Trophy className="h-5 w-5 text-amber-300" />
-            Investigation Resolved — {reward.title}
-          </DialogTitle>
-          <DialogDescription className="text-amber-100/80 italic font-serif pt-2">
-            {reward.description}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="bg-stone-950 border-amber-500/40 text-amber-100 max-w-lg" data-testid="storyline-reward-modal">
 
-        <div className="space-y-3 py-2">
-          <div className="flex items-center gap-2 flex-wrap" data-testid="reward-xp">
-            <Badge className="bg-amber-500 text-black px-3 py-1 text-sm">+ {reward.xp} XP</Badge>
-            {(reward.passed != null && reward.failed != null) && (
-              <Badge variant="outline" className="border-amber-300/40 text-amber-100/80">
-                {reward.passed} passed · {reward.failed} failed
-              </Badge>
-            )}
-            {reward.tone && (
-              <Badge variant="outline" className="border-amber-300/40 text-amber-100/80">
-                tone · {reward.tone}
-              </Badge>
-            )}
+        {/* Immersive scene — the DM narrates the NPC delivering the reward */}
+        <div className="pt-2 pb-1">
+          <p className="text-amber-100/90 font-serif italic leading-relaxed text-[14px] whitespace-pre-line">
+            {scene}
+          </p>
+        </div>
+
+        {/* Thin divider */}
+        <div className="border-t border-amber-500/20 my-1" />
+
+        {/* Item badge — shown below the scene so it feels like a record, not a popup */}
+        {reward.item && (
+          <div className="flex items-center gap-2 px-1" data-testid="reward-item">
+            <Scroll className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+            <span className="text-[12px] font-semibold text-amber-200">{reward.item.name}</span>
+            <Badge variant="outline" className="text-[10px] border-amber-400/30 text-amber-300/70 ml-auto">
+              {reward.item.kind || 'item'}
+            </Badge>
           </div>
+        )}
 
-          {reward.item ? (
-            <div className="rounded-md border border-amber-500/30 bg-stone-900/80 p-3" data-testid="reward-item">
-              <div className="flex items-center gap-2">
-                <Scroll className="h-4 w-4 text-amber-300" />
-                <span className="font-semibold text-amber-100">{reward.item.name}</span>
-                <Badge variant="outline" className="text-[10px] border-amber-300/40 text-amber-100/70 ml-auto">
-                  {reward.item.kind || 'item'}
-                </Badge>
-              </div>
-              <p className="text-[12.5px] text-amber-100/80 mt-1.5 leading-snug">{reward.item.description}</p>
-            </div>
-          ) : (
-            <div className="text-[12px] text-amber-100/65 italic">
-              No item this run — too many threads slipped through your fingers.
-            </div>
+        {/* XP + stats row */}
+        <div className="flex items-center gap-2 flex-wrap px-1" data-testid="reward-xp">
+          <Badge className="bg-amber-500 text-black px-3 py-1 text-sm font-bold">+ {reward.xp} XP</Badge>
+          {(reward.passed != null && reward.failed != null) && (
+            <span className="text-[11px] text-amber-100/50">
+              {reward.passed} passed · {reward.failed} failed
+            </span>
           )}
         </div>
 
         <div className="flex justify-end pt-1">
-          <Button size="sm" className="bg-amber-600 hover:bg-amber-500 text-black" onClick={onClose} data-testid="reward-close-btn">
-            Continue
+          <Button size="sm" className="bg-amber-600 hover:bg-amber-500 text-black font-semibold" onClick={onClose} data-testid="reward-close-btn">
+            Continue your journey
           </Button>
         </div>
       </DialogContent>

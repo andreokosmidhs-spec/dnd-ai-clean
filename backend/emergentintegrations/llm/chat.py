@@ -34,10 +34,11 @@ _CLAUDE_MODEL_MAP = {
 class UserMessage:
     """Simple message wrapper compatible with the real emergentintegrations UserMessage."""
 
-    def __init__(self, text: str):
+    def __init__(self, text: str, file_contents=None, **_kwargs):
         self.text = text
         self.role = "user"
         self.content = text
+        self.file_contents = file_contents or []
 
 
 class FileContent:

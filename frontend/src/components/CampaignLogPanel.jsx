@@ -4,8 +4,9 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 import { Skeleton } from './ui/skeleton';
-import { 
-  X, 
+import {
+  X,
+  Plus,
   MapPin,
   Users,
   Scroll,
@@ -25,6 +26,7 @@ import { useOpenLeads, useUpdateLeadStatus } from '../hooks/useLeads';
 // Import extracted components
 import { KnowledgeCard } from './campaignLog/KnowledgeCard';
 import CardModal from './campaignLog/CardModal';
+import CardCreationModal from './campaignLog/CardCreationModal';
 import { usePinnedCards } from './campaignLog/usePinnedCards';
 import { CARD_TYPE_CONFIG, normalizeCardType } from './campaignLog/cardTypeConfig';
 
@@ -220,7 +222,10 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
   const [selectedCard, setSelectedCard] = useState(null);
   const [selectedType, setSelectedType] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  
+
+  // Card creation modal
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
   // Use extracted pinned cards hook
   const { pinnedIds, togglePin, isPinned } = usePinnedCards(campaignId);
   
@@ -432,14 +437,25 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
                 <p className="text-sm text-gray-500">{totalCount} cards collected</p>
               </div>
             </div>
-            <Button
-              onClick={onClose}
-              variant="ghost"
-              size="sm"
-              className="h-10 w-10 p-0 text-gray-400 hover:text-white hover:bg-gray-800"
-            >
-              <X className="h-5 w-5" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => setShowCreateModal(true)}
+                variant="ghost"
+                size="sm"
+                title="Create card"
+                className="h-10 w-10 p-0 text-gray-400 hover:text-orange-400 hover:bg-gray-800"
+              >
+                <Plus className="h-5 w-5" />
+              </Button>
+              <Button
+                onClick={onClose}
+                variant="ghost"
+                size="sm"
+                className="h-10 w-10 p-0 text-gray-400 hover:text-white hover:bg-gray-800"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
           </div>
           
           {/* Search and filters */}
@@ -545,6 +561,15 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
         campaignId={campaignId}
         onCardUpdated={loadAllData}
       />
+
+      {/* DM Card Creation Modal */}
+      {showCreateModal && (
+        <CardCreationModal
+          campaignId={campaignId}
+          onClose={() => setShowCreateModal(false)}
+          onCardCreated={loadAllData}
+        />
+      )}
     </div>
   );
 };

@@ -11,9 +11,10 @@ import logging
 import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+from uuid import uuid4
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from services.campaign_service import build_v2_entity_index
@@ -673,6 +674,80 @@ async def toggle_pin(campaign_id: str, card_id: str):
         {"$set": {"pinned": new_pinned, "updatedAt": datetime.now(timezone.utc).isoformat()}},
     )
     return {"success": True, "pinned": new_pinned}
+
+
+_CARD_DEFAULT_STATUS: Dict[str, str] = {
+    "item":      "acquired",
+    "spell":     "known",
+    "quest":     "active",
+    "favor":     "owed",
+    "curse":     "active",
+    "faction":   "discovered",
+    "location":  "visited",
+    "character": "known",
+    "npc":       "known",
+}
+
+
+@router.post("/{campaign_id}/cards")
+async def create_card(campaign_id: str, request: Request):
+    """DM-created card — insert directly into campaign_cards."""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    body: dict = await request.json()
+
+    card_type = (body.get("type") or "").strip().lower()
+    title = (body.get("title") or "").strip()
+
+    if not card_type:
+        raise HTTPException(status_code=400, detail="'type' is required")
+    if not title:
+        raise HTTPException(status_code=400, detail="'title' is required")
+
+    now = datetime.now(timezone.utc).isoformat()
+    card_id = str(uuid4())
+
+    # Protected fields that must not be overwritten by the caller
+    protected = {"id", "campaign_id", "source", "auto_seeded", "is_new", "createdAt", "updatedAt"}
+
+    card: dict = {
+        "id": card_id,
+        "campaign_id": campaign_id,
+        "type": card_type,
+        "title": title,
+        "content": body.get("content", ""),
+        "status": body.get("status") or _CARD_DEFAULT_STATUS.get(card_type, "active"),
+        "source": "dm_created",
+        "auto_seeded": False,
+        "is_new": True,
+        "pinned": False,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+
+    # Merge caller-supplied fields (skip protected)
+    for k, v in body.items():
+        if k not in protected:
+            card[k] = v
+
+    # Location: resolve biome metadata from catalog
+    if card_type == "location":
+        biome_key = body.get("biome", "")
+        if biome_key:
+            from data.biomes import BIOMES  # noqa: PLC0415
+            biome_def = BIOMES.get(biome_key)
+            if biome_def:
+                card["biome"] = biome_key
+                card["biome_label"] = biome_def["label"]
+                card["biome_accent"] = biome_def["accent"]
+                card["survival_dc_mod"] = biome_def["survival_dc_mod"]
+                card["nature_dc_mod"] = biome_def["nature_dc_mod"]
+
+    await db.campaign_cards.insert_one(card)
+    card.pop("_id", None)
+    return card
 
 
 @router.post("/{campaign_id}/dm/action")

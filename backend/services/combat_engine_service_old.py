@@ -74,39 +74,68 @@ def start_combat(
     character_state: Dict[str, Any],
     enemy_templates: List[Dict[str, Any]],
     campaign_id: str,
-    character_id: str
+    character_id: str,
+    world_state: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Initialize combat state.
-    
+
     Args:
         character_state: Player character state
         enemy_templates: List of enemy templates to spawn
         campaign_id: Campaign ID
         character_id: Character ID
-    
+        world_state: Optional world_state dict (for time/location → light level)
+
     Returns:
         CombatState dict
     """
-    # Build enemy list
+    from services.light_level_service import compute_light_level, passive_condition_chip
+
+    # Resolve light level from world_state
+    ws = world_state or {}
+    clock_hour = ws.get("clock_hour", 9)
+    location_name = ws.get("current_location") or ws.get("location") or ""
+    light_level = compute_light_level(clock_hour, location_name)
+
+    # Battlefield context
+    battlefield = {
+        "name": location_name or "Unknown Location",
+        "light_level": light_level,
+        "passive_conditions": [c for c in [passive_condition_chip(light_level)] if c],
+    }
+
+    # Build enemy list with lane assignment
     enemies = []
     for i, template in enumerate(enemy_templates):
         enemy_id = f"enemy_{i+1}"
-        enemies.append(build_enemy_from_blueprint(template, enemy_id))
-    
+        enemy = build_enemy_from_blueprint(template, enemy_id)
+        # Assign initial lane: ranged/caster types start further back
+        name_lower = (enemy.get("name") or "").lower()
+        if any(k in name_lower for k in ("mage", "wizard", "archer", "ranger", "priest")):
+            enemy["lane"] = 3
+        elif any(k in name_lower for k in ("brute", "champion", "barbarian", "berserker")):
+            enemy["lane"] = 1
+        else:
+            enemy["lane"] = 2
+        enemies.append(enemy)
+
     # Simple initiative: player always goes first
     turn_order = ["player"] + [e["id"] for e in enemies]
-    
+
     combat_state = {
         "enemies": enemies,
         "turn_order": turn_order,
         "active_turn": "player",
         "round": 1,
         "combat_over": False,
-        "outcome": None
+        "outcome": None,
+        "battlefield": battlefield,
+        "light_level": light_level,
+        "player_lane": 1,
     }
-    
-    logger.info(f"⚔️ Combat started: {len(enemies)} enemies, player goes first")
+
+    logger.info(f"⚔️ Combat started: {len(enemies)} enemies, light={light_level['level']}, player goes first")
     return combat_state
 
 

@@ -23,7 +23,8 @@ const FocusedRPGInner = ({
   currentLocation,
   onLocationChange,
   inventory,
-  setInventory
+  setInventory,
+  onCombatStart,
 }) => {
   const adventureLogRef = useRef();
   const [input, setInput] = useState('');
@@ -97,7 +98,7 @@ const FocusedRPGInner = ({
       updateCharacter(contextCharacterData);
       setLastSyncedCharacter(character);
     }
-  }, [character]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [character]); // eslint-disable-line
 
   // Sync intent mode from AdventureLog
   useEffect(() => {
@@ -181,6 +182,7 @@ const FocusedRPGInner = ({
               onCheckRequest={(checkRequest) => {
                 setPendingCheck(checkRequest);
               }}
+              onCombatStart={onCombatStart}
             />
           </div>
 

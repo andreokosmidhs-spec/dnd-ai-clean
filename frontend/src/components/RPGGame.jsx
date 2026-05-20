@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import MainMenu from './MainMenu';
 import FocusedRPG from './FocusedRPG';
+import CombatScreen from './CombatScreen';
 import WorldMap from './WorldMap';
 import WorldMapGraph from './WorldMapGraph';
 import Inventory from './Inventory';
@@ -101,6 +102,8 @@ const RPGGame = () => {
   
   // gameState tracks only the main menu vs. in-game experience; new campaigns now flow through CharacterCreationV2.
   const [gameState, setGameState] = useState('main-menu'); // main-menu, playing
+  // Full-screen combat overlay — set to the combatState dict when combat begins, null otherwise.
+  const [combatScene, setCombatScene] = useState(null);
   // ESC pause menu — only meaningful in-game.
   const [escMenuOpen, setEscMenuOpen] = useState(false);
   // DM Notebook — opened from the ESC pause menu, shows persistent lessons.
@@ -1165,6 +1168,7 @@ const RPGGame = () => {
             onLocationChange={changeLocation}
             inventory={inventory}
             setInventory={setInventory}
+            onCombatStart={(cs) => setCombatScene(cs)}
           />
         )}
         
@@ -1247,6 +1251,28 @@ const RPGGame = () => {
         onClose={() => setCanonTimelineOpen(false)}
         campaignId={campaignId}
       />
+
+      {/* Full-screen combat overlay — renders on top of everything when combat is active */}
+      {combatScene && (
+        <CombatScreen
+          combatState={combatScene}
+          onCombatEnd={({ outcome, narration }) => {
+            setCombatScene(null);
+            if (narration) {
+              addToGameLog({ type: 'dm', message: narration, timestamp: Date.now() });
+            }
+            addToGameLog({
+              type: 'system',
+              message: outcome === 'victory'
+                ? '⚔️ Victory! Combat has ended.'
+                : outcome === 'fled'
+                  ? '🏃 You escaped from combat.'
+                  : '💀 You were defeated...',
+              timestamp: Date.now(),
+            });
+          }}
+        />
+      )}
     </div>
   );
 };

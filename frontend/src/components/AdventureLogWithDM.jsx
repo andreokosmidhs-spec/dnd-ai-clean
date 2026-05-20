@@ -1070,25 +1070,31 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
       if (data.combat_started) {
         console.log('⚔️ Combat started!');
         setIsCombatActive(true);
-        setCombatState({ isActive: true, combatId: `combat-${Date.now()}` });
+        const cs = { isActive: true, combatId: `combat-${Date.now()}`, ...(data.combat_state || {}) };
+        setCombatState(cs);
+        // Bubble up to RPGGame → triggers full-screen CombatScreen
+        if (props.onCombatStart) props.onCombatStart(cs);
       }
-      
+
       if (data.combat_active && data.combat_state) {
         console.log('⚔️ Combat continues...');
         setIsCombatActive(true);
-        setCombatState({ isActive: true, ...data.combat_state });
+        const cs = { isActive: true, ...data.combat_state };
+        setCombatState(cs);
+        // If RPGGame doesn't have the screen up yet, open it
+        if (props.onCombatStart) props.onCombatStart(cs);
       }
-      
+
       if (data.combat_over) {
         console.log('⚔️ Combat ended:', data.outcome);
         setIsCombatActive(false);
-        setCombatState({ 
-          isActive: false, 
+        setCombatState({
+          isActive: false,
           outcome: data.outcome,
           combatId: null,
           participants: [],
           turnOrder: [],
-          currentTurnIndex: 0
+          currentTurnIndex: 0,
         });
       }
 

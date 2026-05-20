@@ -2347,7 +2347,8 @@ async def process_action(request: dict):
                     target_resolution=target_resolution,
                     character_state=char_doc["character_state"],
                     world_blueprint=campaign["world_blueprint"],
-                    character_level=character_level
+                    character_level=character_level,
+                    world_state=world_state.get("world_state", world_state) if isinstance(world_state, dict) else {},
                 )
                 
                 # Process player's first attack mechanically
@@ -3025,7 +3026,8 @@ async def process_action(request: dict):
                 character_state=char_doc["character_state"],
                 enemy_templates=normalized_enemies,
                 campaign_id=campaign_id,
-                character_id=character_id
+                character_id=character_id,
+                world_state=world_state.get("world_state", world_state) if isinstance(world_state, dict) else {},
             )
             
             # Create CombatDoc

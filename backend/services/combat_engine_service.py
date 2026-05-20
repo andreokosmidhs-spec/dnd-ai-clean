@@ -102,53 +102,69 @@ def start_combat_with_target(
     target_resolution: Dict[str, Any],
     character_state: Dict[str, Any],
     world_blueprint: Dict[str, Any],
-    character_level: int = 1
+    character_level: int = 1,
+    world_state: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Initialize combat state with a resolved target.
-    
+
     Args:
         target_resolution: Result from target_resolver
         character_state: Player character state
         world_blueprint: World blueprint
         character_level: Player character level
-    
+        world_state: Optional world_state dict (time/location → light level)
+
     Returns:
         CombatState dict
     """
+    from services.light_level_service import compute_light_level, passive_condition_chip
+
+    ws = world_state or {}
+    clock_hour = ws.get("clock_hour", 9)
+    location_name = ws.get("current_location") or ws.get("location") or ""
+    light_level = compute_light_level(clock_hour, location_name)
+    battlefield = {
+        "name": location_name or "Unknown Location",
+        "light_level": light_level,
+        "passive_conditions": [c for c in [passive_condition_chip(light_level)] if c],
+    }
+
     enemies = []
     converted_npcs = []
-    
+
     if target_resolution['target_type'] == 'npc':
-        # Convert NPC to enemy
         npc_enemy = convert_npc_to_enemy(
             target_resolution['target_data'],
             world_blueprint,
             character_level
         )
+        name_lower = (npc_enemy.get("name") or "").lower()
+        npc_enemy["lane"] = 3 if any(k in name_lower for k in ("mage", "wizard", "archer")) else 2
         enemies.append(npc_enemy)
         converted_npcs.append(target_resolution['target_id'])
         logger.info(f"⚔️ Converted NPC {target_resolution['target_name']} to enemy")
     elif target_resolution['target_type'] == 'enemy':
-        # Already an enemy, add to combat
         enemies.append(target_resolution['target_data'])
         logger.info(f"⚔️ Starting combat with enemy {target_resolution['target_name']}")
-    
-    # Simple initiative: player always goes first
+
     turn_order = ["player"] + [e["id"] for e in enemies]
-    
+
     combat_state = {
         "enemies": enemies,
-        "participants": [],  # Will be populated with CombatParticipant models
+        "participants": [],
         "turn_order": turn_order,
         "active_turn": "player",
         "round": 1,
         "combat_over": False,
         "outcome": None,
-        "converted_npcs": converted_npcs
+        "converted_npcs": converted_npcs,
+        "battlefield": battlefield,
+        "light_level": light_level,
+        "player_lane": 1,
     }
-    
-    logger.info(f"⚔️ Combat initialized: {len(enemies)} enemies, player goes first")
+
+    logger.info(f"⚔️ Combat initialized: {len(enemies)} enemies, light={light_level['level']}, player goes first")
     return combat_state
 
 

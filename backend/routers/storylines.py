@@ -2387,13 +2387,17 @@ async def submit_dm_feedback(campaign_id: str, storyline_id: str, body: DMFeedba
             "rewind_to_scene_id": rewind_target.get("id") if rewind_target else None,
             "rewind_to_scene_number": rewind_target.get("scene_number") if rewind_target else None,
         }
-        beats.append(correction_beat)
-        new_idx = len(beats) - 1
+        # Truncate at the contested beat index: replace beat[idx] and remove
+        # all beats after it (they were generated from the wrong outcome and
+        # are no longer coherent). The correction beat takes that slot so the
+        # total count stays controlled and the 7-beat cap isn't hit early.
+        corrected_beats = beats[:idx] + [correction_beat]
+        new_idx = len(corrected_beats) - 1
         await _storylines_collection().update_one(
             {"campaign_id": campaign_id, "id": storyline_id},
-            {"$set": {"beats": beats, "current_beat": new_idx}},
+            {"$set": {"beats": corrected_beats, "current_beat": new_idx}},
         )
-        sl["beats"] = beats
+        sl["beats"] = corrected_beats
         sl["current_beat"] = new_idx
 
     return {

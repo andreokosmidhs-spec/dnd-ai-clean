@@ -36,6 +36,11 @@ from data.character_features import (
     SKILL_INFO,
     get_level_up_cards,
 )
+from data.spells_and_feats import (
+    CANTRIPS_BY_CLASS,
+    STARTER_SPELLS_BY_CLASS,
+    get_spell_card,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -351,6 +356,45 @@ def seed_deck_for_character(character: Dict) -> List[Dict]:
             tags=["item", "currency"],
             metadata={"kind": "currency", "gold": starter["gold"]},
         ))
+
+    # === SPELLS (cantrips + starting leveled spells for caster classes) ===
+    seen_spell_titles: set = set()
+    for spell_name in CANTRIPS_BY_CLASS.get(cls_key, []):
+        if spell_name in seen_spell_titles:
+            continue
+        spec = get_spell_card(spell_name)
+        if spec:
+            cards.append(_new_card(
+                source="spell",
+                title=spec["title"],
+                description=spec["description"],
+                rarity=spec["rarity"],
+                mechanical=spec["mechanical"],
+                per_day=False,
+                uses_max=0,
+                tags=spec["tags"],
+                metadata=spec["metadata"],
+            ))
+            seen_spell_titles.add(spell_name)
+
+    if character_level >= 1:
+        for spell_name in STARTER_SPELLS_BY_CLASS.get(cls_key, []):
+            if spell_name in seen_spell_titles:
+                continue
+            spec = get_spell_card(spell_name)
+            if spec:
+                cards.append(_new_card(
+                    source="spell",
+                    title=spec["title"],
+                    description=spec["description"],
+                    rarity=spec["rarity"],
+                    mechanical=spec["mechanical"],
+                    per_day=spec["per_day"],
+                    uses_max=spec["uses_max"],
+                    tags=spec["tags"],
+                    metadata=spec["metadata"],
+                ))
+                seen_spell_titles.add(spell_name)
 
     return cards
 

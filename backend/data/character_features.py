@@ -186,21 +186,21 @@ CLASS_FEATURES_LEVEL_1: Dict[str, List[Dict]] = {
          "description": "Cast cleric cantrips and prepared spells (WIS-based). Spell slots refresh on a long rest.",
          "mechanical": "Cantrips · 2 first-level slots", "per_day": True, "uses_max": 2},
         {"name": "Divine Domain", "rarity": "rare",
-         "description": "Your chosen domain grants extra spells and a domain-specific feature (Channel Divinity, etc.).",
-         "mechanical": "Domain-specific"},
+         "description": "Your chosen domain grants extra spells and a domain-specific feature. Choose: Life (healing), Light (radiance), Tempest (storms), Trickery (deception), War (battle), Nature, or Knowledge.",
+         "mechanical": "Domain spells always prepared · Channel Divinity option unlocked"},
     ],
     "Druid": [
         {"name": "Druidic Language", "rarity": "rare",
          "description": "You know Druidic, a secret language only druids speak. Leave hidden messages no one else can decipher.",
-         "mechanical": "Secret druidic communication"},
+         "mechanical": "Secret tongue: leave/read hidden nature messages · only druids understand"},
         {"name": "Spellcasting", "rarity": "epic",
          "description": "Cast druid cantrips and prepared spells (WIS-based). Spell slots refresh on a long rest.",
          "mechanical": "Cantrips · 2 first-level slots", "per_day": True, "uses_max": 2},
     ],
     "Fighter": [
         {"name": "Fighting Style", "rarity": "rare",
-         "description": "Adopt a particular style of combat (Defense, Dueling, Great Weapon Fighting, Archery, etc.).",
-         "mechanical": "Style-specific bonus"},
+         "description": "Adopt a particular style of combat. Defense: +1 AC in armor. Dueling: +2 dmg one-handed. Great Weapon Fighting: reroll 1s/2s on damage. Archery: +2 ranged attack rolls.",
+         "mechanical": "Choose: Defense +1AC · Dueling +2dmg · GWF reroll 1-2 · Archery +2 ranged"},
         {"name": "Second Wind", "rarity": "rare",
          "description": "Bonus action: regain 1d10 + fighter level HP. Once per short rest.",
          "mechanical": "1/short rest", "per_day": False, "uses_max": 1},
@@ -226,8 +226,8 @@ CLASS_FEATURES_LEVEL_1: Dict[str, List[Dict]] = {
          "description": "Choose a creature type. Advantage on Survival to track them, INT checks to recall lore.",
          "mechanical": "Tracking advantage vs. type"},
         {"name": "Natural Explorer", "rarity": "rare",
-         "description": "Choose a favored terrain. Move through it without penalty; track creatures here at near-supernatural skill.",
-         "mechanical": "Terrain mastery"},
+         "description": "Choose a favored terrain. Move through it without penalty; track creatures there at near-supernatural skill.",
+         "mechanical": "Favored terrain: ignore difficult terrain · no getting lost · track at speed"},
     ],
     "Rogue": [
         {"name": "Sneak Attack", "rarity": "epic",
@@ -235,7 +235,7 @@ CLASS_FEATURES_LEVEL_1: Dict[str, List[Dict]] = {
          "mechanical": "+1d6 per turn"},
         {"name": "Thieves' Cant", "rarity": "rare",
          "description": "Secret slang only rogues understand. Leave coded messages, recognize criminal landmarks.",
-         "mechanical": "Criminal cant"},
+         "mechanical": "Secret argot: encode/decode messages · spot fence/hideout signs"},
         {"name": "Expertise", "rarity": "rare",
          "description": "Double proficiency on two skills of your choice.",
          "mechanical": "2 skills doubled"},
@@ -245,8 +245,8 @@ CLASS_FEATURES_LEVEL_1: Dict[str, List[Dict]] = {
          "description": "Cast sorcerer cantrips and known spells (CHA-based). Spell slots refresh on a long rest.",
          "mechanical": "Cantrips · 2 first-level slots", "per_day": True, "uses_max": 2},
         {"name": "Sorcerous Origin", "rarity": "rare",
-         "description": "Your innate magical bloodline (Draconic, Wild Magic, etc.) grants signature features.",
-         "mechanical": "Origin-specific"},
+         "description": "Your innate magical bloodline grants signature features. Draconic: draconic resilience + elemental affinity. Wild Magic: wild surge table + tides of chaos. Storm: tempest magic.",
+         "mechanical": "Choose bloodline: Draconic · Wild Magic · Storm · Shadow · Divine Soul"},
     ],
     "Warlock": [
         {"name": "Otherworldly Patron", "rarity": "epic",
@@ -563,8 +563,8 @@ CLASS_FEATURES_BY_LEVEL: Dict[str, Dict[int, List[Dict]]] = {
     "Cleric": {
         2: [
             {"name": "Channel Divinity", "rarity": "epic",
-             "description": "Channel divine energy to fuel magical effects — Turn Undead plus your domain option. Starts at 1 use/rest; increases to 3 by level 18.",
-             "mechanical": "1/short rest (scales) · Turn Undead + domain option",
+             "description": "Channel divine energy to fuel magical effects — Turn Undead plus your domain option. Starts at 1 use/rest; 2 at level 6, 3 at level 18.",
+             "mechanical": "1/short rest · Turn Undead + domain option · 2@6 · 3@18",
              "per_day": False, "uses_max": 1},
             {"name": "Turn Undead", "rarity": "rare",
              "description": "Channel Divinity: each undead within 30 ft that can hear you must succeed on a WIS save or be turned for 1 minute.",
@@ -573,8 +573,8 @@ CLASS_FEATURES_BY_LEVEL: Dict[str, Dict[int, List[Dict]]] = {
         4: [_ASI],
         5: [
             {"name": "Destroy Undead", "rarity": "rare",
-             "description": "Turned undead of low CR are instantly destroyed instead of fleeing. CR threshold rises every few levels (½ → 1 → 2 → 3 → 4).",
-             "mechanical": "Destroy turned undead CR ½ (scales)"},
+             "description": "Turned undead of low CR are instantly destroyed instead of fleeing. CR threshold rises every few levels.",
+             "mechanical": "Destroy turned undead: CR½@5 · CR1@8 · CR2@11 · CR3@14 · CR4@17"},
         ],
         6: [
             {"name": "Divine Domain Feature", "rarity": "rare",
@@ -622,7 +622,7 @@ CLASS_FEATURES_BY_LEVEL: Dict[str, Dict[int, List[Dict]]] = {
         2: [
             {"name": "Wild Shape", "rarity": "epic",
              "description": "Transform into a beast of CR ¼ or lower for up to half your druid level in hours. 2 uses per short rest. CR cap and allowed speeds grow with level.",
-             "mechanical": "CR ¼ beast · 2/short rest (scales)", "per_day": False, "uses_max": 2},
+             "mechanical": "CR ¼ beast · 2/short rest · CR½@4 · swim@4 · fly@8 · hours=½lvl"},
             {"name": "Druid Circle", "rarity": "epic",
              "description": "Choose your Druid Circle (Land, Moon, etc.) — defines the nature of your Wild Shape and granted spells.",
              "mechanical": "Subclass unlock"},
@@ -699,8 +699,8 @@ CLASS_FEATURES_BY_LEVEL: Dict[str, Dict[int, List[Dict]]] = {
         8: [_ASI],
         9: [
             {"name": "Indomitable", "rarity": "rare",
-             "description": "Reroll a failed saving throw — you must use the new result. Once per long rest; increases to 3 uses by level 17.",
-             "mechanical": "1/long rest reroll (scales)", "per_day": True, "uses_max": 1},
+             "description": "Reroll a failed saving throw — you must use the new result. Once per long rest; 2 uses at level 13, 3 uses at level 17.",
+             "mechanical": "1/long rest: reroll failed save · 2 uses@13 · 3 uses@17", "per_day": True, "uses_max": 1},
         ],
         10: [
             {"name": "Martial Archetype Feature", "rarity": "rare",
@@ -749,8 +749,8 @@ CLASS_FEATURES_BY_LEVEL: Dict[str, Dict[int, List[Dict]]] = {
              "description": "Spend 1 ki as a bonus action: Disengage or Dash, and your jump distance doubles this turn.",
              "mechanical": "1 ki: Disengage/Dash + 2× jump (bonus action)"},
             {"name": "Unarmored Movement", "rarity": "rare",
-             "description": "Speed increases by 10 ft while unarmored and unshielded. Increases to +20 at level 9; lets you run on walls and water at level 9.",
-             "mechanical": "+10 ft speed unarmored (scales)"},
+             "description": "Speed increases while unarmored and unshielded. Grows each tier: +10@2, +15@6, +20@10, +25@14, +30@18. Run on walls and water at level 9.",
+             "mechanical": "+10 ft speed unarmored · upgrades to +30 ft by lvl 18"},
         ],
         3: [
             {"name": "Monastic Tradition", "rarity": "epic",
@@ -825,7 +825,7 @@ CLASS_FEATURES_BY_LEVEL: Dict[str, Dict[int, List[Dict]]] = {
         13: [
             {"name": "Tongue of Sun and Moon", "rarity": "rare",
              "description": "You understand and are understood by any creature that has a language.",
-             "mechanical": "Comprehend and speak any language"},
+             "mechanical": "Understand all languages · any language-using creature understands you"},
         ],
         14: [
             {"name": "Diamond Soul", "rarity": "epic",
@@ -872,14 +872,14 @@ CLASS_FEATURES_BY_LEVEL: Dict[str, Dict[int, List[Dict]]] = {
     "Paladin": {
         2: [
             {"name": "Fighting Style", "rarity": "rare",
-             "description": "Adopt a combat style — Defense, Dueling, Great Weapon Fighting, or Protection.",
-             "mechanical": "Style-specific bonus"},
+             "description": "Adopt a combat style. Defense: +1 AC in armor. Dueling: +2 dmg one-handed. Great Weapon Fighting: reroll 1s/2s. Protection: react to impose disadv on attacker targeting ally.",
+             "mechanical": "Choose: Defense +1AC · Dueling +2dmg · GWF reroll 1-2 · Protection react"},
             {"name": "Spellcasting", "rarity": "epic",
              "description": "Cast paladin spells (CHA-based). Prepare spells daily equal to CHA mod + half paladin level. Slots refresh on long rest.",
              "mechanical": "CHA-based · long rest slots", "per_day": True, "uses_max": 2},
             {"name": "Divine Smite", "rarity": "epic",
              "description": "When you hit with a melee weapon attack, expend a spell slot to deal bonus radiant damage: 2d8 + 1d8 per slot level above 1st. +1d8 vs undead/fiends. Max 5d8.",
-             "mechanical": "Hit: spend slot → +2d8 radiant (scales, max 5d8)"},
+             "mechanical": "Spend slot on hit: +2d8 radiant + 1d8/slot above 1st · max 5d8 · +1d8 vs undead"},
         ],
         3: [
             {"name": "Divine Health", "rarity": "rare",
@@ -941,8 +941,8 @@ CLASS_FEATURES_BY_LEVEL: Dict[str, Dict[int, List[Dict]]] = {
     "Ranger": {
         2: [
             {"name": "Fighting Style", "rarity": "rare",
-             "description": "Adopt a combat style — Archery, Defense, Dueling, or Two-Weapon Fighting.",
-             "mechanical": "Style-specific bonus"},
+             "description": "Adopt a combat style. Archery: +2 ranged attack rolls. Defense: +1 AC in armor. Dueling: +2 dmg one-handed. Two-Weapon Fighting: add ability mod to offhand damage.",
+             "mechanical": "Choose: Archery +2 ranged · Defense +1AC · Dueling +2dmg · TWF offhand mod"},
             {"name": "Spellcasting", "rarity": "epic",
              "description": "Cast ranger spells (WIS-based). Spells known; spell slots refresh on long rest.",
              "mechanical": "WIS-based spellcasting · long rest slots", "per_day": True, "uses_max": 2},
@@ -1178,8 +1178,8 @@ CLASS_FEATURES_BY_LEVEL: Dict[str, Dict[int, List[Dict]]] = {
     "Warlock": {
         2: [
             {"name": "Eldritch Invocations", "rarity": "epic",
-             "description": "Learn 2 Eldritch Invocations — permanent enhancements to your abilities (Agonizing Blast, Devil's Sight, Mask of Many Faces, etc.). Gain more at higher levels.",
-             "mechanical": "2 invocations (scales with level)"},
+             "description": "Learn 2 Eldritch Invocations — permanent enhancements. Agonizing Blast: +CHA to Eldritch Blast. Devil's Sight: see 120 ft in magical darkness. Mask of Many Faces: cast Disguise Self at will. More at levels 5/7/9/12/15/18.",
+             "mechanical": "2 invocations · +1@5 · +1@7 · +1@9 · +1@12 · +1@15 · +1@18"},
         ],
         3: [
             {"name": "Pact Boon", "rarity": "epic",

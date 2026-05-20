@@ -446,3 +446,74 @@ def deck_context_block(deck: List[Dict], max_chars: int = 900) -> str:
         "they apply; do NOT recite them as a list."
     )
     return out
+
+
+# -------------------- Quest card rewards --------------------
+
+
+async def draw_quest_card_rewards(db, character_id: str, card_rewards: List[Dict]) -> List[Dict]:
+    """Draw a list of card-reward specs into the character's deck.
+
+    `card_rewards` entries follow the same shape accepted by `_new_card`:
+      {source, title, description, rarity?, mechanical?, per_day?,
+       consumable?, uses_max?, tags?}
+
+    Missing / invalid source values fall back to "quest".
+    Returns the list of newly-created deck-card dicts (may be empty).
+    """
+    if not card_rewards:
+        return []
+
+    drawn: List[Dict] = []
+    for spec in card_rewards:
+        src = (spec.get("source") or "quest").strip().lower()
+        if src not in SOURCES:
+            src = "quest"
+        title = (spec.get("title") or "").strip()
+        if not title:
+            continue
+        card = _new_card(
+            source=src,
+            title=title,
+            description=(spec.get("description") or "").strip(),
+            rarity=spec.get("rarity") or "common",
+            mechanical=spec.get("mechanical") or "",
+            per_day=bool(spec.get("per_day", False)),
+            consumable=bool(spec.get("consumable", False)),
+            uses_max=int(spec.get("uses_max") or 0),
+            tags=list(spec.get("tags") or []) + ["quest-reward"],
+        )
+        drawn.append(card)
+
+    if not drawn:
+        return []
+
+    # Attach art from the shared library if available.
+    art_library: Dict[str, str] = {}
+    try:
+        cursor = db.card_art_library.find({}, {"art_key": 1, "data_url": 1, "_id": 0})
+        async for doc in cursor:
+            if doc.get("art_key") and doc.get("data_url"):
+                art_library[doc["art_key"]] = doc["data_url"]
+    except Exception:  # noqa: BLE001
+        pass
+    attach_saved_art(drawn, art_library)
+
+    # Upsert into the character's deck (seed first if deck is missing).
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    deck_doc = await db.character_decks.find_one({"character_id": character_id})
+    if deck_doc and isinstance(deck_doc.get("cards"), list):
+        await db.character_decks.update_one(
+            {"character_id": character_id},
+            {"$push": {"cards": {"$each": drawn}}, "$set": {"updated_at": now}},
+        )
+    else:
+        await db.character_decks.insert_one({
+            "character_id": character_id,
+            "cards": drawn,
+            "created_at": now,
+            "updated_at": now,
+        })
+
+    return drawn

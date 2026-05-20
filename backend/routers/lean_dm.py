@@ -33,6 +33,7 @@ from services.character_deck import (
     _new_card as _new_deck_card,
     art_key_for,
     deck_context_block,
+    draw_quest_card_rewards,
     seed_deck_for_character,
     merge_deck,
 )
@@ -674,6 +675,76 @@ async def toggle_pin(campaign_id: str, card_id: str):
         {"$set": {"pinned": new_pinned, "updatedAt": datetime.now(timezone.utc).isoformat()}},
     )
     return {"success": True, "pinned": new_pinned}
+
+
+class ResolveCardBody(BaseModel):
+    character_id: Optional[str] = None  # required to draw deck rewards
+    outcome: str = "completed"           # completed | failed
+
+
+@router.post("/{campaign_id}/cards/{card_id}/resolve")
+async def resolve_card(campaign_id: str, card_id: str, body: ResolveCardBody):
+    """Mark a campaign quest card as completed/failed and draw any card_rewards
+    to the character's player deck.
+
+    The quest card in campaign_cards may carry a `card_rewards` list (same spec
+    as QuestRewards.card_rewards). If `character_id` is supplied and the card
+    has rewards, they are drawn into that character's character_decks entry.
+    """
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    card = await db.campaign_cards.find_one({"campaign_id": campaign_id, "id": card_id})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    if card.get("type") != "quest":
+        raise HTTPException(status_code=400, detail="Only quest cards can be resolved")
+
+    outcome = body.outcome if body.outcome in {"completed", "failed"} else "completed"
+    now = datetime.now(timezone.utc).isoformat()
+
+    await db.campaign_cards.update_one(
+        {"campaign_id": campaign_id, "id": card_id},
+        {"$set": {"status": outcome, "resolved_at": now, "updatedAt": now}},
+    )
+
+    drawn_deck_cards: list = []
+    if outcome == "completed" and body.character_id:
+        raw_rewards = card.get("card_rewards") or []
+        if raw_rewards:
+            try:
+                drawn_deck_cards = await draw_quest_card_rewards(
+                    db, body.character_id, raw_rewards
+                )
+                logger.info(
+                    f"🃏 Drew {len(drawn_deck_cards)} deck card(s) from quest card "
+                    f"{card_id} for character {body.character_id}"
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"Card reward draw failed for campaign card {card_id}: {exc}")
+
+    tick = None
+    try:
+        campaign = await db.campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+        if campaign and campaign.get("campaign_id"):
+            tick = await narrative_tick_service.run_tick(
+                db,
+                campaign_id,
+                "major_quest_completion",
+                context={"card_id": card_id, "outcome": outcome},
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Narrative tick failed after card resolve {card_id}: {exc}")
+
+    return {
+        "success": True,
+        "card_id": card_id,
+        "outcome": outcome,
+        "drawn_deck_cards": drawn_deck_cards,
+        "narrative_tick": tick,
+    }
 
 
 _CARD_DEFAULT_STATUS: Dict[str, str] = {

@@ -13,6 +13,7 @@ from models.quest_models import (
     quest_to_dict, dict_to_quest
 )
 from services import quest_generator, quest_manager
+from services.character_deck import draw_quest_card_rewards
 from services.narrative_tick_service import narrative_tick_service
 
 logger = logging.getLogger(__name__)
@@ -373,12 +374,22 @@ async def advance_quest(request: QuestAdvanceRequest):
         logger.info(f"✅ Quest progress updated: {updated_quest.name}, {len(updated_objectives)} objectives updated")
         
         tick = None
+        drawn_deck_cards: list = []
         if updated_quest.status == "completed":
             tick = await _run_major_quest_completion_tick(
                 db,
                 updated_quest.campaign_id,
                 updated_quest.quest_id,
             )
+            if updated_quest.character_id and updated_quest.rewards.card_rewards:
+                try:
+                    drawn_deck_cards = await draw_quest_card_rewards(
+                        db,
+                        updated_quest.character_id,
+                        updated_quest.rewards.card_rewards,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(f"Card reward draw failed for quest {updated_quest.quest_id}: {exc}")
 
         return {
             "success": True,
@@ -386,6 +397,7 @@ async def advance_quest(request: QuestAdvanceRequest):
                 "quest": updated_quest.dict(),
                 "objectives_updated": updated_objectives,
                 "quest_completed": updated_quest.status == "completed",
+                "drawn_deck_cards": drawn_deck_cards,
                 "narrative_tick": tick,
             },
             "error": None
@@ -440,16 +452,16 @@ async def complete_quest(request: QuestCompleteRequest):
         
         # Apply rewards
         rewards_applied = quest_manager.apply_quest_rewards(quest, character_state)
-        
+
         # Update quest status
         quest.status = "completed"
         quest.lifecycle_state.completed_at = datetime.now(timezone.utc)
         quest.updated_at = datetime.now(timezone.utc)
-        
+
         # Save quest
         quest_dict = quest_to_dict(quest)
         await db.quests.update_one({"quest_id": request.quest_id}, {"$set": quest_dict})
-        
+
         # Save character
         await db.characters.update_one(
             {"character_id": request.character_id},
@@ -458,9 +470,22 @@ async def complete_quest(request: QuestCompleteRequest):
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }}
         )
-        
+
         logger.info(f"🎊 Quest completed: {quest.name}, rewards applied")
-        
+
+        # Draw deck card rewards to the character's player deck.
+        drawn_deck_cards: list = []
+        if quest.rewards.card_rewards:
+            try:
+                drawn_deck_cards = await draw_quest_card_rewards(
+                    db,
+                    request.character_id,
+                    quest.rewards.card_rewards,
+                )
+                logger.info(f"🃏 Drew {len(drawn_deck_cards)} deck card(s) for quest {quest.quest_id}")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"Card reward draw failed for quest {quest.quest_id}: {exc}")
+
         tick = await _run_major_quest_completion_tick(db, quest.campaign_id, quest.quest_id)
 
         return {
@@ -468,6 +493,7 @@ async def complete_quest(request: QuestCompleteRequest):
             "data": {
                 "quest": quest.dict(),
                 "rewards_applied": rewards_applied,
+                "drawn_deck_cards": drawn_deck_cards,
                 "narrative_tick": tick,
                 "character_updates": {
                     "current_xp": character_state.get("current_xp"),

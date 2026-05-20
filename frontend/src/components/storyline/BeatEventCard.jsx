@@ -24,33 +24,27 @@ import DMFeedbackButton from './DMFeedbackButton';
 import { categoryPaletteFor, rarityFor } from './beatCardUtils';
 
 // Card-flip SFX. Preloaded eagerly at module-load so the first click is
-// instant (the file is ~25 KB so this is essentially free). Each call to
-// playCardFlip clones the buffer via a fresh Audio that wraps the same
-// preloaded src, allowing overlapping plays if the player clicks rapidly.
-const FLIP_SFX_URL = '/sounds/card-flip.mp3';
-let _flipPrimer = null;
+// instant (browser caches the file). Each call to playCardFlip creates a
+// fresh Audio from the cached src — avoids cloneNode reliability issues
+// across browsers while still benefiting from the preload cache hit.
+const FLIP_SFX_URL = (process.env.PUBLIC_URL || '') + '/sounds/card-flip.mp3';
 if (typeof window !== 'undefined') {
   try {
-    _flipPrimer = new Audio(FLIP_SFX_URL);
-    _flipPrimer.preload = 'auto';
-    _flipPrimer.volume = 0.7;
-    // Trigger the network fetch immediately.
-    _flipPrimer.load();
+    // Trigger the network fetch so the file is warm in the browser cache.
+    const primer = new Audio(FLIP_SFX_URL);
+    primer.preload = 'auto';
+    primer.volume = 0;
+    primer.load();
   } catch { /* SSR / unsupported */ }
 }
 function playCardFlip() {
   try {
-    // Reuse the primer when it's ready; clone it for overlapping plays.
-    const sfx = _flipPrimer && _flipPrimer.readyState >= 2
-      ? _flipPrimer.cloneNode(true)
-      : new Audio(FLIP_SFX_URL);
+    const sfx = new Audio(FLIP_SFX_URL);
     sfx.volume = 0.7;
     const p = sfx.play();
     if (p && typeof p.catch === 'function') {
       p.catch((err) => {
-        // Most common: NotAllowedError = autoplay policy. We only call
-        // this inside a click handler so it should be fine — but log it
-        // to console so the dev sees if a browser blocks it anyway.
+        // NotAllowedError = autoplay policy; rare inside click handlers.
         // eslint-disable-next-line no-console
         console.warn('[card-flip sfx] play failed:', err?.name || err);
       });

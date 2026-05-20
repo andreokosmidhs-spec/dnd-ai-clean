@@ -814,6 +814,7 @@ async def attempt_resume_storyline(
     # If the DM gave the player a NEW lead while ruling expired, surface it
     # as a hook card so the player can engage it as a fresh storyline.
     new_lead_card_id = None
+    new_lead_card_data = None
     new_lead = ruling.get("new_lead")
     if decision == "expired" and isinstance(new_lead, dict) and new_lead.get("hook_text"):
         lead_card = KnowledgeCard(
@@ -833,6 +834,11 @@ async def attempt_resume_storyline(
         }
         await _cards_collection().insert_one(lead_doc)
         new_lead_card_id = lead_card.id
+        new_lead_card_data = {
+            "id": lead_card.id,
+            "title": lead_card.title,
+            "description": lead_card.description,
+        }
 
     # Refresh the storyline doc to return its post-update state.
     refreshed = await _storylines_collection().find_one(
@@ -848,6 +854,7 @@ async def attempt_resume_storyline(
         "storyline": storyline_to_dict(refreshed),
         "ruling": ruling,
         "new_lead_card_id": new_lead_card_id,
+        "new_lead_card": new_lead_card_data,
     }
 
 

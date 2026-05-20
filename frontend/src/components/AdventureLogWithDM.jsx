@@ -1695,7 +1695,8 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
             characterId={gameStateContext.characterState?.id || gameStateContext.characterState?.character_id}
             characterName={gameStateContext.characterState?.identity?.name || gameStateContext.characterState?.name}
             onPausedThreadResumed={(payload) => {
-              const { storyline, ruling } = payload || {};
+              const { storyline, ruling, new_lead_card } = payload || {};
+              const isExpired = ruling?.ruling === 'expired';
               if (ruling?.narration) {
                 const dmBeat = {
                   type: 'dm',
@@ -1703,15 +1704,29 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                   message: ruling.narration,
                   timestamp: Date.now(),
                   isCinematic: true,
-                  source: 'storyline-resume',
+                  source: isExpired ? 'storyline-expired' : 'storyline-resume',
                   meta: {
                     ruling: ruling.ruling,
                     storylineTitle: storyline?.title,
                     consequence: ruling.consequence,
                   },
                 };
+                const beats = [dmBeat];
+                // If the thread expired AND the DM minted a new lead, surface
+                // it as a second beat immediately after the closure narration.
+                if (isExpired && new_lead_card?.description) {
+                  beats.push({
+                    type: 'dm',
+                    text: new_lead_card.description,
+                    message: new_lead_card.description,
+                    timestamp: Date.now() + 10,
+                    isCinematic: true,
+                    source: 'lead-revealed',
+                    meta: { leadTitle: new_lead_card.title },
+                  });
+                }
                 setMessages((prev) => {
-                  const next = [...prev, dmBeat].slice(-200);
+                  const next = [...prev, ...beats].slice(-200);
                   if (sessionId) {
                     try {
                       localStorage.setItem(
@@ -1723,8 +1738,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                   return next;
                 });
               }
-              // If the DM ruled it active, swap the active storyline so the
-              // ActiveInvestigationPanel + MissionPhaseBadge update.
+              // Reopen the investigation panel only if the DM ruled it alive.
               if (
                 storyline &&
                 storyline.status === 'active' &&
@@ -1997,11 +2011,13 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                   <div className={`p-4 rounded-lg ${
                     entry.isWorldBrief
                       ? 'bg-gradient-to-br from-amber-900/30 via-stone-800/40 to-amber-950/30 border-2 border-amber-600/50 shadow-inner shadow-amber-900/40'
-                      : entry.source === 'obligation-reminder'
-                        ? 'bg-gradient-to-r from-amber-900/20 to-stone-800/30 border border-amber-700/50 border-l-4 border-l-amber-500'
-                        : entry.isCinematic
-                          ? 'bg-gradient-to-r from-violet-600/30 to-purple-600/30 border-2 border-violet-400/50'
-                          : 'bg-violet-600/20 border-l-4 border-violet-400'
+                      : entry.source === 'storyline-expired'
+                        ? 'bg-stone-900/60 border border-rose-900/50 border-l-4 border-l-rose-700'
+                        : entry.source === 'obligation-reminder'
+                          ? 'bg-gradient-to-r from-amber-900/20 to-stone-800/30 border border-amber-700/50 border-l-4 border-l-amber-500'
+                          : entry.isCinematic
+                            ? 'bg-gradient-to-r from-violet-600/30 to-purple-600/30 border-2 border-violet-400/50'
+                            : 'bg-violet-600/20 border-l-4 border-violet-400'
                   } animate-in slide-in-from-left-5 duration-300`}
                   data-testid={entry.isWorldBrief ? 'world-brief-message' : undefined}
                   >
@@ -2015,7 +2031,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className={`font-semibold text-sm ${entry.isWorldBrief ? 'text-amber-300 italic' : entry.source === 'obligation-reminder' ? 'text-amber-400 italic' : 'text-violet-400'}`}>
+                          <span className={`font-semibold text-sm ${entry.isWorldBrief ? 'text-amber-300 italic' : entry.source === 'storyline-expired' ? 'text-rose-400 italic' : entry.source === 'obligation-reminder' ? 'text-amber-400 italic' : 'text-violet-400'}`}>
                             {entry.isWorldBrief
                               ? `📜 ${entry.chronicleTitle || 'A Chronicle of the Realm'}`
                               : entry.source === 'map-event'
@@ -2028,8 +2044,10 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                                       ? `🎬 Investigation Closes${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
                                       : entry.source === 'storyline-paused'
                                         ? `⏸ Thread Set Aside${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
-                                        : entry.source === 'storyline-resume'
-                                          ? `🔁 Reconnect${entry.meta?.ruling ? ` (${entry.meta.ruling})` : ''}`
+                                        : entry.source === 'storyline-expired'
+                                          ? `⌛ Thread Lost${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
+                                          : entry.source === 'storyline-resume'
+                                            ? `🔁 Reconnect${entry.meta?.ruling ? ` (${entry.meta.ruling})` : ''}`
                                           : entry.source === 'spawn-clarify'
                                             ? '❓ DM asks…'
                                             : entry.source === 'spawn-transition'

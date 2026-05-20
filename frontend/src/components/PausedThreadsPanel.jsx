@@ -114,6 +114,7 @@ const PausedThreadsPanel = ({ campaignId, characterId, onResumed, embedded = fal
           storyline: sl,
           ruling,
           new_lead_card_id: res.data?.new_lead_card_id,
+          new_lead_card: res.data?.new_lead_card || null,
         });
       }
       setResumeTarget(null);

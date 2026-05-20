@@ -27,12 +27,14 @@ from uuid import uuid4
 from data.character_features import (
     BACKGROUND_FEATURES,
     CLASS_FEATURES_LEVEL_1,
+    CLASS_FEATURES_BY_LEVEL,
     CLASS_PROFICIENCIES,
     CLASS_STARTING_EQUIPMENT,
     LANGUAGE_INFO,
     RACE_TRAITS,
     RARITY_ORDER,
     SKILL_INFO,
+    get_level_up_cards,
 )
 
 logger = logging.getLogger(__name__)
@@ -211,8 +213,11 @@ def seed_deck_for_character(character: Dict) -> List[Dict]:
             metadata={"trait_kind": key, "trait_text": text},
         ))
 
-    # === CLASS (level-1 features) ===
+    # === CLASS features: level 1 plus every gained level up to current ===
     cls_key = _class_key(character)
+    cls_block = (character or {}).get("class_") or (character or {}).get("class") or {}
+    character_level = max(1, int((cls_block.get("level") or 1)))
+
     for feat in CLASS_FEATURES_LEVEL_1.get(cls_key, []):
         cards.append(_new_card(
             source="class",
@@ -224,6 +229,20 @@ def seed_deck_for_character(character: Dict) -> List[Dict]:
             uses_max=feat.get("uses_max", 0),
             tags=["class", cls_key.lower()],
         ))
+
+    for lvl in range(2, character_level + 1):
+        for feat in get_level_up_cards(cls_key, lvl):
+            cards.append(_new_card(
+                source="class",
+                title=feat["name"],
+                description=feat["description"],
+                rarity=feat.get("rarity", "common"),
+                mechanical=feat.get("mechanical", ""),
+                per_day=feat.get("per_day", False),
+                uses_max=feat.get("uses_max", 0),
+                tags=["class", cls_key.lower(), f"level-{lvl}"],
+                metadata={"gained_at_level": lvl},
+            ))
 
     # === PROFICIENCIES (skills · saves · armor · weapons · tools) ===
     cls = (character or {}).get("class_") or (character or {}).get("class") or {}

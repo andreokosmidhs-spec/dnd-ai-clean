@@ -181,6 +181,73 @@ async def long_rest(character_id: str):
     return {"ok": True, "restored": restored, "cards": cards, "narrative_tick": tick}
 
 
+class LevelUpBody(BaseModel):
+    new_level: int = Field(..., ge=2, le=20, description="The level to advance to. Must equal current level + 1.")
+
+
+@router.post("/{character_id}/level-up")
+async def level_up(character_id: str, body: LevelUpBody):
+    """Advance the character by one level.
+
+    - Validates new_level == current_level + 1.
+    - Updates the character document in characters_v2.
+    - Reseeds and merges the deck (picks up all new level features).
+    - Returns new_level, the list of newly gained cards, and the full deck.
+    """
+    char = await _load_character(character_id)
+
+    cls_block = char.get("class_") or char.get("class") or {}
+    current_level = max(1, int(cls_block.get("level") or 1))
+
+    if body.new_level != current_level + 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"new_level must be current level + 1 (current={current_level}, requested={body.new_level})",
+        )
+
+    # Update character level in the database before reseeding so the seed
+    # function sees the new level.
+    db = _db()
+    try:
+        oid = ObjectId(character_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid character id") from exc
+
+    level_field = "class_.level" if "class_" in char else "class.level"
+    await db.characters_v2.update_one(
+        {"_id": oid},
+        {"$set": {level_field: body.new_level}},
+    )
+
+    # Reload character with the updated level so seed_deck_for_character
+    # produces the right feature set.
+    char = await _load_character(character_id)
+
+    # Snapshot existing card keys before the merge so we can diff afterward.
+    existing_doc = await db.character_decks.find_one({"character_id": character_id})
+    existing_keys: set = set()
+    if existing_doc and isinstance(existing_doc.get("cards"), list):
+        existing_keys = {(c.get("source"), c.get("title")) for c in existing_doc["cards"]}
+
+    # Reseed + merge — _load_or_seed_deck now includes all features up to new_level.
+    updated_cards = await _load_or_seed_deck(char)
+
+    # Diff: cards whose (source, title) key wasn't in the deck before.
+    new_cards = [
+        c for c in updated_cards
+        if (c.get("source"), c.get("title")) not in existing_keys
+        and c.get("status") == "active"
+    ]
+
+    return {
+        "ok": True,
+        "new_level": body.new_level,
+        "new_cards": new_cards,
+        "deck": updated_cards,
+        "context_block": deck_context_block(updated_cards),
+    }
+
+
 class DrawCardBody(BaseModel):
     source: str
     title: str

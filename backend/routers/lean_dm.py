@@ -160,6 +160,38 @@ def _build_inventory_block(cards: List[dict]) -> str:
     return "\n\n".join(parts) if parts else "(no items in inventory)"
 
 
+# Type-specific DM directives for pinned cards — what "pinned" means per card type.
+_PINNED_DIRECTIVES: Dict[str, str] = {
+    "quest":     "ADVANCE this — introduce a complication, clue, or NPC that moves it forward. Do not let it sit idle.",
+    "lead":      "SURFACE a concrete detail this turn that makes this lead feel urgent or actionable.",
+    "character": "Keep this NPC present or referenced — the player wants to engage with them. If nearby, give them a line.",
+    "location":  "The player wants to go here or is actively thinking about it — let the environment hint at it.",
+    "item":      "Create a natural moment for the player to USE or interact with this item this turn.",
+    "favor":     "Work this obligation into the scene — the debt is on the player's mind.",
+    "curse":     "Let this affliction make itself felt — a symptom, a reminder, a complication.",
+    "faction":   "Weave faction presence in — a symbol, a rumor, a member in the scene.",
+    "spell":     "Create a moment where this spell or ability would be a satisfying choice.",
+}
+_PINNED_DEFAULT_DIRECTIVE = "Weave this into the scene — the player has flagged it as actively important."
+
+
+def _build_pinned_block(pinned_cards: List[dict]) -> str:
+    """Format pinned cards as a session-agenda block with per-type DM directives."""
+    if not pinned_cards:
+        return "(player has not pinned any cards — no explicit session agenda)"
+    lines: List[str] = []
+    for c in pinned_cards[:8]:
+        title = (c.get("title") or "").strip()
+        ctype = (c.get("type") or "note").lower()
+        content = (c.get("content") or c.get("description") or "")[:100].strip()
+        status = (c.get("status") or "").lower()
+        directive = _PINNED_DIRECTIVES.get(ctype, _PINNED_DEFAULT_DIRECTIVE)
+        status_str = f" [{status}]" if status else ""
+        content_str = f" — {content}" if content else ""
+        lines.append(f"★ [{ctype}]{status_str} {title}{content_str}\n  → DM: {directive}")
+    return "\n".join(lines)
+
+
 def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None) -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
@@ -212,10 +244,18 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         appearance_bits.append("notable: " + ", ".join(notable[:3]))
     appearance_line = "; ".join(appearance_bits) if appearance_bits else "unremarkable at first glance"
 
+    # Separate pinned from the rest — pinned cards get their own high-priority block
+    # and are excluded from the general card_summaries so they never get buried.
+    pinned_cards = [c for c in cards if c.get("pinned")]
+    pinned_ids = {c.get("id") for c in pinned_cards}
+    pinned_block = _build_pinned_block(pinned_cards)
+
     card_summaries: List[str] = []
     active_leads: List[str] = []
     closed_leads: List[str] = []
     for c in cards[:16]:
+        if c.get("id") in pinned_ids:
+            continue  # already in the pinned block — don't duplicate
         title = c.get("title") or ""
         content = (c.get("content") or c.get("description") or "")[:200]
         ctype = (c.get("type") or "lore").lower()
@@ -438,6 +478,12 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         "Personality hooks (use sparingly — let NPCs react TO these; do not put them in "
         "the hero's head, do not quote verbatim):\n"
         f"{personality_block}\n\n"
+        "=== PLAYER'S PINNED FOCUS — SESSION AGENDA (HARD CONTRACT) ===\n"
+        "The player has starred these cards as their active priorities for this session. "
+        "Each entry carries a DM directive in plain English. You MUST honor each directive "
+        "within the next 1-3 turns — not all at once, but none may go unaddressed for more "
+        "than 3 consecutive turns. If nothing is pinned, advance the active leads instead.\n"
+        f"{pinned_block}\n\n"
         "=== ACTIVE OPENING LEAD(S) (advance or raise stakes in the next 1-3 turns unless the player pivots hard) ===\n"
         f"{active_lead_block}\n\n"
         "=== CLOSED LEADS (do NOT push these again; reference only if naturally relevant) ===\n"
@@ -601,6 +647,23 @@ async def consume_item(campaign_id: str, card_id: str):
         }},
     )
     return {"success": True, "quantity": new_qty, "status": new_status}
+
+
+@router.patch("/{campaign_id}/cards/{card_id}/pin")
+async def toggle_pin(campaign_id: str, card_id: str):
+    """Toggle the pinned flag on a campaign card."""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    card = await db.campaign_cards.find_one({"campaign_id": campaign_id, "id": card_id})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    new_pinned = not bool(card.get("pinned"))
+    await db.campaign_cards.update_one(
+        {"campaign_id": campaign_id, "id": card_id},
+        {"$set": {"pinned": new_pinned, "updatedAt": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"success": True, "pinned": new_pinned}
 
 
 @router.post("/{campaign_id}/dm/action")

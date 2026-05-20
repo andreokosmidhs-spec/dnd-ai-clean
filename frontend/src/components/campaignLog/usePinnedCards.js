@@ -1,50 +1,54 @@
 import { useState, useEffect, useCallback } from 'react';
 
-const PINNED_CARDS_KEY = 'pinned-campaign-cards';
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-/**
- * Custom hook for managing pinned cards with localStorage persistence
- */
-export const usePinnedCards = () => {
+const localKey = (campaignId) => `pinned-cards-${campaignId || 'default'}`;
+
+export const usePinnedCards = (campaignId) => {
   const [pinnedIds, setPinnedIds] = useState(() => {
     try {
-      const stored = localStorage.getItem(PINNED_CARDS_KEY);
+      const stored = localStorage.getItem(localKey(campaignId));
       return stored ? JSON.parse(stored) : [];
     } catch {
       return [];
     }
   });
 
-  // Save pinned IDs to localStorage
+  // Re-seed from localStorage when campaignId changes (e.g. user switches campaign)
   useEffect(() => {
     try {
-      localStorage.setItem(PINNED_CARDS_KEY, JSON.stringify(pinnedIds));
+      const stored = localStorage.getItem(localKey(campaignId));
+      setPinnedIds(stored ? JSON.parse(stored) : []);
+    } catch {
+      setPinnedIds([]);
+    }
+  }, [campaignId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(localKey(campaignId), JSON.stringify(pinnedIds));
     } catch (err) {
       console.warn('Failed to save pinned cards:', err);
     }
-  }, [pinnedIds]);
+  }, [pinnedIds, campaignId]);
 
   const togglePin = useCallback((cardId) => {
+    // Optimistic update — instant UI response
     setPinnedIds(prev => {
-      if (prev.includes(cardId)) {
-        return prev.filter(id => id !== cardId);
-      }
+      if (prev.includes(cardId)) return prev.filter(id => id !== cardId);
       return [...prev, cardId];
     });
-  }, []);
+    // Sync to backend so DM prompt sees the pinned state
+    if (campaignId && cardId) {
+      fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/cards/${cardId}/pin`, {
+        method: 'PATCH',
+      }).catch(() => {});
+    }
+  }, [campaignId]);
 
-  const isPinned = useCallback((cardId) => {
-    return pinnedIds.includes(cardId);
-  }, [pinnedIds]);
+  const isPinned = useCallback((cardId) => pinnedIds.includes(cardId), [pinnedIds]);
 
-  const pinnedCount = pinnedIds.length;
-
-  return {
-    pinnedIds,
-    togglePin,
-    isPinned,
-    pinnedCount,
-  };
+  return { pinnedIds, togglePin, isPinned, pinnedCount: pinnedIds.length };
 };
 
 export default usePinnedCards;

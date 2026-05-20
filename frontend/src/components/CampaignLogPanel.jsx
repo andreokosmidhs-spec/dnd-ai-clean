@@ -222,7 +222,7 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   
   // Use extracted pinned cards hook
-  const { pinnedIds, togglePin, isPinned } = usePinnedCards();
+  const { pinnedIds, togglePin, isPinned } = usePinnedCards(campaignId);
   
   // Leads hook
   const { data: leads, isLoading: leadsLoading } = useOpenLeads(campaignId, characterId);

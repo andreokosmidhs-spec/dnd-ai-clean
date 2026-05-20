@@ -227,12 +227,13 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
     cur_loc_name = ((current_location or {}).get("name") or "").strip()
 
     def _fmt_anchor(c: dict) -> str:
+        from services.npc_delta import render_deltas_for_prompt
         sec = c.get("secret_content") or {}
         nm = (c.get("title") or "").strip()
         stats = sec.get("stats") or {}
         pers = sec.get("personality") or {}
         manners = sec.get("mannerisms") or []
-        return (
+        base = (
             f"- {nm} — speech: {sec.get('speech_style','plain')}; "
             f"voice: {pers.get('trait','')}; flaw: {pers.get('flaw','')}; "
             f"mannerisms: {', '.join(manners[:3])}; "
@@ -244,6 +245,10 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
             f"secrets (NEVER reveal unless extracted): {' | '.join((sec.get('secrets') or [])[:2])}; "
             f"allegiances: {', '.join((sec.get('allegiances') or [])[:2])}"
         )
+        delta_str = render_deltas_for_prompt(c.get("character_deltas") or [])
+        if delta_str:
+            base += f"\n  → PLAYER HISTORY (treat as ground truth): {delta_str}"
+        return base
 
     here_npcs: List[dict] = []
     elsewhere_npcs: List[dict] = []
@@ -514,8 +519,8 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     # Load active knowledge cards (canonical collection: campaign_cards)
     cards_cursor = db.campaign_cards.find(
         {"campaign_id": campaign_id}, {"_id": 0}
-    ).sort("updatedAt", -1).limit(20)
-    cards = await cards_cursor.to_list(length=20)
+    ).sort("updatedAt", -1).limit(40)
+    cards = await cards_cursor.to_list(length=40)
 
     # Load recent message history (session = campaign + character)
     session_id = f"{campaign_id}:{req.character_id}"
@@ -753,6 +758,37 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"World event generation failed (non-fatal): {exc}")
+
+    # NPC delta extraction — detect what changed about present NPCs this turn
+    # and record it on their cards so the DM carries it forward permanently.
+    # Only fires when a known NPC name appears in the narration; zero cost otherwise.
+    try:
+        from services.npc_delta import apply_npc_deltas, extract_npc_deltas
+        _cur_loc = ((current_location or {}).get("name") or "").strip().lower()
+        _present_npc_names = [
+            (c.get("title") or "").strip()
+            for c in cards
+            if (c.get("type") or "").lower() == "character"
+            and c.get("secret_content")
+            and (
+                not _cur_loc
+                or not (c.get("at_location") or "")
+                or (c.get("at_location") or "").strip().lower() == _cur_loc
+            )
+        ][:6]
+        if _present_npc_names:
+            _npc_api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+            if _npc_api_key:
+                npc_deltas = await extract_npc_deltas(
+                    narration=narration,
+                    player_action=req.player_action,
+                    npc_names=_present_npc_names,
+                    api_key=_npc_api_key,
+                )
+                if npc_deltas:
+                    await apply_npc_deltas(db.campaign_cards, campaign_id, npc_deltas)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"NPC delta tracking failed (non-fatal): {exc}")
 
     # Track that the active lessons were actually applied this turn — bumps
     # apply_count + last_applied_at so the DM Notebook can show usage stats.

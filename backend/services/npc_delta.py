@@ -25,6 +25,36 @@ logger = logging.getLogger(__name__)
 
 _DELTA_TYPES = {"attitude", "secret", "favour", "promise", "item", "location", "note"}
 
+# How each relationship tier shifts the NPC's social DCs relative to their base.
+# Positive = harder for the player; negative = easier.
+_TIER_MODIFIERS = {
+    "grateful":  {"persuasion_dc": -4, "intimidation_dc": +3, "deception_dc": +1, "insight_dc":  0},
+    "friendly":  {"persuasion_dc": -2, "intimidation_dc": +2, "deception_dc": +1, "insight_dc":  0},
+    "neutral":   {"persuasion_dc":  0, "intimidation_dc":  0, "deception_dc":  0, "insight_dc":  0},
+    "wary":      {"persuasion_dc": +2, "intimidation_dc": -1, "deception_dc": +2, "insight_dc": -1},
+    "hostile":   {"persuasion_dc": +4, "intimidation_dc": -3, "deception_dc": +4, "insight_dc":  0},
+}
+
+_DC_MIN, _DC_MAX = 6, 22
+
+
+def _attitude_tier(fact: str) -> str | None:
+    """Map an attitude delta fact string to a relationship tier."""
+    f = fact.lower()
+    if any(w in f for w in ("hostile", "attacks", "threatens", "draws weapon", "furious", "enraged")):
+        return "hostile"
+    if any(w in f for w in ("dead", "killed", "slain", "dies", "died")):
+        return "dead"
+    if any(w in f for w in ("wary", "suspicious", "distrustful", "cautious", "uncertain")):
+        return "wary"
+    if any(w in f for w in ("grateful", "deeply thankful", "owes life", "indebted")):
+        return "grateful"
+    if any(w in f for w in ("friendly", "trusts", "ally", "allied", "friend", "warmly", "likes")):
+        return "friendly"
+    if any(w in f for w in ("neutral", "indifferent", "calm", "resolved", "diffused")):
+        return "neutral"
+    return None
+
 _SYSTEM = (
     "You extract NPC relationship changes from D&D narration. "
     "Be conservative — only record what ACTUALLY happened this turn.\n\n"
@@ -133,28 +163,52 @@ async def apply_npc_deltas(
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"Failed to write NPC deltas for {name!r}: {exc}")
 
-        # Propagate attitude deltas to card status for live status display
-        for d in npc_deltas:
-            if d.get("type") == "attitude":
-                fact = (d.get("fact") or "").lower()
-                new_status = None
-                if any(w in fact for w in ("hostile", "attacks", "draws weapon", "threatens")):
-                    new_status = "hostile"
-                elif any(w in fact for w in ("dead", "killed", "slain", "dies", "died")):
-                    new_status = "dead"
-                elif any(w in fact for w in ("friendly", "grateful", "trusts", "allies", "warmly")):
-                    new_status = "friendly"
-                elif any(w in fact for w in ("neutral", "wary", "suspicious", "indifferent")):
-                    new_status = "neutral"
-                if new_status:
-                    try:
-                        await cards_collection.update_one(
-                            {"campaign_id": campaign_id, "title": name, "type": "character"},
-                            {"$set": {"status": new_status}},
-                        )
-                    except Exception:
-                        pass
-                break  # only the first attitude delta per turn changes status
+        # Propagate attitude deltas → live card status + calibrated social DCs.
+        # Only the first attitude delta per turn drives the update.
+        attitude_delta = next((d for d in npc_deltas if d.get("type") == "attitude"), None)
+        if attitude_delta:
+            tier = _attitude_tier(attitude_delta.get("fact") or "")
+            # Status mapping (grateful/friendly both read as "friendly" on the pill)
+            _status_for_tier = {
+                "hostile": "hostile", "dead": "dead", "wary": "wary",
+                "grateful": "friendly", "friendly": "friendly", "neutral": "neutral",
+            }
+            new_status = _status_for_tier.get(tier or "")
+            if tier and tier in _TIER_MODIFIERS:
+                # Read current card to get base_stats (stored once, never overwritten)
+                try:
+                    card_doc = await cards_collection.find_one(
+                        {"campaign_id": campaign_id, "title": name, "type": "character"},
+                        {"secret_content": 1},
+                    )
+                    sec = (card_doc or {}).get("secret_content") or {}
+                    base = sec.get("base_stats") or sec.get("stats") or {}
+                    mods = _TIER_MODIFIERS[tier]
+                    new_stats = {
+                        k: max(_DC_MIN, min(_DC_MAX, (base.get(k) or 12) + mods[k]))
+                        for k in ("persuasion_dc", "intimidation_dc", "deception_dc", "insight_dc")
+                    }
+                    update: Dict = {"secret_content.stats": new_stats}
+                    if new_status:
+                        update["status"] = new_status
+                    # Persist base_stats once so future tier shifts always recalculate from it
+                    if base and not sec.get("base_stats"):
+                        update["secret_content.base_stats"] = base
+                    await cards_collection.update_one(
+                        {"campaign_id": campaign_id, "title": name, "type": "character"},
+                        {"$set": update},
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(f"DC tier update failed for {name!r}: {exc}")
+            elif new_status:
+                # dead or unrecognised tier — just update status
+                try:
+                    await cards_collection.update_one(
+                        {"campaign_id": campaign_id, "title": name, "type": "character"},
+                        {"$set": {"status": new_status}},
+                    )
+                except Exception:
+                    pass
 
 
 def render_deltas_for_prompt(deltas: List[Dict], limit: int = 8) -> str:

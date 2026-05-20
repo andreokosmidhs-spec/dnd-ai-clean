@@ -37,6 +37,8 @@ _ARCHETYPES = [
             "slurred speech, loses the thread mid-sentence, uses '*hic*' as "
             "punctuation, speaks in breathless fragments of grand revelation"
         ),
+        # paranoid → hard to fool or persuade; drunk → easy to intimidate; no insight
+        "base_dcs": {"persuasion_dc": 15, "intimidation_dc": 8, "deception_dc": 16, "insight_dc": 8},
     },
     {
         "slug": "ugly_flirt",
@@ -50,6 +52,8 @@ _ARCHETYPES = [
             "uses terrible pickup lines with total sincerity, occasionally refers "
             "to themselves in the third person, calls the player 'friend' immediately"
         ),
+        # desperate for attention → easy to persuade; thick-skinned → hard to intimidate
+        "base_dcs": {"persuasion_dc": 9, "intimidation_dc": 16, "deception_dc": 10, "insight_dc": 11},
     },
     {
         "slug": "clingy_fan",
@@ -63,6 +67,8 @@ _ARCHETYPES = [
             "rapid-fire questions, wildly exaggerates what they 'heard about you', "
             "keeps saying 'I knew it was you', tries to introduce you to strangers nearby"
         ),
+        # star-struck → easy to persuade; so excited they miss deception cues
+        "base_dcs": {"persuasion_dc": 8, "intimidation_dc": 12, "deception_dc": 10, "insight_dc": 9},
     },
     {
         "slug": "teenager_scheme",
@@ -76,6 +82,8 @@ _ARCHETYPES = [
             "conspiratorial hush, overly casual to cover nerves, has clearly "
             "rehearsed this speech, drops the pretense the moment anyone looks at them"
         ),
+        # nervous and needy → easy to intimidate and persuade; too distracted to read others
+        "base_dcs": {"persuasion_dc": 10, "intimidation_dc": 9, "deception_dc": 13, "insight_dc": 9},
     },
     {
         "slug": "street_prophet",
@@ -89,6 +97,8 @@ _ARCHETYPES = [
             "dramatic pauses, archaic phrasing, absolute unshakeable conviction, "
             "the prophecy involves oddly specific mundane details"
         ),
+        # absolutely certain of divine truth → nearly impossible to persuade or deceive
+        "base_dcs": {"persuasion_dc": 18, "intimidation_dc": 13, "deception_dc": 17, "insight_dc": 10},
     },
     {
         "slug": "wrong_person",
@@ -102,6 +112,8 @@ _ARCHETYPES = [
             "references shared memories that never happened, calls the player by "
             "the wrong name throughout, treats denials as jokes"
         ),
+        # totally blind to reality → insight very easy; hard to persuade (laughs off truth)
+        "base_dcs": {"persuasion_dc": 16, "intimidation_dc": 9, "deception_dc": 13, "insight_dc": 7},
     },
     {
         "slug": "desperate_vendor",
@@ -115,6 +127,8 @@ _ARCHETYPES = [
             "invents product features on the fly, price drops every other sentence, "
             "dramatic claims about the item's history or magical properties"
         ),
+        # desperate → easy to persuade and intimidate; experienced liar → deception hard
+        "base_dcs": {"persuasion_dc": 9, "intimidation_dc": 8, "deception_dc": 15, "insight_dc": 11},
     },
     {
         "slug": "lost_child",
@@ -128,6 +142,8 @@ _ARCHETYPES = [
             "simple vocabulary, breathless with importance, describes the rock "
             "with absolute reverence, oblivious to any social context"
         ),
+        # innocent and trusting → very easy to persuade; no social awareness
+        "base_dcs": {"persuasion_dc": 7, "intimidation_dc": 7, "deception_dc": 11, "insight_dc": 8},
     },
     {
         "slug": "old_rival",
@@ -141,6 +157,8 @@ _ARCHETYPES = [
             "keeps referencing 'that time in [place]', expects the player to "
             "remember vividly, deflated when they don't, doubles down anyway"
         ),
+        # smug and proud → hard to persuade (won't admit defeat); needs validation → medium
+        "base_dcs": {"persuasion_dc": 15, "intimidation_dc": 12, "deception_dc": 13, "insight_dc": 11},
     },
     {
         "slug": "rambling_poet",
@@ -154,6 +172,8 @@ _ARCHETYPES = [
             "speaks in attempted verse even out of character, gets the player's "
             "deeds hilariously wrong, extremely proud of the work"
         ),
+        # enthusiastic and eager to please → easy to persuade; so excited they miss lies
+        "base_dcs": {"persuasion_dc": 9, "intimidation_dc": 9, "deception_dc": 11, "insight_dc": 11},
     },
 ]
 
@@ -294,11 +314,12 @@ async def generate_world_event(
                                     data.get("current_motivation") or archetype["brief"]
                                 ),
                                 "stats": {
-                                    "intimidation_dc": 10,
-                                    "persuasion_dc": 12,
-                                    "deception_dc": 11,
-                                    "insight_dc": 10,
+                                    "intimidation_dc": archetype["base_dcs"]["intimidation_dc"],
+                                    "persuasion_dc": archetype["base_dcs"]["persuasion_dc"],
+                                    "deception_dc": archetype["base_dcs"]["deception_dc"],
+                                    "insight_dc": archetype["base_dcs"]["insight_dc"],
                                 },
+                                "base_stats": archetype["base_dcs"].copy(),
                                 "secrets": [],
                                 "allegiances": [],
                             },

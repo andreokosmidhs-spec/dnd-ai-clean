@@ -24,7 +24,7 @@ import { useOpenLeads, useUpdateLeadStatus } from '../hooks/useLeads';
 
 // Import extracted components
 import { KnowledgeCard } from './campaignLog/KnowledgeCard';
-import { CardDetailsDrawer } from './campaignLog/CardDetailsDrawer';
+import CardModal from './campaignLog/CardModal';
 import { usePinnedCards } from './campaignLog/usePinnedCards';
 import { CARD_TYPE_CONFIG, normalizeCardType } from './campaignLog/cardTypeConfig';
 
@@ -535,18 +535,15 @@ export const CampaignLogPanel = ({ campaignId, characterId, onClose }) => {
       </Button>
       
       {/* Card Details Drawer */}
-      <CardDetailsDrawer
+      <CardModal
         card={selectedCard}
         type={selectedType}
         isOpen={drawerOpen}
-        onClose={handleCloseDrawer}
+        onClose={() => setDrawerOpen(false)}
         isPinned={selectedCard ? isPinned(selectedCard.id) : false}
         onTogglePin={togglePin}
         campaignId={campaignId}
-        onCardUpdated={(updated) => {
-          // Refresh just the selected card; the deck list re-fetches on close.
-          setSelectedCard(updated);
-        }}
+        onCardUpdated={loadAllData}
       />
     </div>
   );

@@ -1,152 +1,141 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Badge } from '../ui/badge';
-import { Star, MapPin, Sparkles } from 'lucide-react';
-import { CARD_TYPE_CONFIG, getCardTitle, getCardDescription, getCardTags, normalizeCardType } from './cardTypeConfig';
+import { Star } from 'lucide-react';
+import {
+  CARD_TYPE_CONFIG,
+  getCardTitle,
+  normalizeCardType,
+  getRarity,
+  RARITY_CONFIG,
+  getMechanicalRows,
+  getStatusStyle,
+} from './cardTypeConfig';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-/**
- * KnowledgeCard — uniform MTG-portrait card used in the deck library grid.
- * Aspect ratio matches the image the player referenced (~ 5:7) so any card
- * type (character / location / faction / lore / lead / quest) reads the
- * same shape and size across the whole library.
- *
- * Newly-minted cards stamp `is_new=true` server-side; this component shows
- * a glowing emerald highlight border until the player hovers (clearing
- * locally for immediate feedback and POSTing /seen to clear server-side
- * so the badge counter on the deck button drops too).
- */
+const KIND_CLASS = {
+  status: '',   // handled separately as a pill
+  info:   'text-gray-300',
+  warn:   'text-amber-400',
+  stat:   'text-cyan-300 font-mono',
+  delta:  'text-gray-400 italic',
+};
+
 export const KnowledgeCard = ({ data, type, onSelect, isSelected, isPinned, campaignId }) => {
-  const config = CARD_TYPE_CONFIG[normalizeCardType(type)] || CARD_TYPE_CONFIG.locations;
+  const normalized = normalizeCardType(type);
+  const config = CARD_TYPE_CONFIG[normalized] || CARD_TYPE_CONFIG.locations;
   const Icon = config.icon;
   const title = getCardTitle(data, type);
-  const description = getCardDescription(data, type);
-  const tags = getCardTags(data, type);
+  const rarity = getRarity(data, normalized);
+  const rarityConf = RARITY_CONFIG[rarity];
+  const mechRows = getMechanicalRows(data, normalized);
+  const [statusRow, ...infoRows] = mechRows;
 
-  const origin = data?.location_origin || data?.locationOrigin || null;
-  const isAutoSeeded = !!data?.auto_seeded;
+  const biomeAccent = data?.biome_accent || null;
+  const headerGradient = normalized === 'locations' && biomeAccent ? biomeAccent : config.gradient;
 
-  const biomeLabel = data?.biome_label || data?.biomeLabel || null;
-  const biomeAccent = data?.biome_accent || data?.biomeAccent || null;
-  const headerGradient = (normalizeCardType(type) === 'locations') && biomeAccent
-    ? biomeAccent
-    : config.gradient;
-
-  // Local mirror of is_new so the highlight clears instantly on hover even
-  // before the server PATCH lands. The server confirms via the `/seen`
-  // endpoint and the deck refresh picks up the truth on next load.
   const [isNew, setIsNew] = useState(!!data?.is_new);
-  const hasFlaggedRef = useRef(false);
+  const flaggedRef = useRef(false);
 
   const handleMouseEnter = useCallback(() => {
-    if (!isNew || hasFlaggedRef.current) return;
-    hasFlaggedRef.current = true;
+    if (!isNew || flaggedRef.current) return;
+    flaggedRef.current = true;
     setIsNew(false);
     if (campaignId && data?.id) {
-      // Fire-and-forget; if it fails we'll just re-flag on next reload.
-      fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/cards/${data.id}/seen`, {
-        method: 'POST',
-      }).catch(() => {});
-      try {
-        window.dispatchEvent(new CustomEvent('rpg:cards-seen', {
-          detail: { campaignId, cardId: data.id },
-        }));
-      } catch {}
+      fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/cards/${data.id}/seen`, { method: 'POST' }).catch(() => {});
+      try { window.dispatchEvent(new CustomEvent('rpg:cards-seen', { detail: { campaignId, cardId: data.id } })); } catch {}
     }
   }, [isNew, campaignId, data?.id]);
 
+  // Rarity border override for non-common cards
+  const rarityBorder =
+    rarity === 'legendary' ? 'border-yellow-500/60' :
+    rarity === 'rare'      ? 'border-blue-500/50'   :
+    rarity === 'uncommon'  ? 'border-green-500/40'  :
+    config.border;
+
   return (
     <div
-      className={`relative aspect-[5/7] rounded-lg overflow-hidden cursor-pointer transition-all duration-200
-        bg-gray-900/85 border-2 ${config.border}
-        hover:-translate-y-0.5 hover:shadow-lg ${config.glow}
-        ${isSelected ? 'ring-2 ring-orange-500 ring-offset-2 ring-offset-gray-950' : ''}
-        ${isNew ? 'ring-2 ring-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.55)] animate-pulse-once' : ''}
+      className={`relative aspect-[5/7] rounded-xl overflow-hidden cursor-pointer select-none
+        bg-gray-900 border-2 ${rarityBorder}
+        transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${config.glow}
+        ${isSelected ? 'ring-2 ring-orange-400 ring-offset-2 ring-offset-gray-950' : ''}
+        ${isNew ? 'ring-2 ring-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.5)]' : ''}
       `}
       onClick={() => onSelect(data, type)}
       onMouseEnter={handleMouseEnter}
       data-testid="knowledge-card"
-      data-is-new={isNew ? '1' : '0'}
     >
-      {/* NEW corner ribbon — only while is_new */}
+      {/* NEW ribbon */}
       {isNew && (
-        <div
-          className="absolute top-0 left-0 z-20 px-2 py-0.5 bg-emerald-500 text-stone-950 text-[9px] font-black uppercase tracking-widest rounded-br-md"
-          data-testid="knowledge-card-new-ribbon"
-        >
+        <div className="absolute top-0 left-0 z-20 px-2 py-0.5 bg-emerald-500 text-stone-950 text-[8px] font-black uppercase tracking-widest rounded-br-md">
           New
         </div>
       )}
 
-      {/* Pin indicator */}
+      {/* Pin star */}
       {isPinned && (
         <div className="absolute top-1.5 right-1.5 z-10">
-          <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
+          <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
         </div>
       )}
 
-      {/* Header strip — type label + icon */}
-      <div className={`h-7 bg-gradient-to-r ${headerGradient} flex items-center justify-between px-2 border-b border-black/40`}>
+      {/* ── Header strip ── */}
+      <div className={`h-6 bg-gradient-to-r ${headerGradient} flex items-center justify-between px-2 border-b border-black/40`}>
         <div className="flex items-center gap-1 min-w-0">
-          <Icon className="w-3 h-3 text-white/95 shrink-0" />
-          <span className="text-[9px] font-bold text-white/95 uppercase tracking-wider truncate">
-            {biomeLabel ? `${config.label} · ${biomeLabel}` : config.label}
+          <Icon className="w-3 h-3 text-white/90 shrink-0" />
+          <span className="text-[8px] font-bold text-white/90 uppercase tracking-wider truncate">
+            {config.label}
           </span>
         </div>
-        <Sparkles className="w-3 h-3 text-white/50" />
+        {/* Rarity gem */}
+        <span className={`text-[10px] leading-none ${rarityConf.color}`} title={rarityConf.label}>
+          {rarityConf.gem}
+        </span>
       </div>
 
-      {/* Art well — gradient placeholder; replaced with custom image when present */}
+      {/* ── Art well (25% height) ── */}
       <div
-        className={`relative h-[38%] w-full bg-gradient-to-br ${headerGradient} overflow-hidden`}
+        className={`relative h-[25%] bg-gradient-to-br ${headerGradient} overflow-hidden`}
         style={data?.image_url ? { backgroundImage: `url(${data.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
       >
         {!data?.image_url && (
-          <div className="absolute inset-0 flex items-center justify-center opacity-30">
-            <Icon className="w-10 h-10 text-white" />
+          <div className="absolute inset-0 flex items-center justify-center opacity-20">
+            <Icon className="w-8 h-8 text-white" />
           </div>
         )}
       </div>
 
-      {/* Type-line */}
-      <div className="px-2 py-1 bg-stone-950/60 border-t border-b border-black/30">
-        <h3 className="font-bold text-white text-[12px] leading-tight truncate" title={title}>
+      {/* ── Title / type-line ── */}
+      <div className="px-2 py-1 bg-stone-950/70 border-t border-b border-black/30">
+        <h3 className="font-bold text-white text-[11px] leading-tight truncate" title={title}>
           {title}
         </h3>
       </div>
 
-      {/* Body */}
-      <div className="px-2 py-1.5 space-y-1 flex-1 overflow-hidden">
-        {description && (
-          <p className="text-gray-300 text-[10.5px] leading-snug italic font-serif line-clamp-4">
-            {description}
+      {/* ── Mechanical body ── */}
+      <div className="px-2 py-1.5 flex flex-col gap-1 overflow-hidden">
+        {/* Status pill */}
+        {statusRow && (
+          <span className={`self-start px-1.5 py-0 rounded text-[8px] font-semibold uppercase tracking-wide ${getStatusStyle(data?.status)}`}>
+            {statusRow.label}
+          </span>
+        )}
+
+        {/* Info rows */}
+        {infoRows.slice(0, 3).map((row, i) => (
+          <p key={i} className={`text-[9px] leading-snug truncate ${KIND_CLASS[row.kind] || 'text-gray-300'}`}>
+            {row.label}
           </p>
-        )}
+        ))}
+      </div>
 
-        {origin && (
-          <div className="flex items-center gap-1 text-[9px] text-slate-400" title="Location where this card was added">
-            <MapPin className="w-2.5 h-2.5" />
-            <span className="truncate">from <span className="text-slate-300">{origin}</span></span>
-            {isAutoSeeded && (
-              <Badge variant="outline" className="ml-0.5 px-1 py-0 h-3 text-[7px] border-slate-700 text-slate-400">
-                auto
-              </Badge>
-            )}
-          </div>
-        )}
-
-        {tags.length > 0 && (
-          <div className="flex flex-wrap gap-0.5">
-            {tags.slice(0, 2).map((tag, idx) => (
-              <Badge
-                key={idx}
-                variant="outline"
-                className={`text-[8px] px-1 py-0 leading-tight ${config.badge}`}
-              >
-                {tag}
-              </Badge>
-            ))}
-          </div>
+      {/* ── Footer: rarity label ── */}
+      <div className="absolute bottom-0 inset-x-0 px-2 py-1 bg-black/40 flex items-center justify-between">
+        <span className={`text-[7px] uppercase tracking-widest font-semibold ${rarityConf.color}`}>
+          {rarityConf.label}
+        </span>
+        {data?.auto_seeded === false && (
+          <span className="text-[7px] text-gray-500 italic">pinned</span>
         )}
       </div>
     </div>

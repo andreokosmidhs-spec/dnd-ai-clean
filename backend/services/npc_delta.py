@@ -133,6 +133,29 @@ async def apply_npc_deltas(
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"Failed to write NPC deltas for {name!r}: {exc}")
 
+        # Propagate attitude deltas to card status for live status display
+        for d in npc_deltas:
+            if d.get("type") == "attitude":
+                fact = (d.get("fact") or "").lower()
+                new_status = None
+                if any(w in fact for w in ("hostile", "attacks", "draws weapon", "threatens")):
+                    new_status = "hostile"
+                elif any(w in fact for w in ("dead", "killed", "slain", "dies", "died")):
+                    new_status = "dead"
+                elif any(w in fact for w in ("friendly", "grateful", "trusts", "allies", "warmly")):
+                    new_status = "friendly"
+                elif any(w in fact for w in ("neutral", "wary", "suspicious", "indifferent")):
+                    new_status = "neutral"
+                if new_status:
+                    try:
+                        await cards_collection.update_one(
+                            {"campaign_id": campaign_id, "title": name, "type": "character"},
+                            {"$set": {"status": new_status}},
+                        )
+                    except Exception:
+                        pass
+                break  # only the first attitude delta per turn changes status
+
 
 def render_deltas_for_prompt(deltas: List[Dict], limit: int = 8) -> str:
     """Format the most recent N deltas as a compact single-line history string."""

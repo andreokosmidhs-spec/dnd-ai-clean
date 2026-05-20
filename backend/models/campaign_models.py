@@ -58,6 +58,19 @@ class GenerateWorldResponse(BaseModel):
     startingScene: StartingScene
 
 
+class RevealCondition(BaseModel):
+    """Condition that must be met before an info card's content is shown.
+
+    type="check"  — player must pass a D&D skill check (roll_result >= dc).
+    type="quest"  — a specific quest must be completed.
+    type="free"   — no condition; card may be revealed at any time.
+    """
+    type: str = "free"                  # "check" | "quest" | "free"
+    check_type: Optional[str] = None    # D&D skill name, e.g. "investigation"
+    dc: Optional[int] = None
+    quest_id: Optional[str] = None
+
+
 class KnowledgeCard(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     type: str
@@ -68,6 +81,13 @@ class KnowledgeCard(BaseModel):
     tags: List[str] = Field(default_factory=list)
     # Optional status — primarily used by quest-type cards: 'active'|'completed'|'failed'
     status: Optional[str] = None
+    # Interaction hint visible on entity/info cards before the full description
+    # is revealed. E.g. "vendor", "questgiver", "enemy", "lore", "dungeon", "hub".
+    interaction_hint: Optional[str] = None
+    # Reveal mechanics (primarily for type="info" cards).
+    revealed: bool = True               # entity cards are always visible; info cards start hidden
+    reveal_condition: Optional[RevealCondition] = None
+    hint_text: Optional[str] = None     # teaser shown to player before reveal
     # Backend-only retention metadata used by narrative tick/world progression.
     narrative_importance: Dict[str, Any] = Field(default_factory=dict)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)

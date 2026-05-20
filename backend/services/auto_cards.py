@@ -162,10 +162,20 @@ async def _classify_candidates(
         "  - \"faction\": a named group, guild, order, or organization.\n"
         "  - \"none\": anything else (greetings, game terms, generic phrases, "
         "      misfires of the regex, names that are not truly proper entities).\n\n"
+        "Also provide an interaction_hint for npc/location/faction entities — "
+        "a single lowercase word describing the most likely player interaction:\n"
+        "  NPC hints: vendor, questgiver, enemy, ally, lore, service, guard, "
+        "              mystery, informant\n"
+        "  Location hints: hub, dungeon, rest, wilderness, landmark, shop, "
+        "                   temple, ruins, danger\n"
+        "  Faction hints: questgiver, enemy, ally, trade, information, guild, "
+        "                  threat, neutral\n"
+        "Use \"none\" for interaction_hint when entity type is \"none\".\n\n"
         f"Narration excerpt:\n'''{snippet}'''\n\n"
         f"Candidates to classify:\n{candidates_json}\n\n"
         "Respond with ONLY valid JSON in this shape (no extra commentary):\n"
-        '{"results": [{"name": "...", "type": "npc|location|faction|none"}, ...]}'
+        '{"results": [{"name": "...", "type": "npc|location|faction|none", '
+        '"interaction_hint": "vendor|questgiver|enemy|..."}, ...]}'
     )
 
     try:
@@ -197,14 +207,16 @@ async def _classify_candidates(
         logger.warning(f"[auto-cards] non-JSON classifier output: {text[:200]!r}")
         return {}
 
-    results: Dict[str, str] = {}
+    # Returns {name_lower: {"type": etype, "interaction_hint": hint}}
+    results: Dict[str, Dict[str, str]] = {}
     for item in parsed.get("results", []) or []:
         name = (item.get("name") or "").strip()
         etype = (item.get("type") or "").strip().lower()
         if not name:
             continue
         if etype in {"npc", "location", "faction"}:
-            results[name.lower()] = etype
+            hint = (item.get("interaction_hint") or "none").strip().lower()
+            results[name.lower()] = {"type": etype, "interaction_hint": hint}
     return results
 
 
@@ -331,6 +343,143 @@ async def _detect_narrative_events(narration: str) -> List[Dict]:
         valid.append(entry)
     # Cap so a runaway scene doesn't generate 20 cards in one turn
     return valid[:6]
+
+
+# ---------------------------------------------------------------------------
+# INFO-CARD DETECTION (Pass 3)
+# ---------------------------------------------------------------------------
+
+# Supported interaction hints for validation
+_VALID_HINTS = {
+    # NPC
+    "vendor", "questgiver", "enemy", "ally", "lore", "service",
+    "guard", "mystery", "informant",
+    # Location
+    "hub", "dungeon", "rest", "wilderness", "landmark", "shop",
+    "temple", "ruins", "danger",
+    # Faction / generic
+    "trade", "information", "guild", "threat", "neutral",
+}
+
+
+async def _detect_info_clues(narration: str) -> List[Dict]:
+    """Third LLM pass — detects secrets, rumors, intel, and environmental
+    clues that the player perceived but hasn't fully investigated yet.
+
+    Returns a list of info-card dicts:
+      {title, hint_text, full_text, reveal_type, check_type, dc, interaction_hint}
+
+    Empty list on failure or when nothing clue-like happened.
+    Info cards start unrevealed — the player must meet the reveal condition
+    (skill check or quest completion) to see the full_text.
+    """
+    if not narration:
+        return []
+
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return []
+
+    snippet = narration[:1400]
+    prompt = (
+        "You are scanning a fantasy RPG scene for HIDDEN INFORMATION — clues, "
+        "rumors, secrets, or intel that the player can sense but hasn't fully "
+        "uncovered yet. These become info cards with a reveal condition.\n\n"
+        "Only emit a card when the scene ACTUALLY CONTAINS a hint of something "
+        "hidden. Do NOT invent mysteries. Typical examples:\n"
+        "  - An NPC drops a cryptic comment about a hidden room (Investigation)\n"
+        "  - A worn notice-board mentions a missing person (free reveal)\n"
+        "  - A locked chest with unusual markings is visible (Perception/Arcana)\n"
+        "  - A contact whispers that a faction has a secret agenda (Insight)\n"
+        "  - A completed quest would reveal the identity of a hooded figure\n\n"
+        "For each clue, output:\n"
+        '  "title": short label visible to the player (max 8 words)\n'
+        '  "hint_text": 1 sentence the player sees BEFORE revealing — a teaser '
+        "that makes them want to investigate (no spoilers)\n"
+        '  "full_text": 2-3 sentences shown AFTER reveal — the actual intel\n'
+        '  "reveal_type": "check" (skill roll) | "quest" (quest completion) | '
+        '"free" (no condition)\n'
+        '  "check_type": D&D 5e skill if reveal_type=="check", else null. '
+        "Choose from: investigation, perception, insight, arcana, history, "
+        "nature, religion, medicine, stealth\n"
+        '  "dc": integer DC if reveal_type=="check", else null (typical 10–20)\n'
+        '  "interaction_hint": single word from: vendor, questgiver, enemy, ally, '
+        "lore, service, guard, mystery, informant, hub, dungeon, rest, wilderness, "
+        "landmark, shop, temple, ruins, danger, trade, information, guild, threat, "
+        "neutral — pick what best describes the clue's subject\n\n"
+        f"Scene:\n'''{snippet}'''\n\n"
+        "Output STRICT JSON only:\n"
+        '{"clues": [{"title": "...", "hint_text": "...", "full_text": "...", '
+        '"reveal_type": "check|quest|free", "check_type": "investigation|null", '
+        '"dc": 14, "interaction_hint": "mystery"}]}\n\n'
+        'If nothing clue-like is in the scene, return: {"clues": []}'
+    )
+
+    try:
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"auto-info-{uuid.uuid4().hex[:8]}",
+            system_message=(
+                "You detect hidden information in RPG scenes. "
+                "Output STRICT JSON only — no prose, no code fence."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.0, max_tokens=500)
+        response = await chat.send_message(UserMessage(text=prompt))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[auto-cards/info] call failed: {exc}")
+        return []
+
+    text = (response or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:].lstrip()
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        logger.warning(f"[auto-cards/info] non-JSON: {text[:200]!r}")
+        return []
+
+    valid: List[Dict] = []
+    for clue in parsed.get("clues", []) or []:
+        title = (clue.get("title") or "").strip()
+        hint_text = (clue.get("hint_text") or "").strip()
+        full_text = (clue.get("full_text") or "").strip()
+        reveal_type = (clue.get("reveal_type") or "free").strip().lower()
+        if not title or not hint_text or not full_text:
+            continue
+        if reveal_type not in {"check", "quest", "free"}:
+            reveal_type = "free"
+
+        entry: Dict = {
+            "title": title[:60],
+            "hint_text": hint_text[:300],
+            "full_text": full_text[:480],
+            "reveal_type": reveal_type,
+            "check_type": None,
+            "dc": None,
+            "interaction_hint": None,
+        }
+        if reveal_type == "check":
+            raw_ct = (clue.get("check_type") or "investigation").strip().lower()
+            valid_checks = {
+                "investigation", "perception", "insight", "arcana", "history",
+                "nature", "religion", "medicine", "stealth",
+            }
+            entry["check_type"] = raw_ct if raw_ct in valid_checks else "investigation"
+            raw_dc = clue.get("dc")
+            try:
+                entry["dc"] = max(5, min(30, int(raw_dc))) if raw_dc is not None else 13
+            except (TypeError, ValueError):
+                entry["dc"] = 13
+
+        raw_hint = (clue.get("interaction_hint") or "mystery").strip().lower()
+        entry["interaction_hint"] = raw_hint if raw_hint in _VALID_HINTS else "mystery"
+        valid.append(entry)
+
+    return valid[:4]  # cap at 4 info cards per turn
 
 
 async def _classify_biome(name: str, content: str) -> str:
@@ -533,7 +682,11 @@ async def auto_seed_cards_from_narration(
     # Pass 1 — proper-noun entities (NPCs / locations / factions)
     for phrase in unknowns:
         canon = _strip_prefix_articles(phrase)
-        etype = classifications.get(phrase.lower()) or classifications.get(canon.lower())
+        entry = classifications.get(phrase.lower()) or classifications.get(canon.lower())
+        if not entry:
+            continue
+        etype = entry.get("type") if isinstance(entry, dict) else entry
+        interaction_hint = entry.get("interaction_hint", "none") if isinstance(entry, dict) else "none"
         if not etype or etype == "none":
             continue
 
@@ -554,6 +707,8 @@ async def auto_seed_cards_from_narration(
             "auto_seeded": True,
             "source": "dm_narration",
             "pinned": False,
+            "interaction_hint": interaction_hint if interaction_hint != "none" else None,
+            "revealed": True,   # entity cards are always visible
             "location_origin": location_origin or None,
             # Stamp character/NPC cards with where they were first encountered
             # so the DM knows who is reachable at the current location.
@@ -634,6 +789,53 @@ async def auto_seed_cards_from_narration(
             new_cards.append(card)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[auto-cards/event] insert failed for {title!r}: {exc}")
+
+    # Pass 3 — info/clue cards (hidden intel with reveal conditions).
+    clues = await _detect_info_clues(narration)
+    for clue in clues:
+        title = clue["title"]
+        # De-dupe within campaign on title+type
+        existing = await cards_collection.find_one(
+            {"campaign_id": campaign_id, "title": title, "type": "info"}
+        )
+        if existing:
+            continue
+
+        reveal_condition: Optional[Dict] = None
+        if clue["reveal_type"] == "check":
+            reveal_condition = {
+                "type": "check",
+                "check_type": clue["check_type"],
+                "dc": clue["dc"],
+            }
+        elif clue["reveal_type"] == "quest":
+            reveal_condition = {"type": "quest", "quest_id": None}
+        else:
+            reveal_condition = {"type": "free"}
+
+        card = {
+            "id": str(uuid.uuid4()),
+            "campaign_id": campaign_id,
+            "title": title,
+            "type": "info",
+            "content": clue["hint_text"],       # visible before reveal
+            "full_content": clue["full_text"],  # revealed only
+            "status": "hidden",
+            "revealed": False,
+            "reveal_condition": reveal_condition,
+            "interaction_hint": clue.get("interaction_hint"),
+            "auto_seeded": True,
+            "source": "dm_narration",
+            "pinned": False,
+            "location_origin": location_origin or None,
+            "createdAt": now.isoformat(),
+            "updatedAt": now.isoformat(),
+        }
+        try:
+            await cards_collection.insert_one(card)
+            new_cards.append(card)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[auto-cards/info] insert failed for {title!r}: {exc}")
 
     if new_cards:
         logger.info(

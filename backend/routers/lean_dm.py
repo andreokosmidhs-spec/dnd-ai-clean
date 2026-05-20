@@ -747,6 +747,82 @@ async def resolve_card(campaign_id: str, card_id: str, body: ResolveCardBody):
     }
 
 
+class RevealCardBody(BaseModel):
+    roll_result: Optional[int] = None   # player's skill check total (for type="check")
+    quest_id: Optional[str] = None      # completed quest id (for type="quest")
+
+
+@router.post("/{campaign_id}/cards/{card_id}/reveal")
+async def reveal_card(campaign_id: str, card_id: str, body: RevealCardBody):
+    """Attempt to reveal a hidden info card.
+
+    Checks the card's reveal_condition:
+      - type="free"  → always succeeds.
+      - type="check" → roll_result must be >= dc.
+      - type="quest" → the named quest must exist with status="completed".
+
+    On success: sets revealed=true, status="revealed", exposes full_content.
+    On failure: returns success=false with the condition details so the
+    frontend can show the player why the reveal was blocked.
+    """
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    card = await db.campaign_cards.find_one({"campaign_id": campaign_id, "id": card_id})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    if card.get("revealed"):
+        card.pop("_id", None)
+        return {"success": True, "already_revealed": True, "card": card}
+
+    condition = card.get("reveal_condition") or {"type": "free"}
+    ctype = condition.get("type", "free")
+
+    met = False
+    failure_reason: Optional[str] = None
+
+    if ctype == "free":
+        met = True
+    elif ctype == "check":
+        dc = int(condition.get("dc") or 10)
+        roll = int(body.roll_result or 0)
+        if roll >= dc:
+            met = True
+        else:
+            failure_reason = (
+                f"Requires {condition.get('check_type', 'investigation').title()} "
+                f"DC {dc} (you rolled {roll})."
+            )
+    elif ctype == "quest":
+        required_quest_id = condition.get("quest_id")
+        if not required_quest_id:
+            met = True  # quest_id not yet set — allow free reveal
+        else:
+            quest_doc = await db.quests.find_one({"quest_id": required_quest_id}, {"status": 1})
+            if quest_doc and quest_doc.get("status") == "completed":
+                met = True
+            else:
+                failure_reason = "A specific quest must be completed first."
+
+    if not met:
+        return {"success": False, "failure_reason": failure_reason, "reveal_condition": condition}
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.campaign_cards.update_one(
+        {"campaign_id": campaign_id, "id": card_id},
+        {"$set": {"revealed": True, "status": "revealed", "revealed_at": now, "updatedAt": now}},
+    )
+    # Return the full card with full_content exposed
+    card["revealed"] = True
+    card["status"] = "revealed"
+    card["revealed_at"] = now
+    card["updatedAt"] = now
+    card.pop("_id", None)
+    return {"success": True, "already_revealed": False, "card": card}
+
+
 _CARD_DEFAULT_STATUS: Dict[str, str] = {
     "item":      "acquired",
     "spell":     "known",
@@ -757,6 +833,7 @@ _CARD_DEFAULT_STATUS: Dict[str, str] = {
     "location":  "visited",
     "character": "known",
     "npc":       "known",
+    "info":      "hidden",
 }
 
 

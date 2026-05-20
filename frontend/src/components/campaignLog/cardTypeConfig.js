@@ -363,6 +363,11 @@ export const STATUS_STYLE = {
   unequipped:  'bg-gray-600/80 text-gray-300',
   consumed:    'bg-stone-800/80 text-stone-400',
   expended:    'bg-stone-800/80 text-stone-400',
+  // Faction reputation tiers
+  reviled:     'bg-red-900/80 text-red-200',
+  respected:   'bg-blue-700/80 text-blue-100',
+  honored:     'bg-indigo-600/80 text-indigo-100',
+  exalted:     'bg-yellow-600/80 text-yellow-100',
 };
 
 export const getStatusStyle = (status) =>
@@ -384,6 +389,11 @@ export const getRarity = (data, normalizedType) => {
   if (normalizedType === 'items') {
     if ((data?.grants_bonus || []).length > 0) return 'rare';
     if ((data?.status || '').toLowerCase() === 'equipped') return 'uncommon';
+  }
+  // Factions with perks or hierarchy are rare; enriched factions are uncommon
+  if (normalizedType === 'factions') {
+    if ((data?.tier_perks || []).length > 0) return 'rare';
+    if ((data?.hierarchy || []).length > 0) return 'uncommon';
   }
   if (data?.source === 'world_event') return 'uncommon';
   if (data?.auto_seeded === false) return 'uncommon';
@@ -480,9 +490,32 @@ export const getMechanicalRows = (data, normalizedType) => {
       break;
     }
     case 'factions': {
-      rows.push({ label: statusLabel, kind: 'status' });
-      const rel = data?.relationship_to_party || data?.content;
-      if (rel) rows.push({ label: rel.slice(0, 40), kind: 'info' });
+      // Reputation tier as the status pill
+      const rep = data?.reputation ?? null;
+      let repLabel = statusLabel;
+      if (rep !== null) {
+        if (rep <= -60) repLabel = 'Reviled';
+        else if (rep <= -20) repLabel = 'Hostile';
+        else if (rep < 20) repLabel = 'Neutral';
+        else if (rep < 50) repLabel = 'Respected';
+        else if (rep < 80) repLabel = 'Honored';
+        else repLabel = 'Exalted';
+      }
+      rows.push({ label: repLabel, kind: 'status' });
+      // Controlled areas
+      const areas = data?.controlled_areas || [];
+      if (areas.length) rows.push({ label: `⚑ ${areas.slice(0, 2).join(', ')}`, kind: 'info' });
+      // Active perk count
+      const perks = data?.tier_perks || [];
+      if (perks.length) {
+        rows.push({ label: `${perks.length} perk${perks.length !== 1 ? 's' : ''}`, kind: 'stat' });
+      } else {
+        const purpose = data?.purpose || data?.content;
+        if (purpose) rows.push({ label: purpose.slice(0, 38), kind: 'info' });
+      }
+      // Known member count
+      const members = data?.known_members || [];
+      if (members.length) rows.push({ label: `${members.length} known member${members.length !== 1 ? 's' : ''}`, kind: 'info' });
       break;
     }
     case 'spells': {

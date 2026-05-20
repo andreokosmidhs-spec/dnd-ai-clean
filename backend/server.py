@@ -123,6 +123,7 @@ from routers import feedback as feedback_router
 from routers import storylines as storylines_router
 from routers import character_deck as character_deck_router
 from routers import dm_lessons as dm_lessons_router
+from routers import factions as factions_router
 from routers import canon_scenes as canon_scenes_router
 from routers import mission_types as mission_types_router
 from routers import pressure_engine as pressure_engine_router
@@ -4149,6 +4150,7 @@ app.include_router(feedback_router.router)  # Player feedback → email via Rese
 app.include_router(storylines_router.router)  # Hook → storyline → beat progression → reward
 app.include_router(character_deck_router.router)  # Character deck (race/class/bg/lang + DM context)
 app.include_router(dm_lessons_router.router)  # DM Notebook (persistent lessons from feedback + 👍/👎)
+app.include_router(factions_router.router)    # Faction mechanics (perks, reputation, hierarchy)
 app.include_router(canon_scenes_router.router)  # Canon scenes (auto-checkpoints on passed beats)
 app.include_router(mission_types_router.router)  # Mission Type blueprints
 app.include_router(character_v2_router)
@@ -4169,6 +4171,7 @@ campaigns_router.set_database(db)
 lean_dm_router.set_database(db)
 storylines_router.set_database(db)
 dm_lessons_router.set_database(db)
+factions_router.set_database(db)
 canon_scenes_router.set_database(db)
 mission_types_router.set_database(db)
 scene_refresh_router.set_database(db)

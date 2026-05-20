@@ -122,6 +122,16 @@ const CardModal = ({ card, type, isOpen, onClose, isPinned, onTogglePin, campaig
     if (rows.length) mechanicalDetails.push({ label: 'Item properties', rows });
   }
 
+  // Faction details computed outside JSX for clarity
+  const factionHierarchy = normalized === 'factions' ? (card?.hierarchy || []) : [];
+  const factionPerks = normalized === 'factions' ? (card?.tier_perks || []) : [];
+  const factionMembers = normalized === 'factions' ? (card?.known_members || []) : [];
+  const factionRep = normalized === 'factions' ? (card?.reputation ?? null) : null;
+  const factionRepLabel = factionRep === null ? null
+    : factionRep <= -60 ? 'Reviled' : factionRep <= -20 ? 'Hostile'
+    : factionRep < 20 ? 'Neutral' : factionRep < 50 ? 'Respected'
+    : factionRep < 80 ? 'Honored' : 'Exalted';
+
   return (
     <>
       {/* Backdrop */}
@@ -246,6 +256,125 @@ const CardModal = ({ card, type, isOpen, onClose, isPinned, onTogglePin, campaig
                   <span key={i} className={`px-1.5 py-0 rounded text-[8px] border ${config.badge}`}>{tag}</span>
                 ))}
               </div>
+            )}
+
+            {/* ── FACTION SECTIONS ── */}
+            {normalized === 'factions' && (
+              <>
+                {/* Reputation + identity */}
+                {(factionRep !== null || card?.purpose || (card?.values || []).length > 0) && (
+                  <div>
+                    <p className="text-[8px] text-gray-500 uppercase tracking-widest mb-1">Identity</p>
+                    <div className="space-y-0.5">
+                      {factionRep !== null && (
+                        <p className="text-[10px] font-mono text-cyan-300">
+                          Reputation: {factionRep >= 0 ? '+' : ''}{factionRep} — {factionRepLabel}
+                        </p>
+                      )}
+                      {card?.purpose && <p className="text-[10px] text-gray-300">{card.purpose}</p>}
+                      {(card?.values || []).length > 0 && (
+                        <p className="text-[10px] text-gray-400 italic">Values: {card.values.join(' · ')}</p>
+                      )}
+                      {(card?.tenets || []).length > 0 && (
+                        <p className="text-[10px] text-amber-400">Tenets: {card.tenets.join(' · ')}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Hierarchy */}
+                {factionHierarchy.length > 0 && (
+                  <div>
+                    <p className="text-[8px] text-gray-500 uppercase tracking-widest mb-1">Hierarchy</p>
+                    <div className="space-y-1">
+                      {factionHierarchy.map((tier, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <span className="text-[8px] text-purple-400 font-bold shrink-0 w-4 text-right">{tier.tier}</span>
+                          <div className="min-w-0">
+                            <span className="text-[9px] text-white font-semibold">{tier.role}</span>
+                            {tier.filled_by && (
+                              <span className="text-[9px] text-green-400 ml-1">← {tier.filled_by}</span>
+                            )}
+                            {!tier.filled_by && (
+                              <span className="text-[9px] text-red-400/70 ml-1 italic">vacant</span>
+                            )}
+                            {tier.function && (
+                              <p className="text-[8px] text-gray-500 truncate">{tier.function}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Tier perks */}
+                {factionPerks.length > 0 && (
+                  <div>
+                    <p className="text-[8px] text-gray-500 uppercase tracking-widest mb-1">Perks</p>
+                    <div className="space-y-1.5">
+                      {factionPerks.map((perk, i) => {
+                        const reqs = perk.requirements || [];
+                        // Client-side requirement check (approximate — no live resource data)
+                        const hasHierarchyPerk = factionHierarchy.some(
+                          h => h.tier === perk.tier && h.filled_by
+                        );
+                        const isActive = reqs.length === 0 || hasHierarchyPerk;
+                        return (
+                          <div key={i} className="flex gap-2 items-start">
+                            <span className={`text-[8px] shrink-0 mt-0.5 ${isActive ? 'text-green-400' : 'text-red-400/60'}`}>
+                              {isActive ? '●' : '○'}
+                            </span>
+                            <div className="min-w-0">
+                              <p className={`text-[9px] font-semibold ${isActive ? 'text-white' : 'text-gray-500'}`}>
+                                {perk.name}
+                                {perk.bonus_modifier && perk.bonus_check && (
+                                  <span className="ml-1 text-cyan-400 font-mono">
+                                    +{perk.bonus_modifier} {perk.bonus_check}
+                                  </span>
+                                )}
+                              </p>
+                              {perk.description && (
+                                <p className="text-[8px] text-gray-500">{perk.description}</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Resources */}
+                {(card?.income_gp || card?.treasury_gp || card?.hideout || (card?.controlled_areas || []).length > 0) && (
+                  <div>
+                    <p className="text-[8px] text-gray-500 uppercase tracking-widest mb-1">Resources</p>
+                    <div className="space-y-0.5">
+                      {card?.income_gp != null && <p className="text-[10px] text-cyan-300 font-mono">Income: {card.income_gp} gp/month</p>}
+                      {card?.treasury_gp != null && <p className="text-[10px] text-cyan-300 font-mono">Treasury: {card.treasury_gp} gp</p>}
+                      {card?.recruitment_rate != null && <p className="text-[10px] text-gray-300">Recruitment: {card.recruitment_rate}/month</p>}
+                      {(card?.controlled_areas || []).length > 0 && <p className="text-[10px] text-gray-300">Controls: {card.controlled_areas.join(', ')}</p>}
+                      {card?.hideout && <p className="text-[10px] text-gray-300">Hideout: {card.hideout}</p>}
+                      {(card?.important_items || []).length > 0 && <p className="text-[10px] text-amber-400">Key items: {card.important_items.join(', ')}</p>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Known members */}
+                {factionMembers.length > 0 && (
+                  <div>
+                    <p className="text-[8px] text-gray-500 uppercase tracking-widest mb-1">Known members</p>
+                    <div className="space-y-0.5">
+                      {factionMembers.map((m, i) => (
+                        <div key={i} className="flex gap-2 items-center">
+                          <span className="text-[10px] text-white">{m.name}</span>
+                          {m.role && <span className="text-[8px] text-purple-400">[{m.role}]</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {/* NPC relationship history */}

@@ -382,6 +382,93 @@ async def _classify_biome(name: str, content: str) -> str:
     return "forest"
 
 
+async def _enrich_faction_identity(name: str, narration: str) -> dict:
+    """Make one gpt-4o-mini call to generate faction identity fields from the
+    narration context.
+
+    Returns a dict with keys:
+      purpose        — str
+      values         — list[str] (2-3 items)
+      values_attract — str
+      tenets         — list[str] (2-3 items)
+      hierarchy      — list[dict] (2-4 entries, keys: tier/role/function/min_level)
+      tier_perks     — list[dict] (1-2 starter perks matching the perk schema)
+
+    Falls back to {} on any error so callers stay non-fatal.
+    """
+    if not name or not narration:
+        return {}
+
+    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return {}
+
+    snippet = narration[:1200]
+    prompt = (
+        f"You are generating faction identity details for a fantasy RPG campaign.\n\n"
+        f"Faction name: {name!r}\n"
+        f"Narration context:\n'''{snippet}'''\n\n"
+        "Based on the narration, generate identity fields for this faction.\n\n"
+        "Respond with ONLY valid JSON (no prose, no code fences) in this exact shape:\n"
+        "{\n"
+        '  "purpose": "one sentence describing what this faction exists to do",\n'
+        '  "values": ["value1", "value2", "value3"],\n'
+        '  "values_attract": "one sentence on what kind of person this faction draws in",\n'
+        '  "tenets": ["tenet1", "tenet2", "tenet3"],\n'
+        '  "hierarchy": [\n'
+        '    {"tier": 1, "role": "Leader Title", "function": "What they do", "min_level": 1},\n'
+        '    {"tier": 2, "role": "Mid Title", "function": "What they do", "min_level": 1}\n'
+        "  ],\n"
+        '  "tier_perks": [\n'
+        '    {\n'
+        '      "tier": 1,\n'
+        '      "perk_id": "slug-name",\n'
+        '      "name": "Perk Name",\n'
+        '      "description": "What this perk grants",\n'
+        '      "bonus_check": "persuasion",\n'
+        '      "bonus_modifier": 2,\n'
+        '      "requirements": [{"type": "area_control", "value": "area name"}]\n'
+        "    }\n"
+        "  ]\n"
+        "}"
+    )
+
+    try:
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"faction-identity-{uuid.uuid4().hex[:8]}",
+            system_message=(
+                "You generate fantasy RPG faction identity data. "
+                "Output STRICT JSON only — no prose, no code fence."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.3, max_tokens=600)
+        response = await chat.send_message(UserMessage(text=prompt))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[faction-identity] LLM call failed for {name!r}: {exc}")
+        return {}
+
+    text = (response or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:].lstrip()
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        logger.warning(f"[faction-identity] non-JSON response for {name!r}: {text[:200]!r}")
+        return {}
+
+    # Validate the expected top-level keys are present before returning
+    expected_keys = {"purpose", "values", "values_attract", "tenets", "hierarchy", "tier_perks"}
+    if not expected_keys.issubset(parsed.keys()):
+        logger.warning(f"[faction-identity] incomplete response for {name!r}: missing keys")
+        return {}
+
+    return parsed
+
+
 async def auto_seed_cards_from_narration(
     *,
     campaign_id: str,
@@ -494,6 +581,21 @@ async def auto_seed_cards_from_narration(
             new_cards.append(card)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[auto-cards] insert failed for {canon!r}: {exc}")
+            continue
+
+        # For newly seeded faction cards, enrich with generated identity fields.
+        if etype == "faction":
+            try:
+                identity = await _enrich_faction_identity(canon, narration)
+                if identity:
+                    await cards_collection.update_one(
+                        {"campaign_id": campaign_id, "id": card["id"]},
+                        {"$set": identity},
+                    )
+                    # Keep the in-memory copy consistent for this turn's entity index
+                    card.update(identity)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"[auto-cards] faction identity enrich failed for {canon!r}: {exc}")
 
     # Pass 2 — narrative events (items / spells / favors / curses).
     # These are NOT always proper nouns, so a separate LLM pass scans the

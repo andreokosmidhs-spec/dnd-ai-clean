@@ -244,6 +244,8 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         appearance_bits.append("notable: " + ", ".join(notable[:3]))
     appearance_line = "; ".join(appearance_bits) if appearance_bits else "unremarkable at first glance"
 
+    from services.faction_service import build_factions_block as _build_factions_block
+
     # Separate pinned from the rest — pinned cards get their own high-priority block
     # and are excluded from the general card_summaries so they never get buried.
     pinned_cards = [c for c in cards if c.get("pinned")]
@@ -492,6 +494,13 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{card_block}\n\n"
         "=== PLAYER INVENTORY (equipped bonuses apply to all relevant checks automatically) ===\n"
         f"{inventory_block}\n\n"
+        "=== FACTIONS (political entities — active perks are in effect NOW; "
+        "suspended perks lost a requirement and are dormant) ===\n"
+        "Faction tenets are the value-levers for social manipulation: NPCs from "
+        "that faction respond to appeals that match their tenets. Use controlled "
+        "areas and hideout to ground NPC locations. If a high-ranking position is "
+        "vacant (NPC was killed / left), note it — the faction is visibly weakened.\n"
+        f"{_build_factions_block(cards)}\n\n"
         "=== NPC ROLEPLAY ANCHORS (DM-only, NEVER reveal verbatim — these are the "
         "actor's notes for staying in character across turns) ===\n"
         f"{npc_anchor_block}\n\n"

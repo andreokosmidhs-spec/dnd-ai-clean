@@ -619,6 +619,59 @@ async def _load_recent_messages(db, session_id: str) -> List[dict]:
     return docs
 
 
+@router.get("/{campaign_id}/leads")
+async def get_leads(
+    campaign_id: str,
+    status: Optional[str] = None,
+    pool: Optional[str] = None,
+    include_planted: bool = False,
+):
+    """Unified lead feed — reads all type='lead' cards from campaign_cards.
+
+    Consolidates leads from three legacy sources (pressure engine, campaign log,
+    and storyline knowledge beats) into a single sorted list.
+
+    Query params:
+      status         — filter by exact status (active, planted, sealed, resolved, …)
+      pool           — filter by pool (currently always "world")
+      include_planted — include pre-seeded 'planted' leads not yet encountered
+                        (default False so the player only sees active leads)
+    """
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    query: Dict = {"campaign_id": campaign_id, "type": "lead"}
+    if status:
+        query["status"] = status
+    elif not include_planted:
+        query["status"] = {"$ne": "planted"}
+    if pool:
+        query["pool"] = pool
+
+    cursor = db.campaign_cards.find(query, {"_id": 0}).sort("createdAt", -1).limit(100)
+    leads = await cursor.to_list(length=100)
+
+    # Group by status for summary counts
+    counts: Dict[str, int] = {}
+    for lead in leads:
+        s = lead.get("status") or "unknown"
+        counts[s] = counts.get(s, 0) + 1
+
+    return {
+        "campaign_id": campaign_id,
+        "leads": leads,
+        "total": len(leads),
+        "counts": counts,
+    }
+
+
+@router.patch("/{campaign_id}/leads/{card_id}/status")
+async def update_lead_status(campaign_id: str, card_id: str, body: BaseModel):
+    """Update a lead card's status, player_notes, or linked_quest_id."""
+    raise HTTPException(status_code=501, detail="Use PATCH /cards/{card_id} instead")
+
+
 @router.patch("/{campaign_id}/cards/{card_id}/equip")
 async def toggle_equip(campaign_id: str, card_id: str):
     """Toggle an item card between 'equipped' and 'unequipped' status."""
@@ -675,6 +728,44 @@ async def toggle_pin(campaign_id: str, card_id: str):
         {"$set": {"pinned": new_pinned, "updatedAt": datetime.now(timezone.utc).isoformat()}},
     )
     return {"success": True, "pinned": new_pinned}
+
+
+class UpdateLeadBody(BaseModel):
+    status: Optional[str] = None            # any value from LEAD_STATUSES
+    player_notes: Optional[str] = None
+    linked_quest_id: Optional[str] = None
+
+
+@router.patch("/{campaign_id}/cards/{card_id}/lead")
+async def update_lead_card(campaign_id: str, card_id: str, body: UpdateLeadBody):
+    """Update mutable lead fields: status, player_notes, linked_quest_id."""
+    from services.lead_card_service import LEAD_STATUSES
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    card = await db.campaign_cards.find_one({"campaign_id": campaign_id, "id": card_id})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    if card.get("type") != "lead":
+        raise HTTPException(status_code=400, detail="Card is not a lead")
+
+    updates: Dict = {"updatedAt": datetime.now(timezone.utc).isoformat()}
+    if body.status is not None:
+        if body.status not in LEAD_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {sorted(LEAD_STATUSES)}")
+        updates["status"] = body.status
+    if body.player_notes is not None:
+        updates["player_notes"] = body.player_notes
+    if body.linked_quest_id is not None:
+        updates["linked_quest_id"] = body.linked_quest_id
+
+    await db.campaign_cards.update_one(
+        {"campaign_id": campaign_id, "id": card_id},
+        {"$set": updates},
+    )
+    card.update(updates)
+    card.pop("_id", None)
+    return {"success": True, "card": card}
 
 
 class ResolveCardBody(BaseModel):

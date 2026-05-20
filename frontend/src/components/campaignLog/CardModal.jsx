@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { X, Star, MapPin, Clock } from 'lucide-react';
 import {
   CARD_TYPE_CONFIG,
@@ -20,13 +20,50 @@ const DELTA_TYPE_LABEL = {
   note:     'Note',
 };
 
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+
 const CardModal = ({ card, type, isOpen, onClose, isPinned, onTogglePin, campaignId }) => {
+  const [itemStatus, setItemStatus] = useState(card?.status || 'acquired');
+  const [itemQty, setItemQty] = useState(card?.quantity || 1);
+
+  useEffect(() => {
+    setItemStatus(card?.status || 'acquired');
+    setItemQty(card?.quantity || 1);
+  }, [card?.id, card?.status, card?.quantity]);
+
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
+
+  const handleToggleEquip = useCallback(async () => {
+    if (!campaignId || !card?.id) return;
+    const prev = itemStatus;
+    const next = prev === 'equipped' ? 'unequipped' : 'equipped';
+    setItemStatus(next);
+    try {
+      await fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/cards/${card.id}/equip`, { method: 'PATCH' });
+    } catch {
+      setItemStatus(prev);
+    }
+  }, [campaignId, card?.id, itemStatus]);
+
+  const handleConsume = useCallback(async () => {
+    if (!campaignId || !card?.id) return;
+    const prevQty = itemQty;
+    const prevStatus = itemStatus;
+    const newQty = Math.max(0, prevQty - 1);
+    setItemQty(newQty);
+    if (newQty === 0) setItemStatus('consumed');
+    try {
+      await fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/cards/${card.id}/consume`, { method: 'PATCH' });
+    } catch {
+      setItemQty(prevQty);
+      setItemStatus(prevStatus);
+    }
+  }, [campaignId, card?.id, itemQty, itemStatus]);
 
   if (!isOpen || !card) return null;
 
@@ -74,6 +111,16 @@ const CardModal = ({ card, type, isOpen, onClose, isPinned, onTogglePin, campaig
   if (normalized === 'curses' && card?.mechanical) {
     mechanicalDetails.push({ label: 'Mechanical effect', rows: [card.mechanical] });
   }
+  if (normalized === 'items') {
+    const bonuses = card?.grants_bonus || [];
+    const itemType = card?.item_type;
+    const slot = card?.equip_slot;
+    const rows = [];
+    if (itemType) rows.push(`Type: ${itemType}${slot ? ` · ${slot}` : ''}`);
+    bonuses.forEach(b => rows.push(`+${b.modifier} to ${b.check} checks (when equipped)`));
+    if (itemQty > 0) rows.push(`Quantity: ×${itemQty}`);
+    if (rows.length) mechanicalDetails.push({ label: 'Item properties', rows });
+  }
 
   return (
     <>
@@ -120,14 +167,39 @@ const CardModal = ({ card, type, isOpen, onClose, isPinned, onTogglePin, campaig
             )}
           </div>
 
-          {/* Type-line: title + status */}
+          {/* Type-line: title + status + item actions */}
           <div className="flex-shrink-0 px-3 py-2 bg-stone-950/80 border-t border-b border-black/30 flex items-center justify-between gap-2">
             <h3 className="font-bold text-white text-sm leading-tight truncate">{title}</h3>
-            {card?.status && (
-              <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[8px] font-semibold uppercase tracking-wide ${getStatusStyle(card.status)}`}>
-                {card.status}
-              </span>
-            )}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {/* Equip / Unequip button for equipment items */}
+              {normalized === 'items' && card?.item_type === 'equipment' && itemStatus !== 'consumed' && (
+                <button
+                  onClick={handleToggleEquip}
+                  className={`px-1.5 py-0.5 rounded text-[8px] font-semibold uppercase tracking-wide transition-colors ${
+                    itemStatus === 'equipped'
+                      ? 'bg-green-600/80 text-green-100 hover:bg-gray-600/80 hover:text-gray-300'
+                      : 'bg-gray-600/80 text-gray-300 hover:bg-green-600/80 hover:text-green-100'
+                  }`}
+                >
+                  {itemStatus === 'equipped' ? 'Equipped ✓' : 'Equip'}
+                </button>
+              )}
+              {/* Consume button for consumables/materials/currency */}
+              {normalized === 'items' && card?.item_type !== 'equipment' && itemStatus !== 'consumed' && (
+                <button
+                  onClick={handleConsume}
+                  className="px-1.5 py-0.5 rounded text-[8px] font-semibold uppercase tracking-wide bg-orange-700/80 text-orange-200 hover:bg-orange-600/80 transition-colors"
+                >
+                  Use ×1
+                </button>
+              )}
+              {/* Status pill */}
+              {(normalized !== 'items' ? card?.status : itemStatus) && (
+                <span className={`px-1.5 py-0.5 rounded text-[8px] font-semibold uppercase tracking-wide ${getStatusStyle(normalized === 'items' ? itemStatus : card?.status)}`}>
+                  {normalized === 'items' ? itemStatus : card?.status}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Scrollable body */}

@@ -226,7 +226,7 @@ def _card_description(name: str, entity_type: str, narration: str) -> str:
     return snippet or f"{name} — recently introduced in the narrative."
 
 
-async def _detect_narrative_events(narration: str) -> List[Dict[str, str]]:
+async def _detect_narrative_events(narration: str) -> List[Dict]:
     """Second LLM pass — detects narrative events that should become cards
     but aren't always proper-noun candidates:
        - items the player just acquired
@@ -234,7 +234,7 @@ async def _detect_narrative_events(narration: str) -> List[Dict[str, str]]:
        - favors/boons/debts owed to or by the player
        - curses/hexes afflicting the player
 
-    Returns a list of `{title, type, content}` dicts. Empty list on
+    Returns a list of dicts with at least {title, type, content}. Empty list on
     failure or when nothing eventful happened (most turns).
     """
     if not narration:
@@ -250,8 +250,7 @@ async def _detect_narrative_events(narration: str) -> List[Dict[str, str]]:
         "that should become permanent campaign cards. Only emit events that "
         "REALLY happened in this scene — do NOT invent.\n\n"
         "Card types to extract:\n"
-        '  - "item": the player physically acquired or was given an item '
-        "(weapon, gear, scroll, key, potion, jewelry, document, gold pouch). "
+        '  - "item": the player physically acquired or was given an item. '
         "Skip items the player merely sees but doesn't take.\n"
         '  - "spell": the player learned a new spell, ritual, prayer, or '
         "magical ability. Skip spells they merely cast that they already knew.\n"
@@ -259,11 +258,22 @@ async def _detect_narrative_events(narration: str) -> List[Dict[str, str]]:
         "boon, OR the player owes someone. Mutual implies two cards.\n"
         '  - "curse": the player was cursed, hexed, or afflicted with a '
         "magical malady. Skip mundane wounds.\n\n"
+        "For ITEM events, also provide:\n"
+        '  - "item_type": "equipment" (worn/held gear that grants bonuses), '
+        '"consumable" (potions, food, single-use items), "material" (crafting '
+        'components, reagents), or "currency" (gold, silver, gems as wealth)\n'
+        '  - "equip_slot": for equipment only — "weapon", "armor", "accessory", '
+        '"offhand", or null if not applicable\n'
+        '  - "grants_bonus": for equipment only — list of {"check": "stealth", '
+        '"modifier": 2} objects. Use D&D 5e skill names. Empty list if no bonus.\n'
+        '  - "quantity": integer — 1 for most items; higher for potions (bundle), '
+        "gold pouches (estimated gp value), arrows, rations, etc.\n\n"
         f"Scene:\n'''{snippet}'''\n\n"
         "Output STRICT JSON only:\n"
         '{"events": [{"title": "Short Name", "type": "item|spell|favor|curse", '
-        '"content": "1-2 sentence summary grounded in the scene"}]}\n\n'
-        "If nothing eventful happened, return: {\"events\": []}"
+        '"content": "1-2 sentence summary", "item_type": "...", "equip_slot": null, '
+        '"grants_bonus": [], "quantity": 1}]}\n\n'
+        'If nothing eventful happened, return: {"events": []}'
     )
 
     try:
@@ -275,7 +285,7 @@ async def _detect_narrative_events(narration: str) -> List[Dict[str, str]]:
                 "Output STRICT JSON only — no prose, no code fence."
             ),
         )
-        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.0)
+        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.0, max_tokens=400)
         response = await chat.send_message(UserMessage(text=prompt))
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[auto-cards/events] call failed: {exc}")
@@ -293,15 +303,32 @@ async def _detect_narrative_events(narration: str) -> List[Dict[str, str]]:
         logger.warning(f"[auto-cards/events] non-JSON: {text[:200]!r}")
         return []
 
-    valid: List[Dict[str, str]] = []
+    valid: List[Dict] = []
     for ev in parsed.get("events", []) or []:
         title = (ev.get("title") or "").strip()
         etype = (ev.get("type") or "").strip().lower()
         content = (ev.get("content") or "").strip()
         if not title or len(title) < 2:
             continue
-        if etype in {"item", "spell", "favor", "curse"} and content:
-            valid.append({"title": title, "type": etype, "content": content})
+        if etype not in {"item", "spell", "favor", "curse"} or not content:
+            continue
+        entry: Dict = {"title": title, "type": etype, "content": content}
+        if etype == "item":
+            raw_type = (ev.get("item_type") or "equipment").lower().strip()
+            entry["item_type"] = raw_type if raw_type in {"equipment", "consumable", "material", "currency"} else "equipment"
+            raw_slot = (ev.get("equip_slot") or "").lower().strip()
+            entry["equip_slot"] = raw_slot if raw_slot in {"weapon", "armor", "accessory", "offhand"} else None
+            raw_bonuses = ev.get("grants_bonus") or []
+            entry["grants_bonus"] = [
+                {"check": str(b.get("check", "")).lower().strip(), "modifier": int(b.get("modifier", 0))}
+                for b in raw_bonuses if isinstance(b, dict) and b.get("check") and b.get("modifier") is not None
+            ]
+            raw_qty = ev.get("quantity")
+            try:
+                entry["quantity"] = max(1, int(raw_qty)) if raw_qty is not None else 1
+            except (TypeError, ValueError):
+                entry["quantity"] = 1
+        valid.append(entry)
     # Cap so a runaway scene doesn't generate 20 cards in one turn
     return valid[:6]
 
@@ -495,6 +522,11 @@ async def auto_seed_cards_from_narration(
             "createdAt": now.isoformat(),
             "updatedAt": now.isoformat(),
         }
+        if etype == "item":
+            card["item_type"] = ev.get("item_type") or "equipment"
+            card["equip_slot"] = ev.get("equip_slot") or None
+            card["grants_bonus"] = ev.get("grants_bonus") or []
+            card["quantity"] = ev.get("quantity") or 1
         try:
             await cards_collection.insert_one(card)
             new_cards.append(card)

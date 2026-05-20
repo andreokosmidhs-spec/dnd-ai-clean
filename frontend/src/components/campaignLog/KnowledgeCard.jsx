@@ -79,6 +79,13 @@ export const KnowledgeCard = ({ data, type, onSelect, isSelected, isPinned, camp
         </div>
       )}
 
+      {/* Quantity badge — shown for stackable items (potions, gold, materials) */}
+      {(data?.quantity || 0) > 1 && (
+        <div className={`absolute z-10 px-1 leading-tight rounded text-[7px] font-bold bg-orange-600/90 text-white ${isPinned ? 'top-1.5 right-5' : 'top-1.5 right-1.5'}`}>
+          ×{data.quantity}
+        </div>
+      )}
+
       {/* ── Header strip ── */}
       <div className={`h-6 bg-gradient-to-r ${headerGradient} flex items-center justify-between px-2 border-b border-black/40`}>
         <div className="flex items-center gap-1 min-w-0">

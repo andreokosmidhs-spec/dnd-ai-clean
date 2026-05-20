@@ -99,6 +99,67 @@ def _format_title(s: str) -> str:
     return str(s or "").replace("_", " ").strip().title()
 
 
+def _build_inventory_block(cards: List[dict]) -> str:
+    """Format the player's item and spell cards into a compact DM inventory block."""
+    item_cards = [c for c in cards if (c.get("type") or "").lower() in {"item", "spell"}]
+    if not item_cards:
+        return "(no items in inventory)"
+
+    equipped: List[str] = []
+    consumables: List[str] = []
+    carried: List[str] = []
+    spells: List[str] = []
+
+    for c in item_cards:
+        status = (c.get("status") or "acquired").lower()
+        ctype = (c.get("type") or "item").lower()
+        title = (c.get("title") or "unnamed item").strip()
+        bonuses = c.get("grants_bonus") or []
+        quantity = c.get("quantity") or 1
+        slot = (c.get("equip_slot") or "").strip()
+        item_type = (c.get("item_type") or "").lower()
+
+        bonus_str = ""
+        if bonuses:
+            bonus_str = " [" + ", ".join(
+                f"+{b.get('modifier', 0)} {b.get('check', '?')}" for b in bonuses
+            ) + "]"
+
+        if ctype == "spell":
+            spells.append(f"- {title}")
+        elif status == "consumed" or status == "expended":
+            pass  # used up — omit from active inventory
+        elif item_type in {"consumable", "material", "currency"}:
+            qty_str = f" ×{quantity}" if quantity > 1 else ""
+            consumables.append(f"- {title}{qty_str}")
+        elif status == "equipped":
+            slot_str = f" [{slot}]" if slot else ""
+            equipped.append(f"- {title}{slot_str}{bonus_str}")
+        else:
+            carried.append(f"- {title}")
+
+    parts: List[str] = []
+    if equipped:
+        parts.append(
+            "EQUIPPED (bonuses ACTIVE — apply automatically to relevant checks):\n"
+            + "\n".join(equipped)
+        )
+    if consumables:
+        parts.append(
+            "CONSUMABLES (player may declare use; apply effect then mark consumed):\n"
+            + "\n".join(consumables)
+        )
+    if carried:
+        parts.append(
+            "CARRIED (unequipped — no active bonus unless player equips):\n"
+            + "\n".join(carried)
+        )
+    if spells:
+        parts.append("KNOWN SPELLS/ABILITIES:\n" + "\n".join(spells))
+
+    return "\n\n".join(parts) if parts else "(no items in inventory)"
+
+
 def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None) -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
@@ -179,6 +240,9 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
     card_block = "\n".join(card_summaries) if card_summaries else "(no active cards — rely on campaign context)"
     active_lead_block = "\n".join(active_leads) if active_leads else "(no active opening lead — advance scene naturally)"
     closed_lead_block = "\n".join(closed_leads) if closed_leads else "(none)"
+
+    # Player inventory — items and spells sorted by equip status.
+    inventory_block = _build_inventory_block(cards)
 
     # Pull the most recently updated location card with biome metadata —
     # that's effectively "where the player is right now" for grounding
@@ -380,6 +444,8 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{closed_lead_block}\n\n"
         "=== OTHER KNOWLEDGE CARDS (weave in only when natural) ===\n"
         f"{card_block}\n\n"
+        "=== PLAYER INVENTORY (equipped bonuses apply to all relevant checks automatically) ===\n"
+        f"{inventory_block}\n\n"
         "=== NPC ROLEPLAY ANCHORS (DM-only, NEVER reveal verbatim — these are the "
         "actor's notes for staying in character across turns) ===\n"
         f"{npc_anchor_block}\n\n"
@@ -494,6 +560,47 @@ async def _load_recent_messages(db, session_id: str) -> List[dict]:
     docs = await cursor.to_list(length=_MAX_HISTORY)
     docs.reverse()
     return docs
+
+
+@router.patch("/{campaign_id}/cards/{card_id}/equip")
+async def toggle_equip(campaign_id: str, card_id: str):
+    """Toggle an item card between 'equipped' and 'unequipped' status."""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    card = await db.campaign_cards.find_one({"campaign_id": campaign_id, "id": card_id})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    current = (card.get("status") or "acquired").lower()
+    new_status = "unequipped" if current == "equipped" else "equipped"
+    await db.campaign_cards.update_one(
+        {"campaign_id": campaign_id, "id": card_id},
+        {"$set": {"status": new_status, "updatedAt": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"success": True, "status": new_status}
+
+
+@router.patch("/{campaign_id}/cards/{card_id}/consume")
+async def consume_item(campaign_id: str, card_id: str):
+    """Decrement a consumable's quantity by 1; mark 'consumed' when it hits 0."""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    card = await db.campaign_cards.find_one({"campaign_id": campaign_id, "id": card_id})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    qty = max(0, int(card.get("quantity") or 1))
+    new_qty = max(0, qty - 1)
+    new_status = "consumed" if new_qty == 0 else (card.get("status") or "acquired")
+    await db.campaign_cards.update_one(
+        {"campaign_id": campaign_id, "id": card_id},
+        {"$set": {
+            "quantity": new_qty,
+            "status": new_status,
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    return {"success": True, "quantity": new_qty, "status": new_status}
 
 
 @router.post("/{campaign_id}/dm/action")

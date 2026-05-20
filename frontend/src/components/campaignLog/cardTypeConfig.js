@@ -358,6 +358,11 @@ export const STATUS_STYLE = {
   wary:        'bg-yellow-800/80 text-yellow-200',
   suspicious:  'bg-yellow-800/80 text-yellow-200',
   grateful:    'bg-green-700/80 text-green-100',
+  // Item lifecycle
+  equipped:    'bg-green-600/80 text-green-100',
+  unequipped:  'bg-gray-600/80 text-gray-300',
+  consumed:    'bg-stone-800/80 text-stone-400',
+  expended:    'bg-stone-800/80 text-stone-400',
 };
 
 export const getStatusStyle = (status) =>
@@ -375,6 +380,11 @@ export const getRarity = (data, normalizedType) => {
   if (normalizedType === 'curses') return 'legendary';
   if (normalizedType === 'favors') return 'rare';
   if (data?.secret_content && Object.keys(data.secret_content).length > 0) return 'rare';
+  // Items with active bonuses are rare; equipped items are at least uncommon
+  if (normalizedType === 'items') {
+    if ((data?.grants_bonus || []).length > 0) return 'rare';
+    if ((data?.status || '').toLowerCase() === 'equipped') return 'uncommon';
+  }
   if (data?.source === 'world_event') return 'uncommon';
   if (data?.auto_seeded === false) return 'uncommon';
   return 'common';
@@ -430,8 +440,29 @@ export const getMechanicalRows = (data, normalizedType) => {
     }
     case 'items': {
       rows.push({ label: statusLabel, kind: 'status' });
-      const props = data?.known_properties || data?.content;
-      if (props) rows.push({ label: props.slice(0, 40), kind: 'info' });
+      const itemType = data?.item_type;
+      const slot = data?.equip_slot;
+      const bonuses = data?.grants_bonus || [];
+      const qty = data?.quantity;
+      // Type + slot line
+      if (itemType) {
+        const typeStr = slot ? `${itemType} · ${slot}` : itemType;
+        rows.push({ label: typeStr.charAt(0).toUpperCase() + typeStr.slice(1), kind: 'info' });
+      }
+      // Bonus line (equipment) or description (other)
+      if (bonuses.length > 0) {
+        rows.push({
+          label: bonuses.map(b => `+${b.modifier} ${b.check}`).join(' · '),
+          kind: 'stat',
+        });
+      } else if (!itemType) {
+        const props = data?.known_properties || data?.content;
+        if (props) rows.push({ label: props.slice(0, 40), kind: 'info' });
+      }
+      // Quantity for stackables
+      if (qty && qty > 1) {
+        rows.push({ label: `Qty ×${qty}`, kind: 'info' });
+      }
       break;
     }
     case 'favors': {

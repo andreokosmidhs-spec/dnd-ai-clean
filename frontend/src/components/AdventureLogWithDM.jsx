@@ -1197,6 +1197,32 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
         });
       }
 
+      // Spontaneous world event — an NPC approaches the player in character.
+      // Injected as a distinct beat after obligation reminders.
+      if (data.world_event && data.world_event.narration) {
+        const evt = data.world_event;
+        const evtMsg = {
+          id: `world-event-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          type: 'dm',
+          text: evt.narration,
+          timestamp: Date.now() + 20,
+          isCinematic: true,
+          source: 'world-event',
+          meta: {
+            npcName: evt.npc_name,
+            eventType: evt.event_type,
+            category: evt.category,
+          },
+        };
+        setMessages((prev) => {
+          const next = [...prev, evtMsg].slice(-200);
+          if (sessionId) {
+            try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+          }
+          return next;
+        });
+      }
+
     } catch (error) {
       console.error('❌ DM API Error:', error);
       const errorMsg = {
@@ -2015,7 +2041,9 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                         ? 'bg-stone-900/60 border border-rose-900/50 border-l-4 border-l-rose-700'
                         : entry.source === 'obligation-reminder'
                           ? 'bg-gradient-to-r from-amber-900/20 to-stone-800/30 border border-amber-700/50 border-l-4 border-l-amber-500'
-                          : entry.isCinematic
+                          : entry.source === 'world-event'
+                            ? 'bg-gradient-to-r from-stone-800/50 to-zinc-900/50 border border-stone-600/60 border-l-4 border-l-stone-400'
+                            : entry.isCinematic
                             ? 'bg-gradient-to-r from-violet-600/30 to-purple-600/30 border-2 border-violet-400/50'
                             : 'bg-violet-600/20 border-l-4 border-violet-400'
                   } animate-in slide-in-from-left-5 duration-300`}
@@ -2026,12 +2054,14 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                         <BookOpen className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
                       ) : entry.source === 'obligation-reminder' ? (
                         <span className="text-amber-400 flex-shrink-0 mt-0.5 text-base leading-none">🪶</span>
+                      ) : entry.source === 'world-event' ? (
+                        <span className="text-stone-300 flex-shrink-0 mt-0.5 text-base leading-none">⚡</span>
                       ) : (
                         <Dice6 className="h-5 w-5 text-violet-400 flex-shrink-0 mt-0.5" />
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className={`font-semibold text-sm ${entry.isWorldBrief ? 'text-amber-300 italic' : entry.source === 'storyline-expired' ? 'text-rose-400 italic' : entry.source === 'obligation-reminder' ? 'text-amber-400 italic' : 'text-violet-400'}`}>
+                          <span className={`font-semibold text-sm ${entry.isWorldBrief ? 'text-amber-300 italic' : entry.source === 'storyline-expired' ? 'text-rose-400 italic' : entry.source === 'obligation-reminder' ? 'text-amber-400 italic' : entry.source === 'world-event' ? 'text-stone-300 italic' : 'text-violet-400'}`}>
                             {entry.isWorldBrief
                               ? `📜 ${entry.chronicleTitle || 'A Chronicle of the Realm'}`
                               : entry.source === 'map-event'
@@ -2060,11 +2090,13 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                                                     ? `🔒 Sealed Lead — ${entry.meta?.leadTitle || ''}`
                                                     : entry.source === 'obligation-reminder'
                                                       ? `🪶 A Word Reaches You${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
-                                                      : entry.isCinematic
-                                                        ? '🎭 The Adventure Begins'
-                                                        : 'Dungeon Master'}
+                                                      : entry.source === 'world-event'
+                                                        ? `⚡ ${entry.meta?.npcName || 'Someone'} approaches`
+                                                        : entry.isCinematic
+                                                          ? '🎭 The Adventure Begins'
+                                                          : 'Dungeon Master'}
                           </span>
-                          {entry.isCinematic && !entry.isWorldBrief && (
+                          {entry.isCinematic && !entry.isWorldBrief && entry.source !== 'world-event' && (
                             <Sparkles className="h-3 w-3 text-violet-400 animate-pulse" />
                           )}
                           {/* TTS Audio Player - Available for ALL DM messages including cinematic */}

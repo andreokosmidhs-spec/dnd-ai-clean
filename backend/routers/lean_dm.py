@@ -695,6 +695,20 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"Obligation reminder failed (non-fatal): {exc}")
 
+    # Spontaneous world event — an NPC approaches the player unprompted.
+    # Probabilistic (20% base / 6% night). Non-fatal if it fails.
+    world_event = None
+    try:
+        from services.world_event import generate_world_event
+        world_event = await generate_world_event(
+            campaign=campaign,
+            character=character,
+            clock_hour=clock_hour,
+            cards_collection=db.campaign_cards,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"World event generation failed (non-fatal): {exc}")
+
     # Track that the active lessons were actually applied this turn — bumps
     # apply_count + last_applied_at so the DM Notebook can show usage stats.
     try:
@@ -942,6 +956,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             "engaged_hook_id": (engaged_hook or {}).get("id") if engaged_hook else None,
             "storyline": storyline_payload,
             "obligation_reminder": obligation_reminder,
+            "world_event": world_event,
             # Surface the detected intent so the frontend can flash a small
             # "🎯 Stealth check expected" chip beside the player's message —
             # the player sees the rule fired even if the DM still hedged.

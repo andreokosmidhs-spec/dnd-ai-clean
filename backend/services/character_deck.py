@@ -232,17 +232,33 @@ def seed_deck_for_character(character: Dict) -> List[Dict]:
 
     for lvl in range(2, character_level + 1):
         for feat in get_level_up_cards(cls_key, lvl):
-            cards.append(_new_card(
-                source="class",
-                title=feat["name"],
-                description=feat["description"],
-                rarity=feat.get("rarity", "common"),
-                mechanical=feat.get("mechanical", ""),
-                per_day=feat.get("per_day", False),
-                uses_max=feat.get("uses_max", 0),
-                tags=["class", cls_key.lower(), f"level-{lvl}"],
-                metadata={"gained_at_level": lvl},
-            ))
+            if feat.get("upgrades") is not None:
+                # Upgrade marker — not a new card; carries patch data for merge_deck.
+                cards.append({
+                    "_upgrade": True,
+                    "upgrades": feat["upgrades"],
+                    "source": "class",
+                    "title": feat["name"],
+                    "description": feat["description"],
+                    "mechanical": feat.get("mechanical", ""),
+                    "rarity": feat.get("rarity", "common"),
+                    "uses_max": feat.get("uses_max"),
+                    "per_day": feat.get("per_day"),
+                    "tags": ["class", cls_key.lower(), f"level-{lvl}"],
+                    "metadata": {"gained_at_level": lvl},
+                })
+            else:
+                cards.append(_new_card(
+                    source="class",
+                    title=feat["name"],
+                    description=feat["description"],
+                    rarity=feat.get("rarity", "common"),
+                    mechanical=feat.get("mechanical", ""),
+                    per_day=feat.get("per_day", False),
+                    uses_max=feat.get("uses_max", 0),
+                    tags=["class", cls_key.lower(), f"level-{lvl}"],
+                    metadata={"gained_at_level": lvl},
+                ))
 
     # === PROFICIENCIES (skills · saves · armor · weapons · tools) ===
     cls = (character or {}).get("class_") or (character or {}).get("class") or {}
@@ -344,31 +360,93 @@ def seed_deck_for_character(character: Dict) -> List[Dict]:
 
 def merge_deck(existing: List[Dict], freshly_seeded: List[Dict]) -> List[Dict]:
     """Union by (source, title): keep existing card state if present, append
-    new ones. Used when a character levels up or gains/loses a feature.
-    Existing cards that are NOT in the freshly_seeded set (and are auto-source
-    cards: race/language/background/class) get marked `lost` instead of
-    deleted, so we keep an audit trail."""
+    new ones. Entries with "_upgrade": True patch the matching existing card
+    in-place (description, mechanical, rarity, uses_max) instead of creating
+    a duplicate. Existing auto cards not present in the fresh set are marked
+    lost instead of deleted."""
     auto_sources = {"race", "language", "background", "class"}
-    by_key = {(c["source"], c["title"]): c for c in existing}
+    # Live dict — updated as we add or rename cards so later upgrades see them.
+    by_key: Dict = {(c["source"], c["title"]): c for c in existing}
 
     seen_keys: set = set()
+
     for fresh in freshly_seeded:
-        key = (fresh["source"], fresh["title"])
-        seen_keys.add(key)
-        if key not in by_key:
-            existing.append(fresh)
+        if fresh.get("_upgrade"):
+            upgrades_val = fresh["upgrades"]
+            old_title = fresh["title"] if upgrades_val is True else upgrades_val
+            old_key = (fresh["source"], old_title)
+            new_key = (fresh["source"], fresh["title"])
+            seen_keys.add(old_key)
+            seen_keys.add(new_key)
+
+            target = by_key.get(old_key) or by_key.get(new_key)
+            if target is not None:
+                # Patch stats; preserve uses_remaining, status, id, timestamps.
+                target["description"] = fresh["description"]
+                if fresh.get("mechanical") is not None:
+                    target["mechanical"] = fresh["mechanical"]
+                if fresh.get("rarity"):
+                    target["rarity"] = fresh["rarity"]
+                if fresh.get("per_day") is not None:
+                    target["per_day"] = fresh["per_day"]
+                new_max = fresh.get("uses_max")
+                if new_max is not None:
+                    old_max = target.get("uses_max", 0)
+                    old_rem = target.get("uses_remaining", 0)
+                    target["uses_max"] = int(new_max)
+                    if int(new_max) == 0:
+                        target["uses_remaining"] = 0
+                    elif old_max > 0:
+                        # Scale remaining by same ratio.
+                        target["uses_remaining"] = max(0, old_rem + (int(new_max) - old_max))
+                    else:
+                        target["uses_remaining"] = int(new_max)
+                # Rename if title changed.
+                if fresh["title"] != old_title:
+                    by_key.pop(old_key, None)
+                    target["title"] = fresh["title"]
+                    target["art_key"] = art_key_for(target["source"], fresh["title"])
+                target.setdefault("metadata", {})["last_upgraded_at_level"] = (
+                    (fresh.get("metadata") or {}).get("gained_at_level")
+                )
+                by_key[new_key] = target
+            else:
+                # No existing card to upgrade — add a real card as fallback.
+                card = _new_card(
+                    source=fresh["source"],
+                    title=fresh["title"],
+                    description=fresh["description"],
+                    rarity=fresh.get("rarity", "common"),
+                    mechanical=fresh.get("mechanical", ""),
+                    per_day=bool(fresh.get("per_day", False)),
+                    uses_max=int(fresh.get("uses_max") or 0),
+                    tags=fresh.get("tags", []),
+                    metadata=fresh.get("metadata", {}),
+                )
+                existing.append(card)
+                by_key[new_key] = card
+        else:
+            key = (fresh["source"], fresh["title"])
+            seen_keys.add(key)
+            if key not in by_key:
+                existing.append(fresh)
+                by_key[key] = fresh  # keep by_key live for subsequent upgrades
 
     # Mark missing auto cards as lost.
     for card in existing:
-        if (card["source"] in auto_sources
-                and card["status"] == "active"
-                and (card["source"], card["title"]) not in seen_keys
-                and not freshly_seeded_was_empty(freshly_seeded, card["source"])):
+        if card.get("_upgrade"):
+            continue
+        card_key = (card.get("source", ""), card.get("title", ""))
+        if (card.get("source") in auto_sources
+                and card.get("status") == "active"
+                and card_key not in seen_keys
+                and not freshly_seeded_was_empty(freshly_seeded, card.get("source", ""))):
             card["status"] = "lost"
             card["removed_at"] = datetime.now(timezone.utc)
-    # Backfill art_key on any pre-existing cards (added before art support)
+
+    # Backfill art_key on any pre-existing cards (added before art support).
     for card in existing:
-        if not card.get("art_key"):
+        if not card.get("_upgrade") and not card.get("art_key"):
             card["art_key"] = art_key_for(card.get("source", ""), card.get("title", ""))
     return existing
 

@@ -232,17 +232,26 @@ async def level_up(character_id: str, body: LevelUpBody):
     # Reseed + merge — _load_or_seed_deck now includes all features up to new_level.
     updated_cards = await _load_or_seed_deck(char)
 
-    # Diff: cards whose (source, title) key wasn't in the deck before.
+    # Upgraded cards: existing cards whose stats were patched this level-up.
+    upgraded_cards = [
+        c for c in updated_cards
+        if c.get("metadata", {}).get("last_upgraded_at_level") == body.new_level
+    ]
+
+    # Truly new cards: (source, title) was not in the deck before and not an upgrade.
+    upgraded_keys = {(c.get("source"), c.get("title")) for c in upgraded_cards}
     new_cards = [
         c for c in updated_cards
         if (c.get("source"), c.get("title")) not in existing_keys
         and c.get("status") == "active"
+        and (c.get("source"), c.get("title")) not in upgraded_keys
     ]
 
     return {
         "ok": True,
         "new_level": body.new_level,
         "new_cards": new_cards,
+        "upgraded_cards": upgraded_cards,
         "deck": updated_cards,
         "context_block": deck_context_block(updated_cards),
     }

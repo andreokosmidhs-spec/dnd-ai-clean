@@ -266,6 +266,9 @@ async def generate_world_event(
                     )
                     if not existing:
                         now = datetime.now(timezone.utc)
+                        # Derive current location name from world_state (if available)
+                        ws_location = (campaign.get("world_state") or {}).get("current_location") or {}
+                        at_location = ws_location.get("name") or location_name or None
                         await cards_collection.insert_one({
                             "id": str(uuid4()),
                             "campaign_id": campaign_id,
@@ -278,6 +281,7 @@ async def generate_world_event(
                             "auto_seeded": True,
                             "source": "world_event",
                             "pinned": False,
+                            "at_location": at_location,
                             "secret_content": {
                                 "speech_style": data.get("speech_style") or archetype["speech_hint"],
                                 "personality": {

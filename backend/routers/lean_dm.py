@@ -99,7 +99,7 @@ def _format_title(s: str) -> str:
     return str(s or "").replace("_", " ").strip().title()
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None) -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None) -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -222,42 +222,84 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
             setting_lines.append(f"- Current tension: {tension}")
     setting_block = "\n".join(setting_lines) if setting_lines else "(no setting context)"
 
-    # NPC roleplay anchors — pull the hidden identity sheets from any NPC
-    # cards in the player's deck so the DM can voice them consistently and
-    # gate social actions against their actual social DCs. Cap at 6 to keep
-    # the prompt tight; the DM only needs the in-scene crowd, not every NPC
-    # they've ever met.
-    npc_anchor_lines: List[str] = []
-    for c in cards[:24]:
-        if (c.get("type") or "").lower() != "character":
-            continue
-        secret = c.get("secret_content") or {}
-        if not isinstance(secret, dict) or not secret:
-            continue
+    # NPC roleplay anchors — split by location so the DM knows who is
+    # physically reachable vs. who is elsewhere.
+    cur_loc_name = ((current_location or {}).get("name") or "").strip()
+
+    def _fmt_anchor(c: dict) -> str:
+        sec = c.get("secret_content") or {}
         nm = (c.get("title") or "").strip()
-        if not nm:
-            continue
-        stats = secret.get("stats") or {}
-        pers = secret.get("personality") or {}
-        manners = secret.get("mannerisms") or []
-        npc_anchor_lines.append(
-            f"- {nm} — speech: {secret.get('speech_style','plain')}; "
-            f"voice: {pers.get('trait','')}; ideal: {pers.get('ideal','')}; "
-            f"flaw: {pers.get('flaw','')}; mannerisms: {', '.join(manners[:3])}; "
-            f"motive THIS scene: {secret.get('current_motivation','')}; "
+        stats = sec.get("stats") or {}
+        pers = sec.get("personality") or {}
+        manners = sec.get("mannerisms") or []
+        return (
+            f"- {nm} — speech: {sec.get('speech_style','plain')}; "
+            f"voice: {pers.get('trait','')}; flaw: {pers.get('flaw','')}; "
+            f"mannerisms: {', '.join(manners[:3])}; "
+            f"motive THIS scene: {sec.get('current_motivation','')}; "
             f"social DCs — Intim {stats.get('intimidation_dc',13)}, "
             f"Persuasion {stats.get('persuasion_dc',13)}, "
             f"Deception (against them) {stats.get('deception_dc',13)}, "
             f"Insight (to read them) {stats.get('insight_dc',12)}; "
-            f"secrets (NEVER reveal unless extracted): {' | '.join((secret.get('secrets') or [])[:2])}; "
-            f"allegiances: {', '.join((secret.get('allegiances') or [])[:2])}"
+            f"secrets (NEVER reveal unless extracted): {' | '.join((sec.get('secrets') or [])[:2])}; "
+            f"allegiances: {', '.join((sec.get('allegiances') or [])[:2])}"
         )
-        if len(npc_anchor_lines) >= 6:
-            break
+
+    here_npcs: List[dict] = []
+    elsewhere_npcs: List[dict] = []
+    unknown_npcs: List[dict] = []
+
+    for c in cards[:40]:
+        if (c.get("type") or "").lower() != "character":
+            continue
+        nm = (c.get("title") or "").strip()
+        if not nm:
+            continue
+        card_loc = (c.get("at_location") or "").strip()
+        if cur_loc_name and card_loc:
+            if card_loc.lower() == cur_loc_name.lower():
+                here_npcs.append(c)
+            else:
+                elsewhere_npcs.append(c)
+        else:
+            unknown_npcs.append(c)
+
+    anchor_parts: List[str] = []
+
+    if cur_loc_name:
+        here_with_sheet = [c for c in here_npcs if c.get("secret_content")]
+        here_lines = [_fmt_anchor(c) for c in here_with_sheet[:6]]
+        if here_lines:
+            anchor_parts.append(
+                f"PRESENT at {cur_loc_name} (can be spoken to, interacted with):\n"
+                + "\n".join(here_lines)
+            )
+        else:
+            anchor_parts.append(f"PRESENT at {cur_loc_name}: (no known NPCs here)")
+
+    if elsewhere_npcs:
+        elsewhere_lines = [
+            f"- {(c.get('title') or '').strip()} — last seen: {(c.get('at_location') or '').strip()}"
+            for c in elsewhere_npcs[:8]
+        ]
+        anchor_parts.append(
+            "ELSEWHERE — NOT reachable this turn (do NOT have them appear or speak unless "
+            "the player has explicitly travelled to their location):\n"
+            + "\n".join(elsewhere_lines)
+        )
+
+    unknown_with_sheet = [c for c in unknown_npcs if c.get("secret_content")]
+    unknown_lines = [_fmt_anchor(c) for c in unknown_with_sheet[:4]]
+    if unknown_lines:
+        anchor_parts.append(
+            "LOCATION UNKNOWN (may be nearby — use context to decide):\n"
+            + "\n".join(unknown_lines)
+        )
+
     npc_anchor_block = (
-        "\n".join(npc_anchor_lines)
-        if npc_anchor_lines
-        else "(no NPCs with identity sheets in scene — describe new NPCs as silhouettes/voices until interacted with)"
+        "\n\n".join(anchor_parts)
+        if anchor_parts
+        else "(no NPCs with identity sheets — describe new NPCs as silhouettes/voices until interacted with)"
     )
 
     # Recent player feedback / rulings — when the player has previously
@@ -359,15 +401,16 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         "Cut metaphor density by 80% from a typical AI default.\n"
         "4) NPCs are silhouettes/voices/postures until named or interacted with. \"The hooded "
         "figure stiffens\", \"a man's voice cuts through the noise\". Do NOT invent names.\n"
-        "4b) IN-CHARACTER NPC ROLEPLAY (HARD RULE). Once an NPC has an identity sheet "
-        "in the NPC ROLEPLAY ANCHORS block above, they MUST stay in character across "
-        "every turn — same speech style, same mannerisms, same motive. Their decisions "
-        "follow their flaw + bond + current_motivation; they NEVER act 'out of character' "
-        "to advance plot. They never volunteer their listed secrets — those have to be "
-        "EXTRACTED via successful Intimidation/Persuasion/Deception/Insight. Write their "
-        "dialogue with their voice ('clipped, drops r's' = clipped, drops r's), drop "
-        "their physical mannerisms into the prose. If multiple NPCs are present, "
-        "their voices must be DISTINCT from each other.\n"
+        "4b) IN-CHARACTER NPC ROLEPLAY (HARD RULE). Only NPCs listed under PRESENT "
+        "in the NPC ROLEPLAY ANCHORS block may appear or speak this turn. NPCs listed "
+        "under ELSEWHERE must NOT appear — they are in a different place. NPCs with an "
+        "identity sheet MUST stay in character across every turn — same speech style, "
+        "same mannerisms, same motive. Their decisions follow their flaw + bond + "
+        "current_motivation; they NEVER act 'out of character' to advance plot. They "
+        "never volunteer their listed secrets — those have to be EXTRACTED via successful "
+        "Intimidation/Persuasion/Deception/Insight. Write their dialogue with their voice "
+        "('clipped, drops r's' = clipped, drops r's), drop their physical mannerisms into "
+        "the prose. If multiple NPCs are present, their voices must be DISTINCT.\n"
         "4c) QUOTE NPC SPEECH — NEVER SUMMARIZE IT (HARD RULE). When an NPC speaks, "
         "is overheard, whispers, mutters, prays, sings, or otherwise produces words "
         "the player can hear, you MUST render the actual words in double quotes. "
@@ -555,6 +598,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
 
     # Build LLM prompt — inject current time-of-day for narration grounding.
     clock_hour = get_world_clock(campaign)
+    current_location: Optional[Dict] = (campaign.get("world_state") or {}).get("current_location") or None
     passive_perception = compute_passive_perception(character)
     chaos_value = get_chaos(campaign)
 
@@ -626,6 +670,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         recent_feedback=recent_feedback,
         dm_lessons=active_lessons,
         canon_scenes=recent_canon,
+        current_location=current_location,
     )
 
     # Call the LLM
@@ -942,9 +987,34 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         entity_index=entity_index,
         cards_collection=db.campaign_cards,
         location_origin=location_origin,
+        current_location_name=(current_location or {}).get("name") or None,
     )
     if new_cards:
         entity_index = build_v2_entity_index(world_dict, cards=cards + new_cards)
+
+    # Location transition detection — update world_state.current_location when
+    # the player moves to a new or already-known place. Signal 1: a location
+    # card was just auto-seeded. Signal 2: movement keywords + a known location
+    # name appear in the player action or narration.
+    try:
+        from services.location_tracker import (
+            detect_transition_from_known_locations,
+            detect_transition_from_new_cards,
+        )
+        new_loc = detect_transition_from_new_cards(new_cards)
+        if new_loc is None:
+            known_loc_cards = [c for c in cards if (c.get("type") or "").lower() == "location"]
+            new_loc = detect_transition_from_known_locations(
+                req.player_action, narration, known_loc_cards
+            )
+        if new_loc and new_loc.get("name"):
+            current_location = new_loc
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {"$set": {"world_state.current_location": new_loc}},
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Location transition detection failed (non-fatal): {exc}")
 
     mentions = extract_entity_mentions(narration, entity_index)
     return {
@@ -975,6 +1045,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
                 "narrative_ticks": narrative_ticks,
                 "passive_perception": passive_perception,  # {score, tier, wis_mod, proficient, prof_bonus}
                 "chaos": chaos_payload,                # {value, delta, tier, alignment, drafted_curse}
+                "current_location": current_location,  # {name, card_id} or None
             },
             "player_updates": {},
             "options": [],

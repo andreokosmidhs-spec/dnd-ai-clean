@@ -362,6 +362,7 @@ async def auto_seed_cards_from_narration(
     entity_index: List[Dict],
     cards_collection,
     location_origin: Optional[str] = None,
+    current_location_name: Optional[str] = None,
 ) -> List[Dict]:
     """Main entry point.
 
@@ -440,6 +441,9 @@ async def auto_seed_cards_from_narration(
             "source": "dm_narration",
             "pinned": False,
             "location_origin": location_origin or None,
+            # Stamp character/NPC cards with where they were first encountered
+            # so the DM knows who is reachable at the current location.
+            "at_location": current_location_name if etype == "character" and current_location_name else None,
             "createdAt": now.isoformat(),
             "updatedAt": now.isoformat(),
         }

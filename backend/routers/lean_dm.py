@@ -680,6 +680,21 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         logger.error(f"Lean DM LLM call failed: {exc}")
         raise HTTPException(status_code=502, detail=f"DM generation failed: {exc}") from exc
 
+    # Paused-quest obligation reminder — fire probabilistically based on urgency.
+    # Runs after the main narration so it never blocks the primary DM response.
+    obligation_reminder = None
+    pending_obligations = campaign.get("pending_obligations") or []
+    if pending_obligations:
+        try:
+            from services.obligation_reminder import generate_obligation_reminder
+            obligation_reminder = await generate_obligation_reminder(
+                obligations=pending_obligations,
+                campaign=campaign,
+                character=character,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Obligation reminder failed (non-fatal): {exc}")
+
     # Track that the active lessons were actually applied this turn — bumps
     # apply_count + last_applied_at so the DM Notebook can show usage stats.
     try:
@@ -926,6 +941,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             "hooks": narration_hooks,
             "engaged_hook_id": (engaged_hook or {}).get("id") if engaged_hook else None,
             "storyline": storyline_payload,
+            "obligation_reminder": obligation_reminder,
             # Surface the detected intent so the frontend can flash a small
             # "🎯 Stealth check expected" chip beside the player's message —
             # the player sees the rule fired even if the DM still hedged.

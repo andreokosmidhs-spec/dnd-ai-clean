@@ -1169,6 +1169,34 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
         } catch {}
       }
 
+      // Paused-quest obligation reminder — injected as a separate world-event
+      // beat immediately after the main DM narration (if one fired this turn).
+      if (data.obligation_reminder && data.obligation_reminder.narration) {
+        const reminder = data.obligation_reminder;
+        const reminderMsg = {
+          id: `obligation-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          type: 'dm',
+          text: reminder.narration,
+          timestamp: Date.now() + 10,
+          isCinematic: true,
+          source: 'obligation-reminder',
+          meta: {
+            storylineTitle: reminder.storyline_title,
+            npcName: reminder.npc_name,
+            deliveryMethod: reminder.delivery_method,
+            urgency: reminder.urgency,
+            storylineId: reminder.storyline_id,
+          },
+        };
+        setMessages((prev) => {
+          const next = [...prev, reminderMsg].slice(-200);
+          if (sessionId) {
+            try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+          }
+          return next;
+        });
+      }
+
     } catch (error) {
       console.error('❌ DM API Error:', error);
       const errorMsg = {
@@ -1969,21 +1997,25 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                   <div className={`p-4 rounded-lg ${
                     entry.isWorldBrief
                       ? 'bg-gradient-to-br from-amber-900/30 via-stone-800/40 to-amber-950/30 border-2 border-amber-600/50 shadow-inner shadow-amber-900/40'
-                      : entry.isCinematic
-                        ? 'bg-gradient-to-r from-violet-600/30 to-purple-600/30 border-2 border-violet-400/50'
-                        : 'bg-violet-600/20 border-l-4 border-violet-400'
+                      : entry.source === 'obligation-reminder'
+                        ? 'bg-gradient-to-r from-amber-900/20 to-stone-800/30 border border-amber-700/50 border-l-4 border-l-amber-500'
+                        : entry.isCinematic
+                          ? 'bg-gradient-to-r from-violet-600/30 to-purple-600/30 border-2 border-violet-400/50'
+                          : 'bg-violet-600/20 border-l-4 border-violet-400'
                   } animate-in slide-in-from-left-5 duration-300`}
                   data-testid={entry.isWorldBrief ? 'world-brief-message' : undefined}
                   >
                     <div className="flex items-start gap-3">
                       {entry.isWorldBrief ? (
                         <BookOpen className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                      ) : entry.source === 'obligation-reminder' ? (
+                        <span className="text-amber-400 flex-shrink-0 mt-0.5 text-base leading-none">🪶</span>
                       ) : (
                         <Dice6 className="h-5 w-5 text-violet-400 flex-shrink-0 mt-0.5" />
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className={`font-semibold text-sm ${entry.isWorldBrief ? 'text-amber-300 italic' : 'text-violet-400'}`}>
+                          <span className={`font-semibold text-sm ${entry.isWorldBrief ? 'text-amber-300 italic' : entry.source === 'obligation-reminder' ? 'text-amber-400 italic' : 'text-violet-400'}`}>
                             {entry.isWorldBrief
                               ? `📜 ${entry.chronicleTitle || 'A Chronicle of the Realm'}`
                               : entry.source === 'map-event'
@@ -2008,9 +2040,11 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                                                   ? `🪄 New Lead — ${entry.meta?.leadTitle || ''}`
                                                   : entry.source === 'lead-sealed'
                                                     ? `🔒 Sealed Lead — ${entry.meta?.leadTitle || ''}`
-                                                    : entry.isCinematic
-                                                      ? '🎭 The Adventure Begins'
-                                                      : 'Dungeon Master'}
+                                                    : entry.source === 'obligation-reminder'
+                                                      ? `🪶 A Word Reaches You${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
+                                                      : entry.isCinematic
+                                                        ? '🎭 The Adventure Begins'
+                                                        : 'Dungeon Master'}
                           </span>
                           {entry.isCinematic && !entry.isWorldBrief && (
                             <Sparkles className="h-3 w-3 text-violet-400 animate-pulse" />

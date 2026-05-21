@@ -176,6 +176,38 @@ def check_noncostly_component(
     return True, None
 
 
+def check_somatic_component(
+    spell_name: str,
+    card_components: Dict,
+    character_state: Dict,
+    deck_cards: List[Dict] = None,
+) -> Tuple[bool, Optional[str]]:
+    """Return (ok, error) for the somatic component requirement.
+    Somatic needs a free hand — UNLESS the character has the War Caster feat
+    (a card titled 'War Caster' or 'Warcaster') or their off-hand holds a
+    spellcasting focus.
+    """
+    if not card_components.get("S"):
+        return True, None  # no somatic component
+
+    from services.equipment_service import has_spellcasting_hand
+    if has_spellcasting_hand(character_state):
+        return True, None
+
+    # Check for War Caster feat card in deck
+    if deck_cards:
+        warcaster_titles = {"war caster", "warcaster"}
+        for card in deck_cards:
+            if card.get("title", "").lower() in warcaster_titles and card.get("status") == "active":
+                return True, None
+
+    return (
+        False,
+        f"{spell_name} requires a somatic component but both your hands are occupied. "
+        "Free a hand, use a spellcasting focus, or take the War Caster feat.",
+    )
+
+
 def consume_component_if_needed(
     spell_name: str,
     inventory: List[Dict],

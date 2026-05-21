@@ -510,7 +510,7 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{biome_block}\n\n"
         f"{time_context_block(clock_hour)}\n\n"
         f"{passive_perception_block(character)}\n\n"
-        f"{deck_context_block(deck or [])}\n\n"
+        f"{deck_context_block(deck or [], character_state=character)}\n\n"
         f"{chaos_block_for_dm(chaos)}\n\n"
         f"{feedback_block}\n\n"
         f"{lessons_block}\n\n"

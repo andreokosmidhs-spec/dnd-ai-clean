@@ -157,6 +157,49 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
   // Action economy
   const playerTurnState = localCombat.player_turn_state || { action_used: false, bonus_action_used: false, reaction_used: false };
 
+  // ── Equipment state ────────────────────────────────────────────────────────
+  const [equipment, setEquipment] = useState({ main_hand: null, off_hand: null, armor: null, two_handed: false });
+  const [equipAC, setEquipAC] = useState(null);
+  const [freeHand, setFreeHand] = useState(true);
+  const [equipInventory, setEquipInventory] = useState([]);
+  const [showEquipPanel, setShowEquipPanel] = useState(false);
+
+  const fetchEquipment = useCallback(() => {
+    if (!campaignId || !activeCharacterId) return;
+    fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/characters/${activeCharacterId}/equipment`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return;
+        setEquipment(d.equipment || {});
+        setEquipAC(d.ac);
+        setFreeHand(d.free_hand);
+        setEquipInventory(d.inventory || []);
+      })
+      .catch(() => {});
+  }, [campaignId, activeCharacterId]);
+
+  useEffect(() => { fetchEquipment(); }, [fetchEquipment]);
+
+  const handleEquip = useCallback(async (slot, itemName, twoHanded = false) => {
+    if (!campaignId || !activeCharacterId) return;
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/api/campaigns/${campaignId}/characters/${activeCharacterId}/equipment`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slot, item_name: itemName, two_handed: twoHanded }),
+        }
+      );
+      if (!res.ok) return;
+      const d = await res.json();
+      setEquipment(d.equipment || {});
+      setEquipAC(d.ac);
+      setFreeHand(d.free_hand);
+      setEquipInventory(d.inventory || []);
+    } catch (e) { /* ignore */ }
+  }, [campaignId, activeCharacterId]);
+
   // ── Fetch character deck for action bar ────────────────────────────────────
   useEffect(() => {
     if (!activeCharacterId) return;
@@ -686,6 +729,107 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
             ))}
           </div>
         </div>
+
+        {/* ── Equipment bar ───────────────────────────────────────────── */}
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-slate-500 text-[10px] uppercase tracking-wider font-bold shrink-0">Equipped</span>
+          {/* Main hand */}
+          <button
+            onClick={() => setShowEquipPanel(p => !p)}
+            title="Main hand — click to manage equipment"
+            className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-slate-600/60 bg-slate-900/60 hover:border-slate-400 text-slate-300 transition-all"
+          >
+            ⚔ {equipment.main_hand
+              ? `${equipment.main_hand}${equipment.two_handed ? ' (2H)' : ''}`
+              : 'empty'}
+          </button>
+          {/* Off hand */}
+          <button
+            onClick={() => setShowEquipPanel(p => !p)}
+            title="Off hand — click to manage equipment"
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border transition-all ${
+              equipment.off_hand
+                ? equipment.off_hand.toLowerCase().includes('shield')
+                  ? 'border-blue-700/60 bg-blue-950/40 text-blue-300 hover:border-blue-500'
+                  : 'border-slate-600/60 bg-slate-900/60 text-slate-300 hover:border-slate-400'
+                : freeHand
+                  ? 'border-green-700/60 bg-green-950/40 text-green-400 hover:border-green-500'
+                  : 'border-slate-700 text-slate-600'
+            }`}
+          >
+            🤚 {equipment.off_hand || (freeHand ? 'free hand' : '—')}
+          </button>
+          {/* AC */}
+          {equipAC !== null && (
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-slate-600/60 bg-slate-900/40 text-slate-400">
+              🛡 AC {equipAC}
+            </span>
+          )}
+          {/* Armor */}
+          {equipment.armor && (
+            <span className="text-slate-500 text-[10px] truncate max-w-[80px]">{equipment.armor}</span>
+          )}
+        </div>
+
+        {/* ── Equipment panel (inline dropdown) ─────────────────────── */}
+        {showEquipPanel && (
+          <div className="border border-slate-700 rounded-xl bg-slate-900/90 p-3 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-300 font-semibold">Equipment Loadout</span>
+              <button onClick={() => setShowEquipPanel(false)} className="text-slate-500 hover:text-white">✕</button>
+            </div>
+            {/* Slot rows */}
+            {(['main_hand', 'off_hand', 'armor']).map(slot => {
+              const label = slot === 'main_hand' ? '⚔ Main Hand'
+                : slot === 'off_hand' ? '🤚 Off Hand' : '🔰 Armor';
+              const current = equipment[slot];
+              // Filter inventory for this slot
+              const candidates = equipInventory.filter(item => {
+                const n = (item.name || '').toLowerCase();
+                if (slot === 'armor') return item.slot === 'armor' || item.equipped && item.slot === 'armor' ||
+                  ['leather','chain','scale','plate','mail','armor','hide','breastplate','splint','padded','studded','ring mail'].some(k => n.includes(k));
+                if (slot === 'off_hand') return item.slot === 'off_hand' || item.equipped && item.slot === 'off_hand' ||
+                  ['shield','holy symbol','component pouch','druidic focus','orb','lute','lyre','flute','wand','rod','arcane focus','crystal'].some(k => n.includes(k));
+                // main_hand: anything weapon-ish
+                return item.slot === 'main_hand' || item.equipped && item.slot === 'main_hand' ||
+                  ['sword','axe','bow','staff','rapier','dagger','mace','spear','crossbow','club','dart','scimitar','hammer','pick','lance','glaive','halberd','pike','maul','flail','trident','morningstar','greatclub'].some(k => n.includes(k));
+              });
+              return (
+                <div key={slot} className="flex items-center gap-2">
+                  <span className="text-slate-500 w-24 shrink-0">{label}</span>
+                  <span className="text-white truncate max-w-[100px]">{current || '—'}</span>
+                  <select
+                    className="ml-auto bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-slate-300 text-[10px] max-w-[140px]"
+                    value=""
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val === '__unequip__') handleEquip(slot, null);
+                      else handleEquip(slot, val);
+                    }}
+                  >
+                    <option value="">swap…</option>
+                    {current && <option value="__unequip__">— Unequip</option>}
+                    {candidates.filter(i => i.name !== current).map(item => (
+                      <option key={item.name} value={item.name}>{item.name}</option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+            {/* 2H toggle for versatile weapons */}
+            {equipment.main_hand && (
+              <label className="flex items-center gap-2 text-slate-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!equipment.two_handed}
+                  onChange={e => handleEquip('main_hand', equipment.main_hand, e.target.checked)}
+                  className="rounded"
+                />
+                Use two-handed grip (versatile weapons get +1 damage die)
+              </label>
+            )}
+          </div>
+        )}
 
         {/* ── Action economy pips ─────────────────────────────────────── */}
         <div className="flex items-center gap-3 text-xs">

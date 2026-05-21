@@ -1620,7 +1620,11 @@ async def create_character_endpoint(request: CharacterCreateRequest):
             # Add homeland to character
             character_state_dict = character_state.dict()
             character_state_dict["homeland"] = homeland
-            
+
+            # Auto-equip sensible defaults from starting inventory
+            from services.equipment_service import auto_equip_defaults
+            character_state_dict = auto_equip_defaults(character_state_dict)
+
             char_doc = await create_character_doc(
                 campaign_id=request.campaign_id,
                 character_id=character_id,
@@ -1781,10 +1785,12 @@ async def create_character_endpoint(request: CharacterCreateRequest):
             })
         else:
             # Fallback if world not found
+            from services.equipment_service import auto_equip_defaults
+            _fallback_state = auto_equip_defaults(character_state.dict())
             char_doc = await create_character_doc(
                 campaign_id=request.campaign_id,
                 character_id=character_id,
-                character_state=character_state.dict(),
+                character_state=_fallback_state,
                 player_id=None
             )
             
@@ -2524,6 +2530,7 @@ async def process_action(request: dict):
             from services.component_service import (
                 check_costly_component,
                 check_noncostly_component,
+                check_somatic_component,
                 consume_component_if_needed,
             )
             _inventory = list(char_doc["character_state"].get("inventory", []))
@@ -2531,6 +2538,20 @@ async def process_action(request: dict):
             _card_spell_name = _card_for_comp.get("title", "") if _card_for_comp.get("source") == "spell" else ""
             _component_idx = None
             if _card_spell_name:
+                _card_comps = _card_for_comp.get("components", {})
+                # Check somatic (free hand)
+                _som_ok, _som_err = check_somatic_component(
+                    _card_spell_name, _card_comps,
+                    char_doc["character_state"], deck_cards,
+                )
+                if not _som_ok:
+                    return api_success({
+                        "narration": _som_err + "\n\nWhat do you do?",
+                        "combat_active": True,
+                        "world_state_update": {},
+                        "player_updates": {},
+                    })
+                # Check costly material component
                 _comp_ok, _comp_err, _component_idx = check_costly_component(_card_spell_name, _inventory)
                 if not _comp_ok:
                     return api_success({
@@ -2541,9 +2562,7 @@ async def process_action(request: dict):
                     })
                 # Advisory warning for non-costly M (doesn't block)
                 _, _noncostly_warn = check_noncostly_component(
-                    _card_spell_name,
-                    _card_for_comp.get("components", {}),
-                    _inventory,
+                    _card_spell_name, _card_comps, _inventory,
                 )
                 if _noncostly_warn:
                     logger.warning(_noncostly_warn)

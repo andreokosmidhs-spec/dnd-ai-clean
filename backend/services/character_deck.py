@@ -542,7 +542,8 @@ def freshly_seeded_was_empty(freshly: List[Dict], source: str) -> bool:
 # -------------------- DM context block --------------------
 
 
-def deck_context_block(deck: List[Dict], max_chars: int = 900) -> str:
+def deck_context_block(deck: List[Dict], max_chars: int = 900,
+                       character_state: Optional[Dict] = None) -> str:
     """Tight one-paragraph summary the DM gets every turn. Lists active cards
     with rarity/per-day status so narration can naturally reflect them.
     Spent or lost cards are skipped."""
@@ -584,6 +585,14 @@ def deck_context_block(deck: List[Dict], max_chars: int = 900) -> str:
     for src in order:
         if src in grouped:
             lines.append(f"{label.get(src, src.title())}: {' · '.join(grouped[src])}")
+    # Append equipment summary if character state is provided
+    if character_state:
+        try:
+            from services.equipment_service import equipment_context_line
+            lines.append(equipment_context_line(character_state))
+        except Exception:
+            pass
+
     out = "\n".join(lines)
     if len(out) > max_chars:
         out = out[: max_chars - 3] + "..."

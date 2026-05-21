@@ -122,6 +122,7 @@ from routers import lean_dm as lean_dm_router
 from routers import feedback as feedback_router
 from routers import storylines as storylines_router
 from routers import character_deck as character_deck_router
+from routers import equipment as equipment_router
 from routers import dm_lessons as dm_lessons_router
 from routers import factions as factions_router
 from routers import canon_scenes as canon_scenes_router
@@ -4155,6 +4156,7 @@ app.include_router(factions_router.router)    # Faction mechanics (perks, reputa
 app.include_router(canon_scenes_router.router)  # Canon scenes (auto-checkpoints on passed beats)
 app.include_router(mission_types_router.router)  # Mission Type blueprints
 app.include_router(combat_conditions_router.router)  # Battlefield condition cards + DM adjudication
+app.include_router(equipment_router.router)          # Equipment loadout (slots, free-hand, AC)
 app.include_router(character_v2_router)
 app.include_router(character_v2_router_alias)
 
@@ -4178,6 +4180,7 @@ canon_scenes_router.set_database(db)
 mission_types_router.set_database(db)
 scene_refresh_router.set_database(db)
 pressure_engine_router.set_database(db)  # Living Campaign Pressure Engine
+equipment_router.set_db(db)
 set_character_v2_database(db)
 
 # Import API response utilities

@@ -129,6 +129,16 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
   const [newCondTitle, setNewCondTitle] = useState('');
   const [newCondDesc, setNewCondDesc] = useState('');
   const [savingCondition, setSavingCondition] = useState(false);
+  // Death saves state
+  const [deathSaves, setDeathSaves] = useState({ successes: 0, failures: 0, stable: false, dead: false });
+  const [deathSaveResult, setDeathSaveResult] = useState(null); // last roll result
+  const [rollingDeathSave, setRollingDeathSave] = useState(false);
+  // Saving throw modal
+  const [showSavingThrowModal, setShowSavingThrowModal] = useState(false);
+  const [savingThrowAbility, setSavingThrowAbility] = useState('con');
+  const [savingThrowDC, setSavingThrowDC] = useState(15);
+  const [savingThrowResult, setSavingThrowResult] = useState(null);
+  const [rollingSavingThrow, setRollingSavingThrow] = useState(false);
   const inputRef = useRef();
 
   // Light level — prefer backend data, fall back to client derivation
@@ -141,6 +151,11 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
   const round = localCombat.round || 1;
   const activeTurn = localCombat.active_turn || 'player';
   const isPlayerTurn = activeTurn === 'player';
+
+  // Death saves / dying state
+  const isPlayerDying = (localCombat.player_dying === true) && !deathSaves.stable && !deathSaves.dead;
+  // Action economy
+  const playerTurnState = localCombat.player_turn_state || { action_used: false, bonus_action_used: false, reaction_used: false };
 
   // ── Fetch character deck for action bar ────────────────────────────────────
   useEffect(() => {
@@ -272,6 +287,11 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
         setLocalCombat(prev => ({ ...prev, ...data.combat_state }));
       }
 
+      // Sync death saves if backend sent them
+      if (data.death_saves) {
+        setDeathSaves(data.death_saves);
+      }
+
       // Queue player attack popup
       if (data.narration) {
         setNarrationQueue(q => [...q, {
@@ -326,6 +346,72 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
       setLoading(false);
     }
   }, [loading, campaignId, characterState, worldState, localCombat, selectedTarget, allEnemies, onCombatEnd]);
+
+  // ── Death save ────────────────────────────────────────────────────────────
+  const handleDeathSave = useCallback(async () => {
+    if (rollingDeathSave || !campaignId || !activeCharacterId) return;
+    setRollingDeathSave(true);
+    setDeathSaveResult(null);
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/api/campaigns/${campaignId}/combat/death-save`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ character_id: activeCharacterId }),
+        }
+      );
+      const data = await res.json();
+      if (data.ok) {
+        setDeathSaves(data.death_saves);
+        setDeathSaveResult(data.save);
+        if (data.combat_state) setLocalCombat(prev => ({ ...prev, ...data.combat_state }));
+        if (data.outcome === 'dead' || data.outcome === 'stable' || data.outcome === 'revived') {
+          if (data.outcome === 'dead' || data.outcome === 'revived') {
+            setTimeout(() => {
+              onCombatEnd({
+                outcome: data.outcome === 'dead' ? 'player_defeated' : 'victory',
+                narration: data.outcome === 'dead'
+                  ? 'Your wounds are too great. You breathe your last...'
+                  : 'A surge of life-force jolts you back from the edge!',
+              });
+            }, 1200);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Death save failed:', e);
+    } finally {
+      setRollingDeathSave(false);
+    }
+  }, [rollingDeathSave, campaignId, activeCharacterId, onCombatEnd]);
+
+  // ── Saving throw ─────────────────────────────────────────────────────────
+  const handleSavingThrow = useCallback(async () => {
+    if (rollingSavingThrow || !campaignId || !activeCharacterId) return;
+    setRollingSavingThrow(true);
+    setSavingThrowResult(null);
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/api/campaigns/${campaignId}/combat/saving-throw`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            character_id: activeCharacterId,
+            ability: savingThrowAbility,
+            dc: savingThrowDC,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (data.ok) setSavingThrowResult(data.result);
+    } catch (e) {
+      console.error('Saving throw failed:', e);
+    } finally {
+      setRollingSavingThrow(false);
+    }
+  }, [rollingSavingThrow, campaignId, activeCharacterId, savingThrowAbility, savingThrowDC]);
 
   // ── Card click → prefill action ───────────────────────────────────────────
   const handleCardClick = (card) => {
@@ -601,6 +687,41 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
           </div>
         </div>
 
+        {/* ── Action economy pips ─────────────────────────────────────── */}
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-slate-500 text-[10px] uppercase tracking-wider font-bold">Economy</span>
+          <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all ${
+            playerTurnState.action_used
+              ? 'border-slate-700 bg-slate-900 text-slate-600'
+              : 'border-violet-600 bg-violet-950/40 text-violet-300'
+          }`}>
+            <Zap size={10} /> Action
+          </span>
+          <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all ${
+            playerTurnState.bonus_action_used
+              ? 'border-slate-700 bg-slate-900 text-slate-600'
+              : 'border-amber-600 bg-amber-950/30 text-amber-300'
+          }`}>
+            <Sword size={10} /> Bonus
+          </span>
+          <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all ${
+            playerTurnState.reaction_used
+              ? 'border-slate-700 bg-slate-900 text-slate-600'
+              : 'border-blue-600 bg-blue-950/30 text-blue-300'
+          }`}>
+            <Shield size={10} /> Reaction
+          </span>
+          <div className="flex-1" />
+          {/* Saving Throw button */}
+          <button
+            onClick={() => { setShowSavingThrowModal(true); setSavingThrowResult(null); }}
+            disabled={loading || !isPlayerTurn}
+            className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-600 text-slate-300 hover:border-violet-500 hover:text-violet-300 transition-all disabled:opacity-40"
+          >
+            🎲 Save
+          </button>
+        </div>
+
         {/* card filter tabs */}
         <div className="flex items-center gap-2">
           {['all', 'spell', 'class', 'item'].map(f => (
@@ -660,47 +781,114 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
           )}
         </div>
 
-        {/* standard action buttons */}
-        <div className="flex items-center gap-2">
-          {[
-            { label: '⚔ Attack', action: `I attack ${allEnemies.find(e => e.id === selectedTarget)?.name || 'the enemy'}` },
-            { label: '🛡 Defend', action: 'I take the Dodge action, focusing on defense' },
-            { label: '💨 Disengage', action: 'I disengage and move back a lane' },
-            { label: '🔍 Dash', action: 'I dash forward to close the distance' },
-            { label: '🚪 Flee', action: 'I try to flee from combat' },
-          ].map(({ label, action }) => (
-            <button
-              key={label}
-              onClick={() => sendAction(action)}
-              disabled={loading || !isPlayerTurn}
-              className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {label}
-            </button>
-          ))}
+        {/* ── Death Save UI (shown when player is dying) or normal actions ── */}
+        {isPlayerDying ? (
+          <div className="flex flex-col gap-2">
+            <div className="text-center text-red-400 text-xs font-bold uppercase tracking-wider animate-pulse">
+              Dying — Roll Death Saving Throws
+            </div>
+            <div className="flex items-center justify-center gap-6">
+              {/* Successes */}
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-green-400 text-[10px] font-bold">Successes</span>
+                <div className="flex gap-1.5">
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center text-[11px] ${
+                      i < deathSaves.successes
+                        ? 'border-green-500 bg-green-900/60 text-green-300'
+                        : 'border-slate-600 bg-slate-900'
+                    }`}>
+                      {i < deathSaves.successes ? '✓' : ''}
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-          <div className="flex-1" />
+              {/* Roll button + last result */}
+              <div className="flex flex-col items-center gap-1">
+                <button
+                  onClick={handleDeathSave}
+                  disabled={rollingDeathSave}
+                  className="px-4 py-2 rounded-xl bg-red-800 hover:bg-red-700 text-white text-sm font-bold border border-red-600 transition-all disabled:opacity-50"
+                >
+                  {rollingDeathSave
+                    ? <Loader2 size={16} className="animate-spin inline" />
+                    : '🎲 Roll Death Save'}
+                </button>
+                {deathSaveResult && (
+                  <span className={`text-xs font-bold ${
+                    deathSaveResult.result === 'critical_success' ? 'text-green-300' :
+                    deathSaveResult.result === 'success' ? 'text-green-400' :
+                    deathSaveResult.result === 'critical_failure' ? 'text-red-300' : 'text-red-400'
+                  }`}>
+                    Rolled {deathSaveResult.roll} — {
+                      deathSaveResult.result === 'critical_success' ? 'NAT 20! Revived!' :
+                      deathSaveResult.result === 'critical_failure' ? 'NAT 1! −2 failures' :
+                      deathSaveResult.result === 'success' ? 'Success' : 'Failure'
+                    }
+                  </span>
+                )}
+              </div>
 
-          {/* free-form input */}
-          <div className="flex items-center gap-2 flex-1 max-w-sm">
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendAction(input))}
-              placeholder={isPlayerTurn ? 'Type an action...' : "Enemies are acting..."}
-              disabled={loading || !isPlayerTurn}
-              className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 disabled:opacity-50"
-            />
-            <button
-              onClick={() => sendAction(input)}
-              disabled={loading || !isPlayerTurn || !input.trim()}
-              className="p-1.5 rounded-lg bg-violet-700 hover:bg-violet-600 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-            >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            </button>
+              {/* Failures */}
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-red-400 text-[10px] font-bold">Failures</span>
+                <div className="flex gap-1.5">
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center text-[11px] ${
+                      i < deathSaves.failures
+                        ? 'border-red-500 bg-red-900/60 text-red-300'
+                        : 'border-slate-600 bg-slate-900'
+                    }`}>
+                      {i < deathSaves.failures ? '✕' : ''}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            {[
+              { label: '⚔ Attack', action: `I attack ${allEnemies.find(e => e.id === selectedTarget)?.name || 'the enemy'}` },
+              { label: '🛡 Defend', action: 'I take the Dodge action, focusing on defense' },
+              { label: '💨 Disengage', action: 'I disengage and move back a lane' },
+              { label: '🔍 Dash', action: 'I dash forward to close the distance' },
+              { label: '🚪 Flee', action: 'I try to flee from combat' },
+            ].map(({ label, action }) => (
+              <button
+                key={label}
+                onClick={() => sendAction(action)}
+                disabled={loading || !isPlayerTurn}
+                className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {label}
+              </button>
+            ))}
+
+            <div className="flex-1" />
+
+            {/* free-form input */}
+            <div className="flex items-center gap-2 flex-1 max-w-sm">
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendAction(input))}
+                placeholder={isPlayerTurn ? 'Type an action...' : "Enemies are acting..."}
+                disabled={loading || !isPlayerTurn}
+                className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 disabled:opacity-50"
+              />
+              <button
+                onClick={() => sendAction(input)}
+                disabled={loading || !isPlayerTurn || !input.trim()}
+                className="p-1.5 rounded-lg bg-violet-700 hover:bg-violet-600 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── NARRATION POPUP ──────────────────────────────────────────────── */}
@@ -727,6 +915,96 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
             setNarrationQueue(q => [...q, { narration, mechanics: { light_note: outcome?.description } }]);
           }}
         />
+      )}
+
+      {/* ── SAVING THROW MODAL ───────────────────────────────────────────── */}
+      {showSavingThrowModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-violet-700/60 rounded-2xl p-6 w-80 shadow-2xl">
+            <div className="text-white font-bold text-lg mb-4 flex items-center gap-2">
+              🎲 Saving Throw
+            </div>
+
+            {!savingThrowResult ? (
+              <>
+                {/* Ability selector */}
+                <div className="mb-4">
+                  <label className="text-slate-400 text-xs mb-1.5 block">Ability</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {['str', 'dex', 'con', 'int', 'wis', 'cha'].map(ab => (
+                      <button
+                        key={ab}
+                        onClick={() => setSavingThrowAbility(ab)}
+                        className={`py-1 rounded-lg text-xs font-bold uppercase transition-all ${
+                          savingThrowAbility === ab
+                            ? 'bg-violet-700 text-white border border-violet-500'
+                            : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-violet-500'
+                        }`}
+                      >
+                        {ab}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* DC input */}
+                <div className="mb-5">
+                  <label className="text-slate-400 text-xs mb-1.5 block">DC (Difficulty Class)</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSavingThrowDC(d => Math.max(5, d - 1))}
+                      className="w-8 h-8 rounded-lg bg-slate-800 text-white hover:bg-slate-700 font-bold text-lg leading-none"
+                    >−</button>
+                    <span className="flex-1 text-center text-white font-bold text-xl">{savingThrowDC}</span>
+                    <button
+                      onClick={() => setSavingThrowDC(d => Math.min(30, d + 1))}
+                      className="w-8 h-8 rounded-lg bg-slate-800 text-white hover:bg-slate-700 font-bold text-lg leading-none"
+                    >+</button>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSavingThrow}
+                    disabled={rollingSavingThrow}
+                    className="flex-1 py-2 rounded-xl bg-violet-700 hover:bg-violet-600 text-white font-bold text-sm transition-all disabled:opacity-50"
+                  >
+                    {rollingSavingThrow ? <Loader2 size={16} className="animate-spin inline" /> : 'Roll'}
+                  </button>
+                  <button
+                    onClick={() => { setShowSavingThrowModal(false); setSavingThrowResult(null); }}
+                    className="px-4 py-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white text-sm transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center">
+                <div className={`text-5xl font-black mb-2 ${savingThrowResult.success ? 'text-green-400' : 'text-red-400'}`}>
+                  {savingThrowResult.roll}
+                </div>
+                <div className={`text-lg font-bold mb-1 ${savingThrowResult.success ? 'text-green-300' : 'text-red-300'}`}>
+                  {savingThrowResult.success ? 'Success!' : 'Failure'}
+                </div>
+                <div className="text-slate-400 text-sm mb-1">
+                  {savingThrowResult.ability} save — total {savingThrowResult.total} vs DC {savingThrowResult.dc}
+                </div>
+                <div className="text-slate-500 text-xs mb-5">
+                  Roll {savingThrowResult.roll} + {savingThrowResult.modifier} mod
+                  {savingThrowResult.proficient ? ` + ${savingThrowResult.prof_bonus} prof` : ''}
+                  {' '}= {savingThrowResult.total}
+                </div>
+                <button
+                  onClick={() => { setShowSavingThrowModal(false); setSavingThrowResult(null); }}
+                  className="px-6 py-2 rounded-xl bg-slate-800 text-white hover:bg-slate-700 text-sm transition-all"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-"""Combat battlefield condition cards.
+"""Combat battlefield condition cards + death saves + saving throws.
 
 GET  /api/campaigns/{campaign_id}/combat/conditions
      — list active conditions for the current combat
@@ -11,6 +11,12 @@ DELETE /api/campaigns/{campaign_id}/combat/conditions/{condition_id}
 
 POST /api/campaigns/{campaign_id}/combat/conditions/{condition_id}/interact
      — player proposes using the environment; AI DM adjudicates
+
+POST /api/campaigns/{campaign_id}/combat/death-save
+     — player rolls a D&D 5e death saving throw
+
+POST /api/campaigns/{campaign_id}/combat/saving-throw
+     — player rolls a D&D 5e saving throw against a DC
 """
 from __future__ import annotations
 
@@ -370,3 +376,132 @@ Narrate now:"""
             "title": condition["title"],
         },
     }
+
+
+# ── Death Saving Throws ───────────────────────────────────────────────────────
+
+@router.post("/{campaign_id}/combat/death-save")
+async def make_death_save(campaign_id: str, body: dict = Body(default={})):
+    """Player rolls a D&D 5e death saving throw. Updates combat state.
+
+    Body: { character_id: str }
+    Returns: { ok, save, death_saves, combat_state }
+    """
+    character_id = body.get("character_id")
+    if not character_id:
+        raise HTTPException(400, "character_id required")
+
+    db = _db()
+    combat_doc = await db.combats.find_one(
+        {"campaign_id": campaign_id, "character_id": character_id}
+    )
+    if not combat_doc:
+        raise HTTPException(404, "No active combat found")
+
+    from services.dnd_rules import roll_death_save
+    save = roll_death_save()
+    combat_state = combat_doc.get("combat_state", {})
+    death_saves = combat_state.get(
+        "death_saves",
+        {"successes": 0, "failures": 0, "stable": False, "dead": False},
+    )
+
+    outcome = "ongoing"
+    if save["result"] == "critical_success":
+        # Nat 20: regain 1 HP, no longer dying
+        death_saves = {"successes": 0, "failures": 0, "stable": False, "dead": False}
+        combat_state["player_hp"] = 1
+        combat_state["player_dying"] = False
+        outcome = "revived"
+        logger.info(f"✨ Death save nat 20 — player revived with 1 HP in campaign {campaign_id}")
+    elif save["result"] == "critical_failure":
+        death_saves["failures"] = min(3, death_saves.get("failures", 0) + 2)
+    elif save["result"] == "success":
+        death_saves["successes"] = min(3, death_saves.get("successes", 0) + 1)
+    else:  # failure
+        death_saves["failures"] = min(3, death_saves.get("failures", 0) + 1)
+
+    dead = death_saves.get("failures", 0) >= 3
+    stable = death_saves.get("successes", 0) >= 3 and not dead
+    death_saves["dead"] = dead
+    death_saves["stable"] = stable
+
+    if dead:
+        combat_state["combat_over"] = True
+        combat_state["outcome"] = "player_defeated"
+        combat_state["player_dying"] = False
+        outcome = "dead"
+        logger.warning(f"☠️ Player died from death saves in campaign {campaign_id}")
+    elif stable:
+        combat_state["player_dying"] = False
+        outcome = "stable"
+        logger.info(f"💚 Player stabilized (3 death save successes) in campaign {campaign_id}")
+
+    combat_state["death_saves"] = death_saves
+
+    await db.combats.update_one(
+        {"campaign_id": campaign_id, "character_id": character_id},
+        {"$set": {
+            "combat_state": combat_state,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+
+    return {
+        "ok": True,
+        "save": save,
+        "outcome": outcome,
+        "death_saves": death_saves,
+        "combat_state": combat_state,
+    }
+
+
+# ── Saving Throws ─────────────────────────────────────────────────────────────
+
+@router.post("/{campaign_id}/combat/saving-throw")
+async def make_saving_throw(campaign_id: str, body: dict = Body(default={})):
+    """Player rolls a D&D 5e ability saving throw against a DC.
+
+    Body: {
+        character_id: str,
+        ability: str,          # "str" | "dex" | "con" | "int" | "wis" | "cha"
+        dc: int,
+        advantage?: bool,
+        disadvantage?: bool,
+    }
+    Returns full save result dict.
+    """
+    character_id = body.get("character_id")
+    ability = body.get("ability", "con")
+    dc = int(body.get("dc", 15))
+    advantage = bool(body.get("advantage", False))
+    disadvantage = bool(body.get("disadvantage", False))
+
+    if not character_id:
+        raise HTTPException(400, "character_id required")
+
+    db = _db()
+
+    # Try to load character state for modifier calculation
+    char_doc = await db.characters.find_one({"character_id": character_id})
+    if not char_doc:
+        # Fallback: minimal state with no modifiers
+        char_state: dict = {}
+    else:
+        char_state = char_doc.get("character_state", {})
+
+    from services.saving_throw_service import roll_saving_throw
+    result = roll_saving_throw(
+        character_state=char_state,
+        ability=ability,
+        dc=dc,
+        advantage=advantage,
+        disadvantage=disadvantage,
+    )
+
+    logger.info(
+        f"🎲 Saving throw: {ability.upper()} DC {dc} — "
+        f"roll={result['roll']} total={result['total']} {'SUCCESS' if result['success'] else 'FAILURE'}"
+    )
+
+    return {"ok": True, "result": result}

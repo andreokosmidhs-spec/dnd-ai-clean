@@ -216,11 +216,13 @@ def resolve_attack(
     weapon_type: str = "melee",
     weapon_damage: str = "1d6",
     is_unarmed: bool = False,
-    force_non_lethal: bool = False
+    force_non_lethal: bool = False,
+    advantage: bool = False,
+    disadvantage: bool = False,
 ) -> Dict[str, Any]:
     """
     Resolve a D&D 5e attack following strict rules.
-    
+
     D&D 5e Attack Rules:
     - Attack Roll: d20 + ability modifier + proficiency bonus (if proficient)
     - Natural 20: Automatic hit, double damage dice
@@ -229,7 +231,8 @@ def resolve_attack(
     - Damage: weapon dice + ability modifier (minimum 1)
     - Unarmed Strike: 1 + STR modifier bludgeoning damage (minimum 1)
     - Non-lethal: Target reduced to 0 HP becomes unconscious, not dead
-    
+    - Advantage: roll 2d20 take highest; Disadvantage: roll 2d20 take lowest
+
     Args:
         attacker: Attacker data with abilities, proficiency_bonus, attack_bonus
         target: Target data with ac, hp, max_hp
@@ -237,13 +240,17 @@ def resolve_attack(
         weapon_damage: Dice notation like "1d6" or "1d8+2"
         is_unarmed: If True, use unarmed strike rules (1 + STR mod)
         force_non_lethal: If True, target becomes unconscious instead of dying at 0 HP
-    
+        advantage: Roll with advantage (2d20 take higher)
+        disadvantage: Roll with disadvantage (2d20 take lower)
+
     Returns:
         {
             "hit": bool,
             "is_crit": bool,
             "critical_miss": bool,
-            "roll": int,  # The d20 roll
+            "roll": int,  # The final d20 result used
+            "roll1": int,  # First die (always present)
+            "roll2": int or None,  # Second die (only when adv/disadv active)
             "total_attack": int,  # d20 + all modifiers
             "target_ac": int,
             "damage": int,
@@ -252,24 +259,31 @@ def resolve_attack(
             "target_hp_remaining": int,  # Alias for new_target_hp
             "knocked_unconscious": bool,
             "killed": bool,
-            "target_killed": bool  # Alias for killed
+            "target_killed": bool,  # Alias for killed
+            "advantage": bool,
+            "disadvantage": bool,
         }
     """
     # Get attacker stats
     proficiency_bonus = attacker.get('proficiency_bonus', 2)
     attack_bonus = attacker.get('attack_bonus', 0)  # Additional bonus (magic items, level scaling)
     ability_name, ability_mod = get_attack_ability_modifier(attacker, weapon_type)
-    
+
     # Get target stats
     target_ac = target.get('ac', 10)
     target_hp = target.get('hp', 10)
-    
-    # Roll attack (d20 + proficiency + ability mod + attack bonus)
-    attack_roll = roll_d20()
+
+    # Roll attack with advantage/disadvantage support
+    attack_roll, roll1, roll2 = _make_attack_roll(advantage, disadvantage)
     total_attack = attack_roll + proficiency_bonus + ability_mod + attack_bonus
-    
-    logger.info(f"⚔️ Attack: d20={attack_roll}, proficiency={proficiency_bonus}, {ability_name} mod={ability_mod}, attack_bonus={attack_bonus}, total={total_attack} vs AC {target_ac}")
-    
+
+    adv_label = " (advantage)" if advantage and not disadvantage else " (disadvantage)" if disadvantage and not advantage else ""
+    logger.info(
+        f"⚔️ Attack: d20={attack_roll}{adv_label}, proficiency={proficiency_bonus}, "
+        f"{ability_name} mod={ability_mod}, attack_bonus={attack_bonus}, "
+        f"total={total_attack} vs AC {target_ac}"
+    )
+
     # Check for critical miss (natural 1 - automatic miss per D&D 5e rules)
     if attack_roll == 1:
         logger.info("❌ CRITICAL MISS (Natural 1)! Attack automatically fails.")
@@ -279,6 +293,8 @@ def resolve_attack(
             "critical": False,
             "critical_miss": True,
             "roll": attack_roll,
+            "roll1": roll1,
+            "roll2": roll2,
             "attack_roll": attack_roll,
             "total_attack": total_attack,
             "target_ac": target_ac,
@@ -288,9 +304,11 @@ def resolve_attack(
             "target_hp_remaining": target_hp,
             "knocked_unconscious": False,
             "killed": False,
-            "target_killed": False
+            "target_killed": False,
+            "advantage": advantage,
+            "disadvantage": disadvantage,
         }
-    
+
     # Check for critical hit (natural 20 - automatic hit + double damage dice per D&D 5e)
     if attack_roll == 20:
         logger.info("✨ CRITICAL HIT (Natural 20)! Automatic hit, double damage dice.")
@@ -303,28 +321,30 @@ def resolve_attack(
             damage_roll_1 = roll_dice(weapon_damage.split("+")[0])
             damage_roll_2 = roll_dice(weapon_damage.split("+")[0])
             damage = damage_roll_1 + damage_roll_2 + ability_mod
-        
+
         # Ensure minimum 1 damage
         damage = max(1, damage)
-        
+
         new_hp = max(0, target_hp - damage)
-        
+
         # Check if target is killed or knocked unconscious
         is_killed = new_hp <= 0 and not force_non_lethal
         is_unconscious = new_hp <= 0 and force_non_lethal
-        
+
         logger.info(f"💥 Critical damage: {damage}. Target HP: {target_hp} → {new_hp}")
         if is_unconscious:
             logger.info("😴 Target knocked unconscious (non-lethal)")
         elif is_killed:
             logger.info("☠️ Target killed")
-        
+
         return {
             "hit": True,
             "is_crit": True,
             "critical": True,
             "critical_miss": False,
             "roll": attack_roll,
+            "roll1": roll1,
+            "roll2": roll2,
             "attack_roll": attack_roll,
             "total_attack": total_attack,
             "target_ac": target_ac,
@@ -334,9 +354,11 @@ def resolve_attack(
             "target_hp_remaining": new_hp,
             "knocked_unconscious": is_unconscious,
             "killed": is_killed,
-            "target_killed": is_killed
+            "target_killed": is_killed,
+            "advantage": advantage,
+            "disadvantage": disadvantage,
         }
-    
+
     # Normal hit check (total attack >= AC)
     if total_attack >= target_ac:
         logger.info(f"✅ Hit! ({total_attack} vs AC {target_ac})")
@@ -347,25 +369,27 @@ def resolve_attack(
             # Normal weapon damage: roll dice + ability mod
             damage_roll = roll_dice(weapon_damage.split("+")[0])
             damage = max(1, damage_roll + ability_mod)  # Minimum 1 damage
-        
+
         new_hp = max(0, target_hp - damage)
-        
+
         # Check if target is killed or knocked unconscious
         is_killed = new_hp <= 0 and not force_non_lethal
         is_unconscious = new_hp <= 0 and force_non_lethal
-        
+
         logger.info(f"💥 Damage: {damage}. Target HP: {target_hp} → {new_hp}")
         if is_unconscious:
             logger.info("😴 Target knocked unconscious (non-lethal)")
         elif is_killed:
             logger.info("☠️ Target killed")
-        
+
         return {
             "hit": True,
             "is_crit": False,
             "critical": False,
             "critical_miss": False,
             "roll": attack_roll,
+            "roll1": roll1,
+            "roll2": roll2,
             "attack_roll": attack_roll,
             "total_attack": total_attack,
             "target_ac": target_ac,
@@ -375,7 +399,9 @@ def resolve_attack(
             "target_hp_remaining": new_hp,
             "knocked_unconscious": is_unconscious,
             "killed": is_killed,
-            "target_killed": is_killed
+            "target_killed": is_killed,
+            "advantage": advantage,
+            "disadvantage": disadvantage,
         }
     else:
         logger.info(f"❌ Miss! ({total_attack} vs AC {target_ac})")
@@ -385,6 +411,8 @@ def resolve_attack(
             "critical": False,
             "critical_miss": False,
             "roll": attack_roll,
+            "roll1": roll1,
+            "roll2": roll2,
             "attack_roll": attack_roll,
             "total_attack": total_attack,
             "target_ac": target_ac,
@@ -394,7 +422,9 @@ def resolve_attack(
             "target_hp_remaining": target_hp,
             "knocked_unconscious": False,
             "killed": False,
-            "target_killed": False
+            "target_killed": False,
+            "advantage": advantage,
+            "disadvantage": disadvantage,
         }
 
 

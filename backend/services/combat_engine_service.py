@@ -16,7 +16,8 @@ from services.plot_armor_service import check_plot_armor, apply_plot_armor_conse
 from services.dnd_rules import (
     resolve_attack,
     apply_damage_to_target,
-    calculate_ability_modifier
+    calculate_ability_modifier,
+    compute_advantage_flags,
 )
 
 logger = logging.getLogger(__name__)
@@ -207,6 +208,11 @@ def start_combat_with_target(
         "battlefield": battlefield,
         "light_level": light_level,
         "player_lane": 1,
+        "player_turn_state": {
+            "action_used": False,
+            "bonus_action_used": False,
+            "reaction_used": False,
+        },
     }
 
     logger.info(f"⚔️ Combat initialized: {len(enemies)} enemies, light={light_level['level']}, first turn: {first_turn}")
@@ -217,17 +223,23 @@ def process_player_attack(
     target_id: str,
     character_state: Dict[str, Any],
     combat_state: Dict[str, Any],
-    force_non_lethal: bool = False
+    force_non_lethal: bool = False,
+    weapon_type: str = "melee",
+    weapon_damage: str = "1d4",
+    weapon_name: str = "Unarmed",
 ) -> Dict[str, Any]:
     """
     Process player's attack action with strict D&D 5e mechanics.
-    
+
     Args:
         target_id: ID of the target to attack
         character_state: Player character data
         combat_state: Current combat state
         force_non_lethal: If True, target becomes unconscious instead of dying
-    
+        weapon_type: "melee", "finesse", or "ranged" (resolved by weapon_service)
+        weapon_damage: Dice notation e.g. "1d8" (resolved by weapon_service)
+        weapon_name: Display name for the weapon used
+
     Returns:
         {
             "success": bool,
@@ -245,7 +257,7 @@ def process_player_attack(
         if enemy['id'] == target_id and enemy['hp'] > 0:
             target = enemy
             break
-    
+
     if not target:
         logger.error(f"❌ Target {target_id} not found or already defeated")
         return {
@@ -258,20 +270,25 @@ def process_player_attack(
             "combat_over": False,
             "xp_gained": 0
         }
-    
+
+    # is_unarmed determined from weapon name
+    is_unarmed = weapon_name.lower() in ("unarmed", "unarmed strike")
+
     # Prepare attacker data (player)
     attacker = {
         "abilities": character_state.get('abilities', {}),
         "proficiency_bonus": character_state.get('proficiency_bonus', 2),
         "attack_bonus": character_state.get('attack_bonus', 0)
     }
-    
-    # Determine weapon (for now, assume unarmed)
-    # TODO: Read from character inventory in future
-    weapon_type = "melee"
-    weapon_damage = "1d6"
-    is_unarmed = True
-    
+
+    # Compute advantage / disadvantage flags from conditions
+    attacker_conditions = character_state.get("conditions", [])
+    target_conditions = target.get("conditions", [])
+    blinded = combat_state.get("light_level", {}).get("blinded", False)
+    advantage, disadvantage = compute_advantage_flags(
+        attacker_conditions, target_conditions, weapon_type, blinded
+    )
+
     # Resolve attack using strict D&D 5e rules
     attack_result = resolve_attack(
         attacker=attacker,
@@ -279,30 +296,32 @@ def process_player_attack(
         weapon_type=weapon_type,
         weapon_damage=weapon_damage,
         is_unarmed=is_unarmed,
-        force_non_lethal=force_non_lethal
+        force_non_lethal=force_non_lethal,
+        advantage=advantage,
+        disadvantage=disadvantage,
     )
-    
+
     # Update target HP
     target['hp'] = attack_result['new_target_hp']
-    
+
     # Handle unconscious state
     if attack_result['knocked_unconscious']:
         target['conditions'] = target.get('conditions', [])
         if 'unconscious' not in target['conditions']:
             target['conditions'].append('unconscious')
         logger.info(f"😴 {target['name']} knocked unconscious")
-    
+
     # Check if all enemies are defeated
     alive_enemies = [e for e in enemies if e['hp'] > 0]
     combat_over = len(alive_enemies) == 0
-    
+
     # Update combat state - CRITICAL: Always set combat_over correctly
     combat_state_update = {
         "enemies": enemies,
         "combat_over": combat_over,
         "outcome": "victory" if combat_over else None
     }
-    
+
     # Calculate XP if combat ended in victory
     xp_gained = 0
     if combat_over:
@@ -313,12 +332,14 @@ def process_player_attack(
         except Exception as e:
             logger.warning(f"⚠️ Could not calculate XP: {e}")
             xp_gained = 0
-    
+
     return {
         "success": True,
         "mechanical_summary": {
             "attacker": character_state.get('name', 'You'),
             "target": target['name'],
+            "weapon_name": weapon_name,
+            "weapon_damage": weapon_damage,
             "attack_roll": attack_result['roll'],
             "total_attack": attack_result['total_attack'],
             "target_ac": attack_result['target_ac'],
@@ -330,7 +351,9 @@ def process_player_attack(
             "target_max_hp": target['max_hp'],
             "target_killed": attack_result['killed'],
             "knocked_unconscious": attack_result['knocked_unconscious'],
-            "ability_used": attack_result['ability_used']
+            "ability_used": attack_result['ability_used'],
+            "advantage": advantage,
+            "disadvantage": disadvantage,
         },
         "combat_state_update": combat_state_update,
         "character_state_update": {},
@@ -407,16 +430,22 @@ def process_enemy_turns(
     
     # Update player HP
     new_player_hp = player_target['hp']
-    combat_over = new_player_hp <= 0
-    
+    player_dying = new_player_hp <= 0
+
+    # When player HP hits 0 → enter dying state instead of immediate defeat
+    char_state_update: Dict[str, Any] = {"hp": new_player_hp}
+    if player_dying:
+        char_state_update["death_saves"] = {"successes": 0, "failures": 0, "stable": False, "dead": False}
+        logger.warning("💀 Player HP dropped to 0 — entering dying state (death saves)")
+
     return {
         "enemy_actions": enemy_actions,
         "total_damage_to_player": total_damage,
-        "character_state_update": {
-            "hp": new_player_hp
-        },
-        "combat_over": combat_over,
-        "outcome": "player_defeated" if combat_over else None
+        "character_state_update": char_state_update,
+        "combat_over": False,  # Don't end combat immediately; wait for death saves
+        "player_dying": player_dying,
+        "death_saves": char_state_update.get("death_saves"),
+        "outcome": None,
     }
 
 

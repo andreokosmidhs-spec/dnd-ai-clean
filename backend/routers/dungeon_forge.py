@@ -1992,19 +1992,23 @@ async def process_action(request: dict):
         player_action = action_req.player_action
         check_result = action_req.check_result
         client_target_id = action_req.client_target_id  # Phase 1: Explicit target from frontend
-        
+        card_used_id = action_req.card_used  # Card used for this action (weapon resolution)
+
         logger.info(f"🎮 Processing action for campaign: {campaign_id}, character: {character_id}")
         logger.info(f"   Action: {player_action[:100]}")
         if client_target_id:
             logger.info(f"   Explicit target: {client_target_id}")
-        
+        if card_used_id:
+            logger.info(f"   Card used: {card_used_id}")
+
         # Fetch state from DB (parallelized for performance)
         db = get_db()
-        campaign, char_doc, world_state, combat_doc = await asyncio.gather(
+        campaign, char_doc, world_state, combat_doc, deck_doc = await asyncio.gather(
             get_campaign(campaign_id),
             get_character_doc(campaign_id, character_id),
             get_world_state(campaign_id),
-            db.combats.find_one({"campaign_id": campaign_id, "character_id": character_id})
+            db.combats.find_one({"campaign_id": campaign_id, "character_id": character_id}),
+            db.character_decks.find_one({"character_id": character_id}),
         )
         
         # Validate all required data exists
@@ -2485,13 +2489,49 @@ async def process_action(request: dict):
                     "player_updates": {}
                 })
             
+            # ── Action Economy: check if action already used ──────────────────
+            from services.dnd_rules import classify_action_cost
+            action_cost = classify_action_cost(player_action)
+            player_turn_state = combat_state.get("player_turn_state", {
+                "action_used": False,
+                "bonus_action_used": False,
+                "reaction_used": False,
+            })
+            if action_cost == "action" and player_turn_state.get("action_used", False):
+                return api_success({
+                    "narration": "You've already used your action this turn. Use a bonus action, or end your turn.\n\nWhat do you do?",
+                    "combat_active": True,
+                    "world_state_update": {},
+                    "player_updates": {},
+                })
+            if action_cost == "bonus_action" and player_turn_state.get("bonus_action_used", False):
+                return api_success({
+                    "narration": "You've already used your bonus action this turn.\n\nWhat do you do?",
+                    "combat_active": True,
+                    "world_state_update": {},
+                    "player_updates": {},
+                })
+
+            # ── Resolve weapon from card or class default ─────────────────────
+            from services.weapon_service import resolve_player_weapon
+            deck_cards = (deck_doc.get("cards", []) if deck_doc else [])
+            weapon = resolve_player_weapon(
+                char_doc["character_state"],
+                card_used_id,
+                deck_cards,
+            )
+            logger.info(f"⚔️ Weapon resolved: {weapon['name']} ({weapon['damage_die']}, {weapon['weapon_type']})")
+
             # Process player attack mechanically
             attack_result = process_player_attack(
                 target_id=target_resolution['target_id'],
                 character_state=char_doc["character_state"],
-                combat_state=combat_state
+                combat_state=combat_state,
+                weapon_type=weapon["weapon_type"],
+                weapon_damage=weapon["damage_die"],
+                weapon_name=weapon["name"],
             )
-            
+
             if not attack_result['success']:
                 # v4.1 UNIFIED SPEC: No options field - narration ends with open prompts
                 return {
@@ -2500,10 +2540,19 @@ async def process_action(request: dict):
                     "world_state_update": {},
                     "player_updates": {}
                 }
-            
+
+            # Mark action as used in player_turn_state
+            if action_cost == "action":
+                player_turn_state["action_used"] = True
+            elif action_cost == "bonus_action":
+                player_turn_state["bonus_action_used"] = True
+            elif action_cost == "reaction":
+                player_turn_state["reaction_used"] = True
+            combat_state["player_turn_state"] = player_turn_state
+
             # Update combat state
             combat_state.update(attack_result['combat_state_update'])
-            
+
             # Process enemy turns if combat continues
             enemy_result = {"enemy_actions": [], "total_damage_to_player": 0}
             if not attack_result['combat_over']:
@@ -2511,23 +2560,38 @@ async def process_action(request: dict):
                     character_state=char_doc["character_state"],
                     combat_state=combat_state
                 )
-                
+
                 # Update character HP
                 if enemy_result['character_state_update']:
                     updated_char = {**char_doc["character_state"], **enemy_result['character_state_update']}
                     await update_character_state(campaign_id, character_id, updated_char)
-                
-                # Check if player defeated
+
+                # After enemy turns: reset action economy for next player turn
+                combat_state["player_turn_state"] = {
+                    "action_used": False,
+                    "bonus_action_used": False,
+                    "reaction_used": False,
+                }
+
+                # If player is now dying, reflect in combat state but don't end combat
+                if enemy_result.get('player_dying'):
+                    combat_state['player_dying'] = True
+                    combat_state['death_saves'] = enemy_result.get('death_saves', {
+                        "successes": 0, "failures": 0, "stable": False, "dead": False
+                    })
+
+                # Check if player defeated (fallback — shouldn't happen now with death saves)
                 if enemy_result.get('combat_over'):
                     combat_state['combat_over'] = True
                     combat_state['outcome'] = enemy_result.get('outcome')
-            
+
             # Generate mechanical summary
             mechanical_summary = {
                 "player_attack": attack_result['mechanical_summary'],
                 "enemy_turns": enemy_result.get('enemy_actions', []),
                 "total_damage_to_player": enemy_result.get('total_damage_to_player', 0),
                 "combat_over": attack_result['combat_over'] or enemy_result.get('combat_over', False),
+                "player_dying": enemy_result.get('player_dying', False),
                 "outcome": combat_state.get('outcome')
             }
 
@@ -2660,6 +2724,8 @@ async def process_action(request: dict):
                 "enemy_narrations": combat_result.get("enemy_narrations", []),
                 "mechanical_summary": mechanical_summary,
                 "combat_state": combat_result["combat_state_update"],
+                "player_dying": mechanical_summary.get("player_dying", False),
+                "death_saves": combat_result["combat_state_update"].get("death_saves"),
                 "combat_active": True,
                 "world_state_update": {},
                 "player_updates": {}  # P3: No updates mid-combat

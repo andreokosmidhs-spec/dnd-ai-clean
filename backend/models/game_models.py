@@ -230,6 +230,10 @@ class CombatState(BaseModel):
     player_grid_x: int = 1
     player_grid_y: int = 2
 
+    # DM-applied grid modifications (persisted in combats collection)
+    cell_overrides: List[Dict[str, Any]] = Field(default_factory=list)  # [{x, y, type}]
+    spell_zones: List[Dict[str, Any]] = Field(default_factory=list)     # [{id, name, cx, cy, radius, color, shape}]
+
 
 class CombatDoc(BaseModel):
     """Combat document - combat with metadata"""

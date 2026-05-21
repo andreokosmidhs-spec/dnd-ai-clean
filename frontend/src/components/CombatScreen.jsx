@@ -149,6 +149,22 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
   const [rollingSavingThrow, setRollingSavingThrow] = useState(false);
   const inputRef = useRef();
 
+  // ── DM grid-editing tools ─────────────────────────────────────────────────
+  const [showDmTools, setShowDmTools]   = useState(false);
+  const [editMode, setEditMode]         = useState(null);  // 'terrain'|'spell'|'measure'|'erase'|null
+  const [activeBrush, setActiveBrush]   = useState('wall');
+  const [cellOverrides, setCellOverrides] = useState(
+    () => combatState?.cell_overrides ?? []
+  );
+  const [spellZones, setSpellZones]     = useState(
+    () => combatState?.spell_zones ?? []
+  );
+  const [pendingSpell, setPendingSpell] = useState(null);  // { name, radius, color, shape }
+  const [measureFrom, setMeasureFrom]   = useState(null);  // { x, y }
+  const [showAoO, setShowAoO]           = useState(false);
+  const [savingGrid, setSavingGrid]     = useState(false);
+  const [customSpellRadius, setCustomSpellRadius] = useState(4);
+
   // Light level — prefer backend data, fall back to client derivation
   const lightLevel = localCombat.light_level
     || deriveLightLevel(worldState?.time_of_day, worldState?.current_location || worldState?.location);
@@ -293,6 +309,57 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
     : hasDarkvision && lightLevel.level === 'dark'
       ? 'Darkvision active — darkness treated as dim light'
       : null;
+
+  // ── DM grid handlers ─────────────────────────────────────────────────────
+  const handleCellInteract = useCallback((x, y) => {
+    if (editMode === 'terrain') {
+      setCellOverrides(prev => {
+        const filtered = prev.filter(c => !(c.x === x && c.y === y));
+        return [...filtered, { x, y, type: activeBrush }];
+      });
+    } else if (editMode === 'erase') {
+      setCellOverrides(prev => prev.filter(c => !(c.x === x && c.y === y)));
+    } else if (editMode === 'spell' && pendingSpell) {
+      setSpellZones(prev => [...prev, {
+        id: `zone_${Date.now()}`,
+        name: pendingSpell.name,
+        cx: x, cy: y,
+        radius: pendingSpell.radius,
+        color:  pendingSpell.color,
+        shape:  pendingSpell.shape || 'circle',
+      }]);
+    } else if (editMode === 'measure') {
+      setMeasureFrom(prev => (prev?.x === x && prev?.y === y) ? null : { x, y });
+    }
+  }, [editMode, activeBrush, pendingSpell]);
+
+  const saveGridChanges = useCallback(async () => {
+    if (!campaignId || savingGrid) return;
+    setSavingGrid(true);
+    try {
+      await fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/combat/grid`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cell_overrides: cellOverrides,
+          spell_zones: spellZones,
+          character_id: activeCharacterId,
+        }),
+      });
+    } catch (e) { /* silent */ }
+    finally { setSavingGrid(false); }
+  }, [campaignId, activeCharacterId, cellOverrides, spellZones, savingGrid]);
+
+  const removeSpellZone = useCallback((id) => {
+    setSpellZones(prev => prev.filter(z => z.id !== id));
+  }, []);
+
+  const closeDmTools = () => {
+    setShowDmTools(false);
+    setEditMode(null);
+    setPendingSpell(null);
+    setMeasureFrom(null);
+  };
 
   // ── Send combat action ────────────────────────────────────────────────────
   const sendAction = useCallback(async (actionText, cardId = null) => {
@@ -621,6 +688,211 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
         </div>
       )}
 
+      {/* ── DM GRID TOOLBAR ──────────────────────────────────────────────── */}
+      {showDmTools && (
+        <div className="flex-shrink-0 bg-slate-900/95 border-b border-violet-800/40 px-3 py-2 space-y-2">
+
+          {/* Row 1: mode buttons + save + close */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] text-violet-400 font-bold uppercase tracking-wider mr-1">DM Map Tools</span>
+
+            {[
+              { mode: 'terrain', icon: '🖊', label: 'Terrain' },
+              { mode: 'spell',   icon: '⭕', label: 'Zone' },
+              { mode: 'measure', icon: '📏', label: 'Measure' },
+              { mode: 'erase',   icon: '🗑', label: 'Erase' },
+            ].map(({ mode, icon, label }) => (
+              <button
+                key={mode}
+                onClick={() => setEditMode(prev => prev === mode ? null : mode)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                  editMode === mode
+                    ? 'bg-violet-700 border-violet-500 text-white'
+                    : 'bg-slate-800 border-slate-600 text-slate-300 hover:border-violet-500 hover:text-violet-300'
+                }`}
+              >
+                {icon} {label}
+              </button>
+            ))}
+
+            {/* AoO toggle */}
+            <button
+              onClick={() => setShowAoO(p => !p)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                showAoO
+                  ? 'bg-amber-700/70 border-amber-500 text-amber-200'
+                  : 'bg-slate-800 border-slate-600 text-slate-300 hover:border-amber-500 hover:text-amber-300'
+              }`}
+            >
+              ⚡ AoO
+            </button>
+
+            {/* Undo last override */}
+            <button
+              onClick={() => setCellOverrides(prev => prev.slice(0, -1))}
+              disabled={cellOverrides.length === 0}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs border border-slate-600 bg-slate-800 text-slate-400 hover:text-white disabled:opacity-30 transition-all"
+            >
+              ↩ Undo
+            </button>
+
+            {/* Clear spell zones */}
+            {spellZones.length > 0 && (
+              <button
+                onClick={() => setSpellZones([])}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs border border-red-800/60 bg-slate-800 text-red-400 hover:border-red-500 transition-all"
+              >
+                ✕ Clear zones
+              </button>
+            )}
+
+            <div className="flex-1" />
+
+            {/* Save */}
+            <button
+              onClick={saveGridChanges}
+              disabled={savingGrid}
+              className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold border border-green-700/60 bg-green-900/40 text-green-300 hover:bg-green-800/40 disabled:opacity-40 transition-all"
+            >
+              {savingGrid ? '…' : '💾'} Save
+            </button>
+            <button onClick={closeDmTools} className="text-slate-500 hover:text-white text-xs px-1.5 transition-colors">✕</button>
+          </div>
+
+          {/* Row 2: terrain palette (when in terrain mode) */}
+          {editMode === 'terrain' && (
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-[9px] text-slate-500 uppercase tracking-wider mr-0.5">Paint:</span>
+              {[
+                { type: 'floor',     bg: 'bg-slate-700',        label: 'Floor' },
+                { type: 'wall',      bg: 'bg-slate-950',        label: 'Wall' },
+                { type: 'pillar',    bg: 'bg-slate-600',        label: 'Pillar' },
+                { type: 'difficult', bg: 'bg-yellow-900',       label: 'Difficult' },
+                { type: 'cover',     bg: 'bg-green-900',        label: 'Cover ½' },
+                { type: 'door',      bg: 'bg-amber-800',        label: 'Door' },
+                { type: 'water',     bg: 'bg-blue-900',         label: 'Water' },
+                { type: 'rock',      bg: 'bg-stone-700',        label: 'Rock' },
+                { type: 'rubble',    bg: 'bg-stone-800',        label: 'Rubble' },
+                { type: 'altar',     bg: 'bg-purple-900',       label: 'Altar' },
+                { type: 'chest',     bg: 'bg-yellow-800',       label: 'Chest' },
+              ].map(({ type, bg, label }) => (
+                <button
+                  key={type}
+                  onClick={() => setActiveBrush(type)}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all ${
+                    activeBrush === type
+                      ? 'border-white text-white ring-1 ring-white/30'
+                      : 'border-slate-600/60 text-slate-300 hover:border-slate-400'
+                  } ${bg}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Row 2: spell palette (when in spell mode) */}
+          {editMode === 'spell' && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[9px] text-slate-500 uppercase tracking-wider mr-0.5">Spell:</span>
+              {[
+                { name: 'Fireball',    radius: 4, color: '#f97316' },
+                { name: 'Web',         radius: 4, color: '#9ca3af' },
+                { name: 'Darkness',    radius: 3, color: '#7c3aed' },
+                { name: 'Silence',     radius: 4, color: '#93c5fd' },
+                { name: 'Fog Cloud',   radius: 4, color: '#e2e8f0' },
+                { name: 'Entangle',    radius: 4, color: '#16a34a' },
+                { name: 'Spirit Zone', radius: 3, color: '#a855f7' },
+                { name: 'Burning Hands', radius: 2, color: '#ef4444' },
+              ].map(sp => (
+                <button
+                  key={sp.name}
+                  onClick={() => setPendingSpell(prev =>
+                    prev?.name === sp.name ? null : { ...sp, shape: 'circle' }
+                  )}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] border transition-all ${
+                    pendingSpell?.name === sp.name
+                      ? 'border-white text-white'
+                      : 'border-slate-600 text-slate-300 hover:border-slate-400 bg-slate-800'
+                  }`}
+                  style={pendingSpell?.name === sp.name ? { borderColor: sp.color, color: sp.color } : {}}
+                >
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: sp.color }} />
+                  {sp.name} ({sp.radius * 5}ft)
+                </button>
+              ))}
+              {/* Custom radius */}
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] text-slate-500">Custom:</span>
+                <input
+                  type="number"
+                  min={1} max={10}
+                  value={customSpellRadius}
+                  onChange={e => setCustomSpellRadius(Number(e.target.value))}
+                  className="w-10 bg-slate-800 border border-slate-600 rounded px-1 text-xs text-white text-center"
+                />
+                <button
+                  onClick={() => setPendingSpell(prev =>
+                    prev?.name === 'Custom' ? null : { name: 'Custom', radius: customSpellRadius, color: '#a855f7', shape: 'circle' }
+                  )}
+                  className={`px-2 py-0.5 rounded text-[10px] border transition-all ${
+                    pendingSpell?.name === 'Custom'
+                      ? 'bg-violet-700 border-violet-500 text-white'
+                      : 'bg-slate-800 border-slate-600 text-slate-300 hover:border-violet-500'
+                  }`}
+                >
+                  Use
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Row 2: measure hint */}
+          {editMode === 'measure' && (
+            <div className="text-[10px] text-slate-400">
+              Click any cell to set the range origin. Green ≤5ft (melee), Yellow ≤30ft (close), Red 30ft+.
+              {measureFrom && (
+                <button
+                  onClick={() => setMeasureFrom(null)}
+                  className="ml-2 text-red-400 hover:text-red-300 underline"
+                >
+                  Clear origin
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Active spell zones list */}
+          {spellZones.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[9px] text-slate-500 uppercase tracking-wider">Active zones:</span>
+              {spellZones.map(z => (
+                <span
+                  key={z.id}
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border"
+                  style={{ borderColor: z.color + '80', color: z.color, background: z.color + '18' }}
+                >
+                  {z.name} ({z.cx},{z.cy})
+                  <button onClick={() => removeSpellZone(z.id)} className="ml-0.5 opacity-60 hover:opacity-100 text-[8px]">✕</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── DM Tools toggle (shown when toolbar is closed) ────────────────── */}
+      {!showDmTools && (
+        <div className="flex-shrink-0 flex justify-end px-4 py-1 bg-slate-900/70 border-b border-slate-800/40">
+          <button
+            onClick={() => setShowDmTools(true)}
+            className="flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-lg border border-slate-700/60 text-slate-500 hover:border-violet-500/60 hover:text-violet-400 transition-all"
+          >
+            🗺 DM Map Tools
+          </button>
+        </div>
+      )}
+
       {/* ── MAIN AREA: lanes + sidebar ────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
 
@@ -628,6 +900,8 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
         <div className="flex flex-1 min-w-0 p-2 overflow-hidden">
           <BattlefieldGrid
             grid={localCombat.battlefield_grid}
+            cellOverrides={cellOverrides}
+            spellZones={spellZones}
             enemies={allEnemies}
             playerGridX={playerGridX}
             playerGridY={playerGridY}
@@ -644,6 +918,12 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
             onSelectTarget={setSelectedTarget}
             lightLevel={lightLevel}
             characterState={characterState}
+            editMode={editMode}
+            activeBrush={activeBrush}
+            pendingSpell={pendingSpell}
+            measureFrom={measureFrom}
+            showAoO={showAoO}
+            onCellClick={handleCellInteract}
           />
         </div>
 

@@ -220,6 +220,49 @@ async def clear_conditions(campaign_id: str):
     return {"ok": True}
 
 
+# ── DM grid overlays ────────────────────────────────────────────────────────
+
+@router.patch("/{campaign_id}/combat/grid")
+async def update_combat_grid(campaign_id: str, body: dict = Body(default={})):
+    """
+    Persist DM-applied grid modifications (cell overrides and spell zones)
+    back into the active combat document.
+
+    Body: {
+        cell_overrides: [{x, y, type}],
+        spell_zones:    [{id, name, cx, cy, radius, color, shape}],
+        character_id?:  str   (optional, used to narrow the query)
+    }
+    """
+    db = _db()
+    character_id = body.get("character_id")
+
+    query: dict = {"campaign_id": campaign_id}
+    if character_id:
+        query["character_id"] = character_id
+
+    result = await db.combats.update_one(
+        query,
+        {
+            "$set": {
+                "combat_state.cell_overrides": body.get("cell_overrides", []),
+                "combat_state.spell_zones":    body.get("spell_zones", []),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        },
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(404, "No active combat found for this campaign")
+
+    logger.info(
+        f"🗺️ DM updated grid for campaign {campaign_id}: "
+        f"{len(body.get('cell_overrides', []))} overrides, "
+        f"{len(body.get('spell_zones', []))} zones"
+    )
+    return {"ok": True}
+
+
 # ── Player interaction with a condition ──────────────────────────────────────
 
 @router.post("/{campaign_id}/combat/conditions/{condition_id}/interact")

@@ -1625,13 +1625,26 @@ async def create_character_endpoint(request: CharacterCreateRequest):
             from services.equipment_service import auto_equip_defaults
             character_state_dict = auto_equip_defaults(character_state_dict)
 
+            # Initialise spell slot economy for caster classes
+            from data.spell_slots import get_spell_slots, get_spellcasting_ability
+            _cls_key = (character_state_dict.get("class") or character_state_dict.get("class_") or "")
+            _cls_name = (_cls_key.get("name") or _cls_key.get("key") or "").strip().title() if isinstance(_cls_key, dict) else str(_cls_key).strip().title()
+            _char_level = int(character_state_dict.get("level", 1))
+            _slots = get_spell_slots(_cls_name, _char_level)
+            character_state_dict["spell_slots"] = dict(_slots)
+            character_state_dict["spell_slots_max"] = dict(_slots)
+            if not character_state_dict.get("concentration_spell"):
+                character_state_dict["concentration_spell"] = None
+                character_state_dict["concentration_card_id"] = None
+            logger.info(f"🔮 Spell slots for {_cls_name} lv{_char_level}: {_slots}")
+
             char_doc = await create_character_doc(
                 campaign_id=request.campaign_id,
                 character_id=character_id,
                 character_state=character_state_dict,
                 player_id=None
             )
-            
+
             # P3.5: Generate intro immediately and return it with character
             from services.intro_service import generate_intro_markdown
             
@@ -1786,18 +1799,27 @@ async def create_character_endpoint(request: CharacterCreateRequest):
         else:
             # Fallback if world not found
             from services.equipment_service import auto_equip_defaults
+            from data.spell_slots import get_spell_slots
             _fallback_state = auto_equip_defaults(character_state.dict())
+            _fb_cls = (_fallback_state.get("class") or _fallback_state.get("class_") or "")
+            _fb_cls_name = (_fb_cls.get("name") or _fb_cls.get("key") or "").strip().title() if isinstance(_fb_cls, dict) else str(_fb_cls).strip().title()
+            _fb_level = int(_fallback_state.get("level", 1))
+            _fb_slots = get_spell_slots(_fb_cls_name, _fb_level)
+            _fallback_state["spell_slots"] = dict(_fb_slots)
+            _fallback_state["spell_slots_max"] = dict(_fb_slots)
+            _fallback_state.setdefault("concentration_spell", None)
+            _fallback_state.setdefault("concentration_card_id", None)
             char_doc = await create_character_doc(
                 campaign_id=request.campaign_id,
                 character_id=character_id,
                 character_state=_fallback_state,
                 player_id=None
             )
-            
+
             logger.info(f"✅ Character created: {character_id} - {character_state.name}")
             return api_success({
                 "character_id": character_id,
-                "character_state": character_state.dict()
+                "character_state": _fallback_state
             })
         
     except Exception as e:
@@ -2595,28 +2617,84 @@ async def process_action(request: dict):
             if dm_adv_result["reason"]:
                 logger.info(f"🎲 DM adv assessment: adv={dm_adv_result['advantage']} disadv={dm_adv_result['disadvantage']} — {dm_adv_result['reason']}")
 
-            # ── Resolve weapon from card or class default ─────────────────────
-            from services.weapon_service import resolve_player_weapon
-            deck_cards = deck_cards_for_cost  # already fetched above
-            weapon = resolve_player_weapon(
-                char_doc["character_state"],
-                card_used_id,
-                deck_cards,
-            )
-            logger.info(f"⚔️ Weapon resolved: {weapon['name']} ({weapon['damage_die']}, {weapon['weapon_type']})")
+            # ── Spell slot check ──────────────────────────────────────────────
+            deck_cards = deck_cards_for_cost
+            _spell_level = 0
+            _is_concentration_spell = False
+            if _card_spell_name:
+                _card_for_slot = next((c for c in deck_cards if c.get("id") == card_used_id), {})
+                _spell_level = int((_card_for_slot.get("metadata") or {}).get("spell_level") or 0)
+                _is_concentration_spell = bool(_card_for_slot.get("concentration", False))
 
-            # Process player attack mechanically
-            attack_result = process_player_attack(
-                target_id=target_resolution['target_id'],
-                character_state=char_doc["character_state"],
-                combat_state=combat_state,
-                weapon_type=weapon["weapon_type"],
-                weapon_damage=weapon["damage_die"],
-                weapon_name=weapon["name"],
-            )
+                if _spell_level > 0:
+                    _slots = dict(char_doc["character_state"].get("spell_slots") or {})
+                    _slot_key = str(_spell_level)
+                    _slots_available = int(_slots.get(_slot_key, 0))
+                    if _slots_available <= 0:
+                        return api_success({
+                            "narration": f"You have no {_slot_key}{'st' if _slot_key=='1' else 'nd' if _slot_key=='2' else 'rd' if _slot_key=='3' else 'th'}-level spell slots remaining. Rest to recover them.\n\nWhat do you do?",
+                            "combat_active": True,
+                            "world_state_update": {},
+                            "player_updates": {},
+                        })
+
+            # ── Concentration warning ─────────────────────────────────────────
+            _prev_conc_spell = char_doc["character_state"].get("concentration_spell")
+            if _is_concentration_spell and _prev_conc_spell and _prev_conc_spell != _card_spell_name:
+                logger.info(f"⚡ Concentration broken: {_prev_conc_spell} → {_card_spell_name}")
+
+            # ── Route: save-spell vs attack-roll spell ─────────────────────────
+            from services.combat_engine_service import process_save_spell
+            from services.saving_throw_service import spell_save_dc as calc_spell_save_dc
+            from data.spell_slots import get_spellcasting_ability
+
+            _card_for_attack = next((c for c in deck_cards if c.get("id") == card_used_id), None)
+            _is_save_spell = bool(_card_for_attack and _card_for_attack.get("save_type"))
+
+            if _is_save_spell:
+                # Save-based spell: find target, compute DC, resolve
+                _target_enemy = next(
+                    (e for e in combat_state.get("enemies", [])
+                     if e.get("id") == target_resolution.get("target_id")), None
+                )
+                if not _target_enemy:
+                    return api_success({
+                        "narration": "No valid target for that spell. Choose a different target.\n\nWhat do you do?",
+                        "combat_active": True,
+                        "world_state_update": {},
+                        "player_updates": {},
+                    })
+                _caster_cls = (char_doc["character_state"].get("class") or char_doc["character_state"].get("class_") or "")
+                _caster_cls_name = (_caster_cls.get("name") or _caster_cls.get("key") or "").strip().title() if isinstance(_caster_cls, dict) else str(_caster_cls).strip().title()
+                _sc_ability = get_spellcasting_ability(_caster_cls_name) or "int"
+                _dc = calc_spell_save_dc(char_doc["character_state"], _sc_ability)
+                attack_result = process_save_spell(
+                    spell_name=_card_spell_name,
+                    spell_card=_card_for_attack,
+                    caster_state=char_doc["character_state"],
+                    target=_target_enemy,
+                    spell_save_dc=_dc,
+                    combat_state=combat_state,
+                )
+            else:
+                # Attack-roll spell or weapon attack
+                from services.weapon_service import resolve_player_weapon
+                weapon = resolve_player_weapon(
+                    char_doc["character_state"],
+                    card_used_id,
+                    deck_cards,
+                )
+                logger.info(f"⚔️ Weapon resolved: {weapon['name']} ({weapon['damage_die']}, {weapon['weapon_type']})")
+                attack_result = process_player_attack(
+                    target_id=target_resolution['target_id'],
+                    character_state=char_doc["character_state"],
+                    combat_state=combat_state,
+                    weapon_type=weapon["weapon_type"],
+                    weapon_damage=weapon["damage_die"],
+                    weapon_name=weapon["name"],
+                )
 
             if not attack_result['success']:
-                # v4.1 UNIFIED SPEC: No options field - narration ends with open prompts
                 return {
                     "narration": attack_result['mechanical_summary'].get('error', 'Unable to process attack') + "\n\nWhat do you do?",
                     "combat_active": True,
@@ -2633,13 +2711,37 @@ async def process_action(request: dict):
                 player_turn_state["reaction_used"] = True
             combat_state["player_turn_state"] = player_turn_state
 
+            # ── Consume spell slot after successful cast ───────────────────────
+            _char_state_patch = {}
+            if _card_spell_name and _spell_level > 0:
+                _slots = dict(char_doc["character_state"].get("spell_slots") or {})
+                _slot_key = str(_spell_level)
+                _slots[_slot_key] = max(0, int(_slots.get(_slot_key, 0)) - 1)
+                char_doc["character_state"]["spell_slots"] = _slots
+                _char_state_patch["spell_slots"] = _slots
+                logger.info(f"🔮 Consumed {_slot_key}th-level slot for {_card_spell_name}. Remaining: {_slots}")
+
+            # ── Track concentration ────────────────────────────────────────────
+            if _is_concentration_spell and _card_spell_name:
+                char_doc["character_state"]["concentration_spell"] = _card_spell_name
+                char_doc["character_state"]["concentration_card_id"] = card_used_id
+                _char_state_patch["concentration_spell"] = _card_spell_name
+                _char_state_patch["concentration_card_id"] = card_used_id
+            elif not _is_concentration_spell and not _card_spell_name:
+                pass  # weapon attack — don't touch concentration
+
             # Consume costly M component if the spell was cast successfully
             if _card_spell_name and _component_idx is not None:
                 _inventory = consume_component_if_needed(_card_spell_name, _inventory, _component_idx)
-                updated_inv = {**char_doc["character_state"], "inventory": _inventory}
-                await update_character_state(campaign_id, character_id, updated_inv)
+                _char_state_patch["inventory"] = _inventory
                 char_doc["character_state"]["inventory"] = _inventory
                 logger.info(f"💎 Consumed component for {_card_spell_name}")
+
+            # Persist character state changes (slots, concentration, inventory)
+            if _char_state_patch:
+                _updated_char = {**char_doc["character_state"], **_char_state_patch}
+                await update_character_state(campaign_id, character_id, _updated_char)
+                char_doc["character_state"].update(_char_state_patch)
 
             # Update combat state
             combat_state.update(attack_result['combat_state_update'])
@@ -2653,9 +2755,37 @@ async def process_action(request: dict):
                 )
 
                 # Update character HP
+                char_hp_patch = {}
                 if enemy_result['character_state_update']:
-                    updated_char = {**char_doc["character_state"], **enemy_result['character_state_update']}
+                    char_hp_patch = enemy_result['character_state_update']
+                    updated_char = {**char_doc["character_state"], **char_hp_patch}
                     await update_character_state(campaign_id, character_id, updated_char)
+                    char_doc["character_state"].update(char_hp_patch)
+
+                # ── Concentration check after taking damage ────────────────────
+                _damage_taken = enemy_result.get("total_damage_to_player", 0)
+                _conc_spell = char_doc["character_state"].get("concentration_spell")
+                if _conc_spell and _damage_taken > 0:
+                    from services.saving_throw_service import roll_saving_throw
+                    _conc_dc = max(10, _damage_taken // 2)
+                    _conc_save = roll_saving_throw(
+                        character_state=char_doc["character_state"],
+                        ability="con",
+                        dc=_conc_dc,
+                    )
+                    if not _conc_save["success"]:
+                        char_doc["character_state"]["concentration_spell"] = None
+                        char_doc["character_state"]["concentration_card_id"] = None
+                        await update_character_state(campaign_id, character_id, {
+                            **char_doc["character_state"],
+                            "concentration_spell": None,
+                            "concentration_card_id": None,
+                        })
+                        logger.info(f"💥 Concentration broken on {_conc_spell} (CON save {_conc_save['total']} vs DC {_conc_dc})")
+                        combat_state["_concentration_broken"] = _conc_spell
+                        combat_state["_concentration_save"] = _conc_save
+                    else:
+                        combat_state["_concentration_save"] = _conc_save
 
                 # After enemy turns: reset action economy for next player turn
                 combat_state["player_turn_state"] = {
@@ -2683,7 +2813,12 @@ async def process_action(request: dict):
                 "total_damage_to_player": enemy_result.get('total_damage_to_player', 0),
                 "combat_over": attack_result['combat_over'] or enemy_result.get('combat_over', False),
                 "player_dying": enemy_result.get('player_dying', False),
-                "outcome": combat_state.get('outcome')
+                "outcome": combat_state.get('outcome'),
+                # Spell slot / concentration state for frontend
+                "spell_slots": char_doc["character_state"].get("spell_slots", {}),
+                "concentration_spell": char_doc["character_state"].get("concentration_spell"),
+                "concentration_broken": combat_state.get("_concentration_broken"),
+                "concentration_save": combat_state.get("_concentration_save"),
             }
 
             # Increment round after both sides have acted
@@ -2719,7 +2854,15 @@ async def process_action(request: dict):
                 "character_state_update": enemy_result.get('character_state_update', {}),
                 "combat_over": mechanical_summary['combat_over'],
                 "outcome": mechanical_summary.get('outcome'),
-                "xp_gained": attack_result.get('xp_gained', 0)
+                "xp_gained": attack_result.get('xp_gained', 0),
+                # Player state updates for frontend sync
+                "player_updates": {
+                    "spell_slots": char_doc["character_state"].get("spell_slots", {}),
+                    "spell_slots_max": char_doc["character_state"].get("spell_slots_max", {}),
+                    "concentration_spell": char_doc["character_state"].get("concentration_spell"),
+                    "concentration_card_id": char_doc["character_state"].get("concentration_card_id"),
+                },
+                "mechanical_summary": mechanical_summary,
             }
             
             # Update combat state in DB

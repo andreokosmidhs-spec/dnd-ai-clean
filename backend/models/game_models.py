@@ -122,6 +122,14 @@ class CharacterState(BaseModel):
     # P3: Defeat tracking
     injury_count: int = 0
 
+    # Spell slots (D&D 5e slot economy)
+    spell_slots: Dict[str, int] = Field(default_factory=dict)      # remaining: {"1": 3, "2": 2}
+    spell_slots_max: Dict[str, int] = Field(default_factory=dict)  # max on long rest
+
+    # Active concentration spell
+    concentration_spell: Optional[str] = None
+    concentration_card_id: Optional[str] = None
+
 
 class CharacterDoc(BaseModel):
     """Character document - character with metadata"""
@@ -156,6 +164,10 @@ class CombatParticipant(BaseModel):
     conditions: List[str] = Field(default_factory=list)
     faction_id: Optional[str] = None
     
+    # Damage modifiers
+    resistances: List[str] = Field(default_factory=list)  # ["fire", "slashing"]
+    immunities: List[str] = Field(default_factory=list)   # ["poison", "psychic"]
+
     # NPC specific (for plot armor tracking)
     is_essential: bool = False
     plot_armor_attempts: int = 0  # Number of times attacked while having plot armor
@@ -170,12 +182,14 @@ class EnemyState(BaseModel):
     ac: int
     conditions: List[str] = Field(default_factory=list)
     faction_id: Optional[str] = None
-    
+
     # Combat stats for D&D 5e mechanics
     abilities: Dict[str, int] = Field(default_factory=lambda: {"str": 10, "dex": 10, "con": 10})
     proficiency_bonus: int = 2
     attack_bonus: int = 0
     damage_die: str = "1d6"
+    resistances: List[str] = Field(default_factory=list)
+    immunities: List[str] = Field(default_factory=list)
 
 
 class CombatState(BaseModel):

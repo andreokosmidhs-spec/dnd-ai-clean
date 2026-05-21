@@ -112,14 +112,40 @@ const CombatNarrationPopup = ({ narration, mechanics, isEnemy = false, onDismiss
               )}
 
               {/* attack roll line */}
-              {m.attack_roll != null && (
+              {/* ── Save-spell result ── */}
+              {m.is_save_spell && (
+                <>
+                  <MechanicLine
+                    label={`${m.target || 'Enemy'} ${m.save_type} saving throw`}
+                    value={`Roll ${m.save_roll} vs DC ${m.spell_save_dc}`}
+                    highlight={!m.save_success}
+                  />
+                  {m.save_success
+                    ? <div className="text-slate-400 text-sm">Save succeeded — {m.half_on_save ? 'half damage' : 'no effect'}.</div>
+                    : <div className="text-red-300 text-sm font-semibold">Save failed!</div>
+                  }
+                  {m.damage > 0 && (
+                    <MechanicLine
+                      label={`${m.damage_type || 'spell'} damage`}
+                      value={`${m.damage} hp`}
+                      highlight
+                    />
+                  )}
+                  {m.condition_applied && (
+                    <div className="text-amber-300 text-xs mt-0.5">⚡ {m.target} is now {m.condition_applied}</div>
+                  )}
+                </>
+              )}
+
+              {/* ── Attack-roll result ── */}
+              {m.attack_roll != null && !m.is_save_spell && (
                 <MechanicLine
                   label={isEnemy ? `${m.attacker || 'Enemy'} attacks you` : `${m.attacker || 'You'} → ${m.target || 'Enemy'}`}
                   value={`Roll ${m.attack_roll} + mods = ${m.total_attack ?? m.attack_roll} vs AC ${m.target_ac}`}
                   highlight={m.critical}
                 />
               )}
-              {m.critical && (
+              {m.critical && !m.is_save_spell && (
                 <div className="text-yellow-300 text-sm font-bold flex items-center gap-1">
                   <Zap size={14} /> Critical Hit!
                 </div>
@@ -127,10 +153,10 @@ const CombatNarrationPopup = ({ narration, mechanics, isEnemy = false, onDismiss
               {m.critical_miss && (
                 <div className="text-slate-400 text-sm font-bold">Critical Miss — attack fumbled!</div>
               )}
-              {m.hit && m.damage != null && (
+              {m.hit && m.damage != null && !m.is_save_spell && (
                 <MechanicLine label="Damage dealt" value={`${m.damage} hp`} highlight />
               )}
-              {m.hit === false && !m.critical_miss && (
+              {m.hit === false && !m.critical_miss && !m.is_save_spell && (
                 <div className="text-slate-400 text-sm">Attack missed.</div>
               )}
               {!isEnemy && m.target_hp_remaining != null && m.target_max_hp != null && (
@@ -158,6 +184,21 @@ const CombatNarrationPopup = ({ narration, mechanics, isEnemy = false, onDismiss
               {m.light_note && (
                 <div className="text-orange-400 text-xs flex items-center gap-1 mt-1">
                   🌙 {m.light_note}
+                </div>
+              )}
+              {m.concentration_broken && (
+                <div className="text-indigo-400 text-xs flex items-center gap-1 mt-1 border-t border-slate-700 pt-1.5">
+                  💫 Concentration broken — {m.concentration_broken} ends
+                  {m.concentration_save && (
+                    <span className="text-slate-500 ml-1">
+                      (CON {m.concentration_save.total} vs DC {m.concentration_save.dc})
+                    </span>
+                  )}
+                </div>
+              )}
+              {m.slot_used && (
+                <div className="text-violet-400 text-xs flex items-center gap-1 mt-1">
+                  🔮 {m.slot_used} spell slot consumed
                 </div>
               )}
             </div>

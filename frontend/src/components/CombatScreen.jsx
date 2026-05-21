@@ -132,6 +132,11 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
   // Death saves state
   const [deathSaves, setDeathSaves] = useState({ successes: 0, failures: 0, stable: false, dead: false });
   const [deathSaveResult, setDeathSaveResult] = useState(null); // last roll result
+  // Spell slots
+  const [spellSlots, setSpellSlots] = useState({});
+  const [spellSlotsMax, setSpellSlotsMax] = useState({});
+  // Concentration
+  const [concentrationSpell, setConcentrationSpell] = useState(null);
   const [rollingDeathSave, setRollingDeathSave] = useState(false);
   // Saving throw modal
   const [showSavingThrowModal, setShowSavingThrowModal] = useState(false);
@@ -179,6 +184,14 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
   }, [campaignId, activeCharacterId]);
 
   useEffect(() => { fetchEquipment(); }, [fetchEquipment]);
+
+  // Initialise spell slots from characterState
+  useEffect(() => {
+    if (characterState?.spell_slots) setSpellSlots(characterState.spell_slots);
+    if (characterState?.spell_slots_max) setSpellSlotsMax(characterState.spell_slots_max);
+    if (characterState?.concentration_spell !== undefined)
+      setConcentrationSpell(characterState.concentration_spell || null);
+  }, [characterState]);
 
   const handleEquip = useCallback(async (slot, itemName, twoHanded = false) => {
     if (!campaignId || !activeCharacterId) return;
@@ -335,11 +348,27 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
         setDeathSaves(data.death_saves);
       }
 
+      // Sync spell slots + concentration
+      if (data.player_updates?.spell_slots) setSpellSlots(data.player_updates.spell_slots);
+      if (data.player_updates?.spell_slots_max) setSpellSlotsMax(data.player_updates.spell_slots_max);
+      if ('concentration_spell' in (data.player_updates || {}))
+        setConcentrationSpell(data.player_updates.concentration_spell || null);
+
       // Queue player attack popup
       if (data.narration) {
+        const playerMechanics = data.mechanical_summary?.player_attack || data.mechanics || null;
+        // Attach spell slot / concentration context to the popup mechanics
+        const augmented = playerMechanics ? {
+          ...playerMechanics,
+          concentration_broken: data.mechanical_summary?.concentration_broken || null,
+          concentration_save: data.mechanical_summary?.concentration_save || null,
+          slot_used: data.mechanical_summary?.player_attack?.spell_name && data.player_updates?.spell_slots
+            ? `${Object.entries(data.player_updates.spell_slots || {}).map(([k]) => k)[0] || ''}th-level`
+            : null,
+        } : null;
         setNarrationQueue(q => [...q, {
           narration: data.narration,
-          mechanics: data.mechanical_summary?.player_attack || data.mechanics || null,
+          mechanics: augmented,
           isEnemy: false,
         }]);
       }
@@ -867,7 +896,7 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
         </div>
 
         {/* card filter tabs */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {['all', 'spell', 'class', 'item'].map(f => (
             <button
               key={f}
@@ -881,6 +910,28 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
               {f}
             </button>
           ))}
+          {/* Spell slot pips */}
+          {Object.keys(spellSlotsMax).length > 0 && (
+            <div className="flex items-center gap-2 ml-1 flex-wrap">
+              {Object.entries(spellSlotsMax).sort(([a],[b]) => Number(a)-Number(b)).map(([lvl, max]) => {
+                const rem = spellSlots[lvl] ?? max;
+                return (
+                  <div key={lvl} className="flex items-center gap-0.5">
+                    <span className="text-[9px] text-slate-500 mr-0.5">L{lvl}</span>
+                    {Array.from({length: Number(max)}).map((_, i) => (
+                      <span key={i} className={`text-[10px] ${i < rem ? 'text-violet-400' : 'text-slate-700'}`}>●</span>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* Active concentration */}
+          {concentrationSpell && (
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-950/70 border border-indigo-700/50 text-[10px] text-indigo-300">
+              ◉ {concentrationSpell}
+            </div>
+          )}
           <span className="text-slate-600 text-xs ml-auto">Click a card to use it</span>
         </div>
 

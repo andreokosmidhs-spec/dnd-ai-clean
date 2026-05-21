@@ -383,6 +383,114 @@ def process_player_attack(
     }
 
 
+def process_save_spell(
+    spell_name: str,
+    spell_card: Dict[str, Any],
+    caster_state: Dict[str, Any],
+    target: Dict[str, Any],
+    spell_save_dc: int,
+    combat_state: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Resolve a saving-throw based spell attack (e.g. Fireball, Sacred Flame).
+
+    Returns same shape as process_player_attack for easy substitution.
+    """
+    from services.dnd_rules import roll_dice, roll_d20, calculate_ability_modifier, proficiency_bonus_for_level
+    from services.saving_throw_service import roll_saving_throw
+
+    save_type      = spell_card.get("save_type", "dex")
+    half_on_save   = bool(spell_card.get("half_on_save", True))
+    damage_dice    = spell_card.get("damage_dice") or "1d6"
+    damage_type    = spell_card.get("damage_type") or "force"
+    cond_on_fail   = spell_card.get("condition_on_fail")
+
+    # Roll the save for the target
+    target_state_for_save = {
+        "abilities": target.get("abilities", {}),
+        "class_": target.get("type", "enemy"),
+        "level": 1,
+    }
+    save_result = roll_saving_throw(
+        character_state=target_state_for_save,
+        ability=save_type,
+        dc=spell_save_dc,
+    )
+
+    # Roll damage
+    raw_damage = roll_dice(damage_dice)
+    damage = raw_damage // 2 if (save_result["success"] and half_on_save) else raw_damage
+    if save_result["success"] and not half_on_save:
+        damage = 0
+
+    # Apply resistances / immunities
+    resistances = [r.lower() for r in target.get("resistances", [])]
+    immunities  = [i.lower() for i in target.get("immunities", [])]
+    dt = damage_type.lower()
+    if dt in immunities:
+        damage = 0
+    elif dt in resistances:
+        damage = damage // 2
+
+    # Apply damage
+    old_hp = target["hp"]
+    target["hp"] = max(0, old_hp - damage)
+    killed = target["hp"] <= 0
+
+    # Apply condition on failed save
+    if cond_on_fail and not save_result["success"]:
+        conditions = target.get("conditions", [])
+        if cond_on_fail not in conditions:
+            conditions.append(cond_on_fail)
+            target["conditions"] = conditions
+
+    enemies = combat_state.get("enemies", [])
+    for i, e in enumerate(enemies):
+        if e["id"] == target["id"]:
+            enemies[i] = target
+            break
+    alive_enemies = [e for e in enemies if e["hp"] > 0]
+    combat_over = len(alive_enemies) == 0
+
+    xp_gained = 0
+    if combat_over:
+        try:
+            from services.progression_service import calculate_xp_for_enemy
+            xp_gained = sum(calculate_xp_for_enemy(e) for e in enemies)
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "mechanical_summary": {
+            "attacker": caster_state.get("name", "You"),
+            "target": target["name"],
+            "spell_name": spell_name,
+            "save_type": save_type.upper(),
+            "spell_save_dc": spell_save_dc,
+            "save_roll": save_result["total"],
+            "save_success": save_result["success"],
+            "half_on_save": half_on_save,
+            "damage_dice": damage_dice,
+            "damage": damage,
+            "damage_type": damage_type,
+            "condition_applied": cond_on_fail if cond_on_fail and not save_result["success"] else None,
+            "target_hp_remaining": target["hp"],
+            "target_max_hp": target["max_hp"],
+            "target_killed": killed,
+            "is_save_spell": True,
+        },
+        "combat_state_update": {
+            "enemies": enemies,
+            "combat_over": combat_over,
+            "outcome": "victory" if combat_over else None,
+        },
+        "character_state_update": {},
+        "combat_over": combat_over,
+        "xp_gained": xp_gained,
+    }
+
+
 def process_enemy_turns(
     character_state: Dict[str, Any],
     combat_state: Dict[str, Any]

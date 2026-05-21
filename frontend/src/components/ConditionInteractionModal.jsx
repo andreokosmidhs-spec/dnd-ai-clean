@@ -139,11 +139,14 @@ const ConditionInteractionModal = ({
 
           {/* result area */}
           {result ? (
-            <div className="space-y-3">
+            <div className="space-y-3 animate-result-slide">
               <p className="text-slate-100 leading-relaxed text-sm">{result.narration}</p>
 
               {outcomeStyle && (
-                <div className={`flex items-start gap-2 p-3 rounded-xl border ${outcomeStyle.bg}`}>
+                <div className={`flex items-start gap-2 p-3 rounded-xl border ${outcomeStyle.bg} ${
+                  result.outcome?.type === 'bonus'   ? 'animate-outcome-flash-bonus'   :
+                  result.outcome?.type === 'penalty' ? 'animate-outcome-flash-penalty' : ''
+                }`}>
                   <outcomeStyle.icon size={15} className={`mt-0.5 flex-shrink-0 ${outcomeStyle.color}`} />
                   <div>
                     <div className={`text-xs font-bold ${outcomeStyle.color}`}>{outcomeStyle.label}</div>
@@ -185,12 +188,12 @@ const ConditionInteractionModal = ({
                   disabled={rolling}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 border border-slate-600 hover:border-violet-500 hover:bg-slate-700 text-white text-sm font-semibold transition-all disabled:opacity-50"
                 >
-                  <Dice6 size={16} className={rolling ? 'animate-spin' : ''} />
+                  <Dice6 size={16} className={rolling ? 'animate-dice-tumble' : ''} />
                   {roll ? 'Re-roll d20' : 'Roll d20'}
                 </button>
 
                 {roll !== null && (
-                  <div className="flex flex-col">
+                  <div className="flex flex-col animate-result-slide">
                     <span className={`text-2xl leading-none ${rollColor(roll)}`}>{roll}</span>
                     <span className="text-slate-500 text-[10px]">{rollLabel(roll)}</span>
                   </div>

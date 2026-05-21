@@ -395,6 +395,12 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
                 <BattlefieldConditionCard
                   condition={c}
                   compact
+                  campaignId={campaignId}
+                  onArtGenerated={(condId, url) => {
+                    setConditions(prev => prev.map(x =>
+                      (x.condition_id || x.id) === condId ? { ...x, art_data_url: url } : x
+                    ));
+                  }}
                   onClick={() => setSelectedCondition(c)}
                 />
                 {/* remove button (DM-created only) */}

@@ -57,6 +57,8 @@ class InteractBody(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 async def _get_active_conditions(db, campaign_id: str) -> List[dict]:
+    from services.condition_art_service import _art_key
+
     cursor = db.combat_conditions.find(
         {"campaign_id": campaign_id, "active": True},
         sort=[("created_at", 1)],
@@ -64,6 +66,12 @@ async def _get_active_conditions(db, campaign_id: str) -> List[dict]:
     docs = []
     async for doc in cursor:
         doc["id"] = str(doc.pop("_id"))
+        # Attach cached art if available and not already on the doc
+        if not doc.get("art_data_url"):
+            key = _art_key(doc.get("title", ""), doc.get("description", ""))
+            art = await db.combat_condition_art.find_one({"art_key": key}, {"data_url": 1})
+            if art and art.get("data_url"):
+                doc["art_data_url"] = art["data_url"]
         docs.append(doc)
     return docs
 
@@ -162,6 +170,37 @@ async def seed_conditions(campaign_id: str, body: dict = Body(default={})):
     location = body.get("location", "")
     seeded = await _seed_biome_conditions(db, campaign_id, location)
     return {"ok": True, "seeded": seeded}
+
+
+@router.post("/{campaign_id}/combat/conditions/{condition_id}/art")
+async def generate_condition_art(campaign_id: str, condition_id: str):
+    """
+    Generate (or return cached) AI art for a battlefield condition.
+    The card description is used as the image prompt core.
+    Returns {art_url} — may be null if generation is unavailable.
+    """
+    db = _db()
+    condition = await db.combat_conditions.find_one(
+        {"campaign_id": campaign_id, "condition_id": condition_id}
+    )
+    if not condition:
+        raise HTTPException(404, "Condition not found")
+
+    from services.condition_art_service import get_or_generate_art
+    data_url = await get_or_generate_art(
+        db,
+        title=condition["title"],
+        description=condition["description"],
+    )
+
+    if data_url:
+        # Persist art_data_url on the condition document
+        await db.combat_conditions.update_one(
+            {"campaign_id": campaign_id, "condition_id": condition_id},
+            {"$set": {"art_data_url": data_url, "updated_at": datetime.now(timezone.utc)}},
+        )
+
+    return {"ok": True, "art_url": data_url}
 
 
 @router.post("/{campaign_id}/combat/conditions/clear")

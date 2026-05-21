@@ -2567,6 +2567,34 @@ async def process_action(request: dict):
                 if _noncostly_warn:
                     logger.warning(_noncostly_warn)
 
+            # ── DM narrative advantage/disadvantage assessment ────────────────
+            from services.advantage_service import get_dm_advantage_assessment
+            _target_for_adv = next(
+                (e for e in combat_state.get("enemies", [])
+                 if e.get("id") == target_resolution.get("target_id")), {}
+            )
+            _bf_conditions = [
+                c.get("title", "") for c in
+                combat_state.get("battlefield", {}).get("passive_conditions", [])
+                if isinstance(c, dict)
+            ]
+            _light = combat_state.get("light_level", {})
+            _light_str = _light.get("level", "bright") if isinstance(_light, dict) else "bright"
+            dm_adv_result = await get_dm_advantage_assessment(
+                player_action=player_action,
+                target_name=_target_for_adv.get("name", "enemy"),
+                target_conditions=_target_for_adv.get("conditions", []),
+                attacker_conditions=char_doc["character_state"].get("conditions", []),
+                battlefield_conditions=_bf_conditions,
+                light_level=_light_str,
+            )
+            # Inject into combat_state so process_player_attack can read them
+            combat_state["_dm_advantage"]        = dm_adv_result["advantage"]
+            combat_state["_dm_disadvantage"]     = dm_adv_result["disadvantage"]
+            combat_state["_dm_advantage_reason"] = dm_adv_result["reason"]
+            if dm_adv_result["reason"]:
+                logger.info(f"🎲 DM adv assessment: adv={dm_adv_result['advantage']} disadv={dm_adv_result['disadvantage']} — {dm_adv_result['reason']}")
+
             # ── Resolve weapon from card or class default ─────────────────────
             from services.weapon_service import resolve_player_weapon
             deck_cards = deck_cards_for_cost  # already fetched above

@@ -285,9 +285,26 @@ def process_player_attack(
     attacker_conditions = character_state.get("conditions", [])
     target_conditions = target.get("conditions", [])
     blinded = combat_state.get("light_level", {}).get("blinded", False)
-    advantage, disadvantage = compute_advantage_flags(
+    mech_adv, mech_disadv, adv_sources, disadv_sources = compute_advantage_flags(
         attacker_conditions, target_conditions, weapon_type, blinded
     )
+
+    # Merge with DM-granted narrative advantage/disadvantage
+    dm_adv    = combat_state.get("_dm_advantage", False)
+    dm_disadv = combat_state.get("_dm_disadvantage", False)
+    dm_reason = combat_state.get("_dm_advantage_reason", "")
+    if dm_adv:
+        adv_sources.append(f"DM: {dm_reason}" if dm_reason else "DM: scene context")
+    if dm_disadv:
+        disadv_sources.append(f"DM: {dm_reason}" if dm_reason else "DM: scene context")
+
+    advantage    = mech_adv    or dm_adv
+    disadvantage = mech_disadv or dm_disadv
+
+    # PHB: any combination of adv+disadv cancels to straight roll
+    if advantage and disadvantage:
+        adv_sources.append("(cancelled by opposing disadvantage)")
+        disadv_sources.append("(cancelled by opposing advantage)")
 
     # Resolve attack using strict D&D 5e rules
     attack_result = resolve_attack(
@@ -354,6 +371,10 @@ def process_player_attack(
             "ability_used": attack_result['ability_used'],
             "advantage": advantage,
             "disadvantage": disadvantage,
+            "adv_sources": adv_sources,
+            "disadv_sources": disadv_sources,
+            "roll1": attack_result.get("roll1"),
+            "roll2": attack_result.get("roll2"),
         },
         "combat_state_update": combat_state_update,
         "character_state_update": {},

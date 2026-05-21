@@ -12,7 +12,7 @@ Implements:
 """
 import random
 import logging
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -466,41 +466,67 @@ def compute_advantage_flags(
     target_conditions: list,
     weapon_type: str = "melee",
     blinded: bool = False,
-) -> Tuple[bool, bool]:
-    """Return (advantage, disadvantage) based on D&D 5e conditions.
+) -> Tuple[bool, bool, List[str], List[str]]:
+    """Return (advantage, disadvantage, adv_sources, disadv_sources).
 
-    Conservative: only sets flags when conditions are explicitly present.
+    Sources are human-readable strings shown in the UI and DM context.
+    PHB rule: advantage and disadvantage cancel regardless of how many sources.
     """
-    advantage = False
-    disadvantage = False
+    adv_sources: List[str] = []
+    disadv_sources: List[str] = []
 
-    # Attacker conditions
-    conds = [c.lower() for c in (attacker_conditions or [])]
+    # Normalise attacker conditions
+    conds = {c.lower() for c in (attacker_conditions or [])}
+
+    # Attacker → disadvantage
     if "poisoned" in conds:
-        disadvantage = True
+        disadv_sources.append("you are poisoned")
     if "frightened" in conds:
-        disadvantage = True
-    if "invisible" in conds:
-        advantage = True
+        disadv_sources.append("you are frightened")
     if "blinded" in conds:
-        disadvantage = True
-        # Attacks against blinded targets have advantage (handled via target)
+        disadv_sources.append("you are blinded")
+    if "restrained" in conds:
+        disadv_sources.append("you are restrained")
+    if "exhausted" in conds or "exhaustion" in conds:
+        disadv_sources.append("you are exhausted")
+    if "stunned" in conds:
+        disadv_sources.append("you are stunned")
 
-    # Blinded by environment (darkness without darkvision)
+    # Attacker → advantage
+    if "invisible" in conds or "hidden" in conds:
+        adv_sources.append("you are unseen by the target")
+    if "reckless" in conds:
+        adv_sources.append("Reckless Attack")
+
+    # Environmental blindness (darkness without darkvision)
     if blinded:
-        disadvantage = True
+        disadv_sources.append("blinded by darkness")
 
-    # Target conditions
-    t_conds = [c.lower() for c in (target_conditions or [])]
+    # Normalise target conditions
+    t_conds = {c.lower() for c in (target_conditions or [])}
+
+    # Target → advantage on attacker
+    if "blinded" in t_conds:
+        adv_sources.append("target is blinded")
     if "prone" in t_conds:
         if weapon_type == "ranged":
-            disadvantage = True
+            disadv_sources.append("prone target (ranged attack)")
         else:
-            advantage = True
-    if "paralyzed" in t_conds or "unconscious" in t_conds:
-        advantage = True
+            adv_sources.append("target is prone")
+    if "paralyzed" in t_conds:
+        adv_sources.append("target is paralyzed")
+    if "unconscious" in t_conds:
+        adv_sources.append("target is unconscious")
+    if "restrained" in t_conds:
+        adv_sources.append("target is restrained")
+    if "stunned" in t_conds:
+        adv_sources.append("target is stunned")
+    if "petrified" in t_conds:
+        adv_sources.append("target is petrified")
 
-    return advantage, disadvantage
+    advantage    = len(adv_sources) > 0
+    disadvantage = len(disadv_sources) > 0
+    return advantage, disadvantage, adv_sources, disadv_sources
 
 
 # ── Death Saving Throws ───────────────────────────────────────────────────────

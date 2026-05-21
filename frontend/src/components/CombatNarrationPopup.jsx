@@ -71,6 +71,47 @@ const CombatNarrationPopup = ({ narration, mechanics, isEnemy = false, onDismiss
           {/* mechanical summary */}
           {hasMechanics && (
             <div className="border-t border-slate-700 pt-3 space-y-1.5">
+              {/* advantage / disadvantage badge */}
+              {(m.advantage || m.disadvantage) && !(m.advantage && m.disadvantage) && (
+                <div className={`flex flex-col gap-1 px-2 py-1.5 rounded-lg text-xs ${
+                  m.advantage && !m.disadvantage
+                    ? 'bg-green-950/60 border border-green-700/40'
+                    : 'bg-red-950/60 border border-red-700/40'
+                }`}>
+                  <div className={`font-bold flex items-center gap-1 ${
+                    m.advantage && !m.disadvantage ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    {m.advantage && !m.disadvantage
+                      ? <>🎲🎲↑ Advantage — rolling 2d20, taking higher</>
+                      : <>🎲🎲↓ Disadvantage — rolling 2d20, taking lower</>}
+                    {m.roll2 != null && (
+                      <span className="ml-2 font-normal text-slate-400">
+                        ({m.roll1} / {m.roll2})
+                      </span>
+                    )}
+                  </div>
+                  {/* source chips */}
+                  <div className="flex flex-wrap gap-1">
+                    {(m.advantage && !m.disadvantage ? m.adv_sources : m.disadv_sources || []).map((src, i) => (
+                      <span key={i} className={`px-1.5 py-0.5 rounded text-[10px] ${
+                        m.advantage && !m.disadvantage
+                          ? 'bg-green-900/60 text-green-300'
+                          : 'bg-red-900/60 text-red-300'
+                      }`}>{src}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* cancelled — both advantage and disadvantage */}
+              {m.advantage && m.disadvantage && (
+                <div className="text-slate-500 text-xs px-2 py-1 rounded-lg bg-slate-800/60 border border-slate-700/40">
+                  ⚖ Advantage and disadvantage cancel — straight roll
+                  {m.adv_sources?.length > 0 && <span className="ml-1 text-green-700">({m.adv_sources.join(', ')})</span>}
+                  {m.disadv_sources?.length > 0 && <span className="ml-1 text-red-700">({m.disadv_sources.join(', ')})</span>}
+                </div>
+              )}
+
+              {/* attack roll line */}
               {m.attack_roll != null && (
                 <MechanicLine
                   label={isEnemy ? `${m.attacker || 'Enemy'} attacks you` : `${m.attacker || 'You'} → ${m.target || 'Enemy'}`}
@@ -87,11 +128,7 @@ const CombatNarrationPopup = ({ narration, mechanics, isEnemy = false, onDismiss
                 <div className="text-slate-400 text-sm font-bold">Critical Miss — attack fumbled!</div>
               )}
               {m.hit && m.damage != null && (
-                <MechanicLine
-                  label="Damage dealt"
-                  value={`${m.damage} hp`}
-                  highlight
-                />
+                <MechanicLine label="Damage dealt" value={`${m.damage} hp`} highlight />
               )}
               {m.hit === false && !m.critical_miss && (
                 <div className="text-slate-400 text-sm">Attack missed.</div>

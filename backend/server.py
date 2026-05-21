@@ -127,6 +127,7 @@ from routers import factions as factions_router
 from routers import canon_scenes as canon_scenes_router
 from routers import mission_types as mission_types_router
 from routers import pressure_engine as pressure_engine_router
+from routers import combat_conditions as combat_conditions_router
 
 # Create the main app without a prefix
 app = FastAPI(title="Sentient RPG Engine", description="AI-Powered Text RPG Framework")
@@ -4153,6 +4154,7 @@ app.include_router(dm_lessons_router.router)  # DM Notebook (persistent lessons 
 app.include_router(factions_router.router)    # Faction mechanics (perks, reputation, hierarchy)
 app.include_router(canon_scenes_router.router)  # Canon scenes (auto-checkpoints on passed beats)
 app.include_router(mission_types_router.router)  # Mission Type blueprints
+app.include_router(combat_conditions_router.router)  # Battlefield condition cards + DM adjudication
 app.include_router(character_v2_router)
 app.include_router(character_v2_router_alias)
 

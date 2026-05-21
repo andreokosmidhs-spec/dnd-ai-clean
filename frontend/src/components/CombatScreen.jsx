@@ -10,12 +10,13 @@
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Sword, Shield, Zap, Heart, Eye, Wind, FlameKindling,
-  ChevronRight, Loader2, Send, SkipForward
+  Sword, Shield, Zap, Heart, ChevronRight, Loader2, Send, Plus, X
 } from 'lucide-react';
 import { useGameState } from '../contexts/GameStateContext';
 import { useSessionCore } from '../store/useSessionCore';
 import CombatNarrationPopup from './CombatNarrationPopup';
+import BattlefieldConditionCard from './BattlefieldConditionCard';
+import ConditionInteractionModal from './ConditionInteractionModal';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -122,6 +123,12 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
   const [narrationQueue, setNarrationQueue] = useState([]); // [{narration, mechanics}]
   const [deckCards, setDeckCards] = useState([]);
   const [activeCardFilter, setActiveCardFilter] = useState('all'); // 'all'|'spell'|'class'|'item'
+  const [conditions, setConditions] = useState([]);
+  const [selectedCondition, setSelectedCondition] = useState(null); // opens interaction modal
+  const [showAddCondition, setShowAddCondition] = useState(false);
+  const [newCondTitle, setNewCondTitle] = useState('');
+  const [newCondDesc, setNewCondDesc] = useState('');
+  const [savingCondition, setSavingCondition] = useState(false);
   const inputRef = useRef();
 
   // Light level — prefer backend data, fall back to client derivation
@@ -143,6 +150,45 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
       .then(d => { if (d?.cards) setDeckCards(d.cards.filter(c => c.status === 'active')); })
       .catch(() => {});
   }, [activeCharacterId]);
+
+  // ── Fetch + seed battlefield conditions ────────────────────────────────────
+  useEffect(() => {
+    if (!campaignId) return;
+    const location = worldState?.current_location || worldState?.location || '';
+    fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/combat/conditions?location=${encodeURIComponent(location)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.conditions) setConditions(d.conditions); })
+      .catch(() => {});
+  }, [campaignId, worldState]);
+
+  // ── Add DM condition ───────────────────────────────────────────────────────
+  const handleAddCondition = useCallback(async () => {
+    if (!newCondTitle.trim() || !newCondDesc.trim() || !campaignId) return;
+    setSavingCondition(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/combat/conditions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newCondTitle.trim(), description: newCondDesc.trim() }),
+      });
+      const data = await res.json();
+      if (data?.condition) {
+        setConditions(prev => [...prev, data.condition]);
+        setNewCondTitle('');
+        setNewCondDesc('');
+        setShowAddCondition(false);
+      }
+    } catch (e) { /* silent */ }
+    finally { setSavingCondition(false); }
+  }, [campaignId, newCondTitle, newCondDesc]);
+
+  // ── Remove condition ───────────────────────────────────────────────────────
+  const handleRemoveCondition = useCallback(async (conditionId) => {
+    if (!campaignId) return;
+    setConditions(prev => prev.filter(c => (c.condition_id || c.id) !== conditionId));
+    fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/combat/conditions/${conditionId}`, { method: 'DELETE' })
+      .catch(() => {});
+  }, [campaignId]);
 
   // ── Auto-select first enemy as target ─────────────────────────────────────
   useEffect(() => {
@@ -334,6 +380,85 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
           </div>
         )}
       </div>
+
+      {/* ── BATTLEFIELD CONDITIONS ────────────────────────────────────────── */}
+      {(conditions.length > 0 || true) && (
+        <div className="flex-shrink-0 bg-slate-900/60 border-b border-slate-700/40 px-4 py-2">
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-0.5">
+            <span className="flex-shrink-0 text-[10px] uppercase tracking-wider text-slate-500 font-bold">
+              Battlefield
+            </span>
+
+            {/* condition cards */}
+            {conditions.map(c => (
+              <div key={c.condition_id || c.id} className="flex-shrink-0 relative group">
+                <BattlefieldConditionCard
+                  condition={c}
+                  compact
+                  onClick={() => setSelectedCondition(c)}
+                />
+                {/* remove button (DM-created only) */}
+                {c.source === 'dm' && (
+                  <button
+                    onClick={e => { e.stopPropagation(); handleRemoveCondition(c.condition_id || c.id); }}
+                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-700 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X size={9} />
+                  </button>
+                )}
+              </div>
+            ))}
+
+            {/* add condition button */}
+            {!showAddCondition && (
+              <button
+                onClick={() => setShowAddCondition(true)}
+                className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-dashed border-slate-600 text-slate-500 hover:border-violet-500 hover:text-violet-400 text-xs transition-all"
+              >
+                <Plus size={11} /> Add condition
+              </button>
+            )}
+
+            {/* inline add form */}
+            {showAddCondition && (
+              <div
+                className="flex-shrink-0 flex items-center gap-2 bg-slate-800 border border-violet-700/60 rounded-xl px-3 py-2"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex flex-col gap-1">
+                  <input
+                    value={newCondTitle}
+                    onChange={e => setNewCondTitle(e.target.value)}
+                    placeholder="Title (e.g. Oil Slick)"
+                    className="bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 w-36"
+                  />
+                  <input
+                    value={newCondDesc}
+                    onChange={e => setNewCondDesc(e.target.value)}
+                    placeholder="Describe the environment..."
+                    className="bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 w-52"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <button
+                    onClick={handleAddCondition}
+                    disabled={savingCondition || !newCondTitle.trim() || !newCondDesc.trim()}
+                    className="px-2.5 py-1 rounded-lg bg-violet-700 hover:bg-violet-600 text-white text-xs font-semibold disabled:opacity-40 transition-all"
+                  >
+                    {savingCondition ? <Loader2 size={11} className="animate-spin" /> : 'Add'}
+                  </button>
+                  <button
+                    onClick={() => { setShowAddCondition(false); setNewCondTitle(''); setNewCondDesc(''); }}
+                    className="px-2.5 py-1 rounded-lg text-slate-400 hover:text-white text-xs transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── MAIN AREA: lanes + sidebar ────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -555,6 +680,22 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
           narration={narrationQueue[0].narration}
           mechanics={narrationQueue[0].mechanics}
           onDismiss={dismissPopup}
+        />
+      )}
+
+      {/* ── CONDITION INTERACTION MODAL ──────────────────────────────────── */}
+      {selectedCondition && (
+        <ConditionInteractionModal
+          condition={selectedCondition}
+          campaignId={campaignId}
+          characterState={characterState}
+          combatState={localCombat}
+          characterId={activeCharacterId}
+          onClose={() => setSelectedCondition(null)}
+          onNarration={(narration, outcome) => {
+            setSelectedCondition(null);
+            setNarrationQueue(q => [...q, { narration, mechanics: { light_note: outcome?.description } }]);
+          }}
         />
       )}
     </div>

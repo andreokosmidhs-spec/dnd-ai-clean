@@ -401,13 +401,120 @@ def resolve_attack(
 def apply_damage_to_target(target: Dict[str, Any], damage: int) -> Dict[str, Any]:
     """
     Apply damage to a target and return updated target data.
-    
+
     Args:
         target: Target data with hp and max_hp
         damage: Damage amount
-    
+
     Returns:
         Updated target data
     """
     target['hp'] = max(0, target.get('hp', 0) - damage)
     return target
+
+
+# ── Advantage / Disadvantage ──────────────────────────────────────────────────
+
+def _make_attack_roll(advantage: bool, disadvantage: bool) -> Tuple[int, int, Optional[int]]:
+    """Return (final_roll, roll1, roll2_or_None).
+
+    When both advantage and disadvantage are active they cancel out (PHB rule).
+    """
+    if advantage and not disadvantage:
+        r1, r2 = roll_d20(), roll_d20()
+        return max(r1, r2), r1, r2
+    elif disadvantage and not advantage:
+        r1, r2 = roll_d20(), roll_d20()
+        return min(r1, r2), r1, r2
+    else:
+        r = roll_d20()
+        return r, r, None
+
+
+def compute_advantage_flags(
+    attacker_conditions: list,
+    target_conditions: list,
+    weapon_type: str = "melee",
+    blinded: bool = False,
+) -> Tuple[bool, bool]:
+    """Return (advantage, disadvantage) based on D&D 5e conditions.
+
+    Conservative: only sets flags when conditions are explicitly present.
+    """
+    advantage = False
+    disadvantage = False
+
+    # Attacker conditions
+    conds = [c.lower() for c in (attacker_conditions or [])]
+    if "poisoned" in conds:
+        disadvantage = True
+    if "frightened" in conds:
+        disadvantage = True
+    if "invisible" in conds:
+        advantage = True
+    if "blinded" in conds:
+        disadvantage = True
+        # Attacks against blinded targets have advantage (handled via target)
+
+    # Blinded by environment (darkness without darkvision)
+    if blinded:
+        disadvantage = True
+
+    # Target conditions
+    t_conds = [c.lower() for c in (target_conditions or [])]
+    if "prone" in t_conds:
+        if weapon_type == "ranged":
+            disadvantage = True
+        else:
+            advantage = True
+    if "paralyzed" in t_conds or "unconscious" in t_conds:
+        advantage = True
+
+    return advantage, disadvantage
+
+
+# ── Death Saving Throws ───────────────────────────────────────────────────────
+
+def roll_death_save() -> Dict[str, Any]:
+    """D&D 5e death saving throw. Returns result dict."""
+    roll = roll_d20()
+    if roll == 20:
+        result = "critical_success"   # regain 1 HP
+    elif roll == 1:
+        result = "critical_failure"   # counts as 2 failures
+    elif roll >= 10:
+        result = "success"
+    else:
+        result = "failure"
+    return {"roll": roll, "result": result}
+
+
+# ── Action Economy ────────────────────────────────────────────────────────────
+
+# Action cost by action type keyword
+ACTION_COSTS = {
+    "attack": "action",
+    "cast": "action",
+    "dodge": "action",
+    "dash": "action",
+    "disengage": "action",
+    "help": "action",
+    "hide": "action",
+    "ready": "action",
+    "two-weapon": "bonus_action",
+    "off-hand": "bonus_action",
+    "healing word": "bonus_action",
+    "cunning": "bonus_action",
+    "second wind": "bonus_action",
+    "opportunity": "reaction",
+    "shield": "reaction",
+}
+
+
+def classify_action_cost(player_action: str) -> str:
+    """Return 'action', 'bonus_action', or 'reaction'."""
+    lower = player_action.lower()
+    for keyword, cost in ACTION_COSTS.items():
+        if keyword in lower:
+            return cost
+    return "action"  # default

@@ -226,3 +226,4 @@ class ActionRequest(BaseModel):
     choice_source: Optional[str] = None
     check_result: Optional[int] = None
     client_target_id: Optional[str] = None  # Phase 1: Explicit target selection from frontend
+    card_used: Optional[str] = None  # card id used for this action

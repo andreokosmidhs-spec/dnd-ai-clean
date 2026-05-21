@@ -2372,7 +2372,33 @@ async def process_action(request: dict):
                     process_enemy_turns
                 )
                 from models.game_models import CombatDoc, CombatState
-                
+
+                # Fetch (or generate) the cached battlefield grid for this location
+                _ws_inner = world_state.get("world_state", world_state) if isinstance(world_state, dict) else {}
+                _location_name = _ws_inner.get("current_location") or _ws_inner.get("location") or "Unknown Location"
+                try:
+                    from services.battlefield_layout_service import (
+                        get_or_generate_layout,
+                        location_key_for,
+                    )
+                    # Look up a description from the world blueprint's points_of_interest
+                    _poi_desc = ""
+                    for _poi in (campaign.get("world_blueprint", {}).get("points_of_interest") or []):
+                        if (_poi.get("name") or "").lower() == _location_name.lower():
+                            _poi_desc = _poi.get("description", "")
+                            break
+                    _battlefield_grid = await get_or_generate_layout(
+                        db=get_db(),
+                        campaign_id=campaign_id,
+                        location_key=location_key_for(_location_name),
+                        location_name=_location_name,
+                        location_description=_poi_desc,
+                        biome=(campaign.get("world_blueprint", {}).get("starting_region", {}).get("biome_layers") or ["dungeon"])[0],
+                    )
+                except Exception as _ge:
+                    logger.warning(f"⚠️ Could not load battlefield grid: {_ge}")
+                    _battlefield_grid = None
+
                 # Start combat
                 character_level = char_doc["character_state"].get("level", 1)
                 combat_state_dict = start_combat_with_target(
@@ -2380,7 +2406,8 @@ async def process_action(request: dict):
                     character_state=char_doc["character_state"],
                     world_blueprint=campaign["world_blueprint"],
                     character_level=character_level,
-                    world_state=world_state.get("world_state", world_state) if isinstance(world_state, dict) else {},
+                    world_state=_ws_inner,
+                    battlefield_grid=_battlefield_grid,
                 )
                 
                 # Process player's first attack mechanically

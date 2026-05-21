@@ -173,6 +173,21 @@ class CombatParticipant(BaseModel):
     plot_armor_attempts: int = 0  # Number of times attacked while having plot armor
 
 
+class GridCell(BaseModel):
+    """Single cell in the tactical battlefield grid"""
+    x: int
+    y: int
+    type: str  # floor, wall, pillar, difficult, cover, door, water, tree, rock, rubble, altar, chest
+
+
+class BattlefieldGrid(BaseModel):
+    """Tactical grid for a combat location — generated once per location, cached forever"""
+    cols: int = 8
+    rows: int = 6
+    cells: List[GridCell] = Field(default_factory=list)
+    generated: bool = False  # True when produced by LLM; False when using fallback
+
+
 class EnemyState(BaseModel):
     """Individual enemy in combat (legacy compatibility)"""
     id: str
@@ -191,6 +206,11 @@ class EnemyState(BaseModel):
     resistances: List[str] = Field(default_factory=list)
     immunities: List[str] = Field(default_factory=list)
 
+    # Grid position (col, row on the battlefield)
+    grid_x: Optional[int] = None
+    grid_y: Optional[int] = None
+    lane: int = 2  # Retained for mechanical targeting (derived from grid_x)
+
 
 class CombatState(BaseModel):
     """Combat state - turn-by-turn combat tracking"""
@@ -201,9 +221,14 @@ class CombatState(BaseModel):
     round: int = 1
     combat_over: bool = False
     outcome: Optional[str] = None  # None during combat, set to "victory"/"fled"/"player_defeated" when over
-    
+
     # Track original NPC IDs that were converted to enemies
     converted_npcs: List[str] = Field(default_factory=list)
+
+    # Tactical grid (None until combat starts; generated once per location)
+    battlefield_grid: Optional[BattlefieldGrid] = None
+    player_grid_x: int = 1
+    player_grid_y: int = 2
 
 
 class CombatDoc(BaseModel):

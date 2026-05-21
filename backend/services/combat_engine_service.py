@@ -105,6 +105,7 @@ def start_combat_with_target(
     world_blueprint: Dict[str, Any],
     character_level: int = 1,
     world_state: Optional[Dict[str, Any]] = None,
+    battlefield_grid: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Initialize combat state with a resolved target.
@@ -149,6 +150,10 @@ def start_combat_with_target(
     elif target_resolution['target_type'] == 'enemy':
         enemies.append(target_resolution['target_data'])
         logger.info(f"⚔️ Starting combat with enemy {target_resolution['target_name']}")
+
+    # Assign grid positions to enemies based on their lane
+    from services.battlefield_layout_service import enemy_start_positions
+    enemies = enemy_start_positions(enemies)
 
     # ── Roll initiative for every participant (d20 + DEX mod) ─────────────────
     def _dex(abilities_dict):
@@ -208,6 +213,9 @@ def start_combat_with_target(
         "battlefield": battlefield,
         "light_level": light_level,
         "player_lane": 1,
+        "player_grid_x": 1,
+        "player_grid_y": 2,
+        "battlefield_grid": battlefield_grid,
         "player_turn_state": {
             "action_used": False,
             "bonus_action_used": False,

@@ -17,6 +17,7 @@ import { useSessionCore } from '../store/useSessionCore';
 import CombatNarrationPopup from './CombatNarrationPopup';
 import BattlefieldConditionCard from './BattlefieldConditionCard';
 import ConditionInteractionModal from './ConditionInteractionModal';
+import BattlefieldGrid from './BattlefieldGrid';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -43,12 +44,12 @@ function lightChipColor(level) {
   return 'bg-slate-800 text-green-300 border-green-800';
 }
 
-// ── Lane config ───────────────────────────────────────────────────────────────
+// Lane config retained for quick-action labels; visual rendering uses BattlefieldGrid
 const LANES = [
-  { id: 1, label: 'Melee', sub: '≤5 ft', color: 'border-red-900/40' },
-  { id: 2, label: 'Close', sub: '5-30 ft', color: 'border-orange-900/40' },
-  { id: 3, label: 'Medium', sub: '30-60 ft', color: 'border-yellow-900/40' },
-  { id: 4, label: 'Far', sub: '60+ ft', color: 'border-blue-900/40' },
+  { id: 1, label: 'Melee', sub: '≤5 ft' },
+  { id: 2, label: 'Close', sub: '5-30 ft' },
+  { id: 3, label: 'Medium', sub: '30-60 ft' },
+  { id: 4, label: 'Far', sub: '60+ ft' },
 ];
 
 // ── Participant token ─────────────────────────────────────────────────────────
@@ -118,6 +119,8 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
   const [localCombat, setLocalCombat] = useState(combatState || {});
   const [selectedTarget, setSelectedTarget] = useState(null);
   const [playerLane, setPlayerLane] = useState(combatState?.player_lane ?? 1);
+  const [playerGridX, setPlayerGridX] = useState(combatState?.player_grid_x ?? 1);
+  const [playerGridY, setPlayerGridY] = useState(combatState?.player_grid_y ?? 2);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [narrationQueue, setNarrationQueue] = useState([]); // [{narration, mechanics}]
@@ -268,22 +271,6 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
     }
   }, [enemies, selectedTarget]);
 
-  // ── Build lane → participants map ─────────────────────────────────────────
-  const laneMap = { 1: [], 2: [], 3: [], 4: [] };
-  laneMap[playerLane].push({
-    id: 'player',
-    name: characterState?.identity?.name || characterState?.name || 'You',
-    hp: characterState?.hp?.current ?? characterState?.hp ?? 10,
-    max_hp: characterState?.hp?.max ?? characterState?.max_hp ?? 10,
-    ac: characterState?.ac ?? 10,
-    conditions: characterState?.conditions || [],
-    _isPlayer: true,
-  });
-  allEnemies.forEach(e => {
-    const lane = Math.min(4, Math.max(1, e.lane || 2));
-    laneMap[lane].push(e);
-  });
-
   // ── Cards filtered for combat ─────────────────────────────────────────────
   const combatCards = deckCards.filter(c => {
     if (activeCardFilter === 'spell') return c.source === 'spell';
@@ -341,6 +328,8 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
       // Update local combat state first (round, HP, enemies)
       if (data.combat_state) {
         setLocalCombat(prev => ({ ...prev, ...data.combat_state }));
+        if (data.combat_state.player_grid_x !== undefined) setPlayerGridX(data.combat_state.player_grid_x);
+        if (data.combat_state.player_grid_y !== undefined) setPlayerGridY(data.combat_state.player_grid_y);
       }
 
       // Sync death saves if backend sent them
@@ -496,11 +485,6 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
   // ── Dismiss first popup in queue ──────────────────────────────────────────
   const dismissPopup = () => setNarrationQueue(q => q.slice(1));
 
-  // ── Overlay class by light level ──────────────────────────────────────────
-  const overlayClass =
-    lightLevel.overlay === 'dark' ? 'after:absolute after:inset-0 after:bg-slate-950/40 after:pointer-events-none after:rounded-lg' :
-    lightLevel.overlay === 'dim'  ? 'after:absolute after:inset-0 after:bg-slate-900/20 after:pointer-events-none after:rounded-lg' :
-    '';
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col overflow-hidden">
@@ -640,42 +624,27 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
       {/* ── MAIN AREA: lanes + sidebar ────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
 
-        {/* Lane grid */}
-        <div className={`flex flex-1 min-w-0 gap-0 p-3 relative ${overlayClass}`}>
-          {LANES.map(lane => (
-            <div
-              key={lane.id}
-              className={`flex-1 flex flex-col gap-2 px-2 border-r last:border-r-0 ${lane.color} relative`}
-            >
-              {/* lane header */}
-              <div className="text-center pb-1 border-b border-slate-800/60">
-                <div className="text-slate-300 text-xs font-bold">{lane.label}</div>
-                <div className="text-slate-500 text-[10px]">{lane.sub}</div>
-              </div>
-
-              {/* lane darkness overlay for 'dark' */}
-              {lightLevel.overlay === 'dark' && lane.id >= 3 && (
-                <div className="absolute inset-0 top-10 bg-slate-950/50 rounded pointer-events-none z-10" />
-              )}
-
-              {/* participants in this lane */}
-              {(laneMap[lane.id] || []).map(p => (
-                <ParticipantToken
-                  key={p.id}
-                  participant={p}
-                  isPlayer={p._isPlayer}
-                  isActive={activeTurn === (p._isPlayer ? 'player' : p.id)}
-                  isTarget={!p._isPlayer && p.id === selectedTarget}
-                  onClick={() => !p._isPlayer && setSelectedTarget(p.id)}
-                />
-              ))}
-
-              {/* empty lane hint */}
-              {(laneMap[lane.id] || []).length === 0 && (
-                <div className="text-slate-700 text-[11px] text-center py-4">— empty —</div>
-              )}
-            </div>
-          ))}
+        {/* Battlefield grid */}
+        <div className="flex flex-1 min-w-0 p-2 overflow-hidden">
+          <BattlefieldGrid
+            grid={localCombat.battlefield_grid}
+            enemies={allEnemies}
+            playerGridX={playerGridX}
+            playerGridY={playerGridY}
+            playerData={{
+              id: 'player',
+              name: characterState?.identity?.name || characterState?.name || 'You',
+              hp: characterState?.hp?.current ?? characterState?.hp ?? 10,
+              max_hp: characterState?.hp?.max ?? characterState?.max_hp ?? 10,
+              conditions: characterState?.conditions || [],
+              _isPlayer: true,
+            }}
+            activeTurn={activeTurn}
+            selectedTarget={selectedTarget}
+            onSelectTarget={setSelectedTarget}
+            lightLevel={lightLevel}
+            characterState={characterState}
+          />
         </div>
 
         {/* Initiative sidebar */}
@@ -740,23 +709,7 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
               {c}
             </span>
           ))}
-          {/* player lane control */}
-          <div className="ml-auto flex items-center gap-1.5">
-            <span className="text-slate-500 text-xs">Lane:</span>
-            {LANES.map(l => (
-              <button
-                key={l.id}
-                onClick={() => setPlayerLane(l.id)}
-                className={`text-xs px-2 py-0.5 rounded transition-all ${
-                  playerLane === l.id
-                    ? 'bg-violet-700 text-white'
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                }`}
-              >
-                {l.id}
-              </button>
-            ))}
-          </div>
+          <div className="ml-auto" />
         </div>
 
         {/* ── Equipment bar ───────────────────────────────────────────── */}

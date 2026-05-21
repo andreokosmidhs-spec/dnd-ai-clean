@@ -742,14 +742,26 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
 
         {/* card chips */}
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-slate-700">
-          {combatCards.map(card => (
+          {combatCards.map(card => {
+            const actionIcon = card.action_cost === 'bonus_action' ? '✦'
+              : card.action_cost === 'reaction' ? '⚙'
+              : card.action_cost === 'free' ? '∅'
+              : card.action_cost === 'action' ? '⚡'
+              : null;
+            const comps = card.components || {};
+            const compBadges = [
+              comps.V && 'V',
+              comps.S && 'S',
+              comps.M && 'M',
+            ].filter(Boolean);
+            return (
             <button
               key={card.id}
               onClick={() => handleCardClick(card)}
               disabled={loading || !isPlayerTurn || card.status === 'spent'}
               className={`
                 flex-shrink-0 flex flex-col items-start px-3 py-2 rounded-xl border text-left
-                transition-all min-w-[110px] max-w-[150px]
+                transition-all min-w-[110px] max-w-[160px]
                 ${card.status === 'spent'
                   ? 'border-slate-700 bg-slate-900 opacity-40 cursor-not-allowed'
                   : card.source === 'spell'
@@ -760,21 +772,47 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
                 ${!isPlayerTurn ? 'cursor-not-allowed opacity-60' : ''}
               `}
             >
-              <span className="text-white text-xs font-semibold leading-tight">{card.title}</span>
-              {card.mechanical && (
-                <span className="text-slate-400 text-[10px] mt-0.5 line-clamp-2 leading-tight">
-                  {card.mechanical}
-                </span>
+              {/* title + action cost */}
+              <div className="flex items-center gap-1 w-full">
+                {actionIcon && (
+                  <span className={`text-[11px] font-bold shrink-0 ${
+                    card.action_cost === 'bonus_action' ? 'text-yellow-400'
+                    : card.action_cost === 'reaction' ? 'text-orange-400'
+                    : card.action_cost === 'free' ? 'text-slate-400'
+                    : 'text-violet-400'
+                  }`}>{actionIcon}</span>
+                )}
+                <span className="text-white text-xs font-semibold leading-tight truncate">{card.title}</span>
+              </div>
+              {/* component badges + concentration */}
+              {(compBadges.length > 0 || card.concentration || card.ritual) && (
+                <div className="flex items-center gap-0.5 mt-0.5 flex-wrap">
+                  {compBadges.map(b => (
+                    <span key={b} className="text-[9px] font-bold px-1 rounded bg-slate-700/60 text-slate-300 leading-tight">{b}</span>
+                  ))}
+                  {card.concentration && (
+                    <span className="text-[9px] font-bold px-1 rounded bg-blue-900/60 text-blue-300 leading-tight">C</span>
+                  )}
+                  {card.ritual && (
+                    <span className="text-[9px] font-bold px-1 rounded bg-amber-900/60 text-amber-300 leading-tight">R</span>
+                  )}
+                </div>
               )}
+              {/* range */}
+              {card.range && (
+                <span className="text-slate-500 text-[9px] mt-0.5 leading-tight">{card.range}</span>
+              )}
+              {/* uses */}
               {card.uses_max > 0 && (
-                <span className={`text-[10px] mt-1 font-bold ${
+                <span className={`text-[10px] mt-0.5 font-bold ${
                   card.uses_remaining === 0 ? 'text-red-400' : 'text-green-400'
                 }`}>
                   {card.uses_remaining}/{card.uses_max}
                 </span>
               )}
             </button>
-          ))}
+            );
+          })}
 
           {combatCards.length === 0 && (
             <div className="text-slate-600 text-xs py-2">No usable cards — type an action below</div>

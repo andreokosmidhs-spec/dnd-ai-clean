@@ -53,7 +53,13 @@ def _new_card(*, source: str, title: str, description: str,
               rarity: str = "common", mechanical: str = "",
               per_day: bool = False, consumable: bool = False,
               uses_max: int = 0, tags: Optional[List[str]] = None,
-              metadata: Optional[Dict] = None) -> Dict:
+              metadata: Optional[Dict] = None,
+              action_cost: Optional[str] = None,
+              components: Optional[Dict] = None,
+              range_: str = "",
+              duration: str = "",
+              concentration: bool = False,
+              ritual: bool = False) -> Dict:
     """Build a normalized DeckCard dict."""
     if rarity not in RARITY_ORDER:
         rarity = "common"
@@ -76,6 +82,13 @@ def _new_card(*, source: str, title: str, description: str,
         "added_at": datetime.now(timezone.utc),
         "used_at": None,
         "removed_at": None,
+        # D&D casting requirements
+        "action_cost": action_cost,  # "action"|"bonus_action"|"reaction"|"free"|None
+        "components": components or {"V": False, "S": False, "M": None},
+        "range": range_,
+        "duration": duration,
+        "concentration": bool(concentration),
+        "ritual": bool(ritual),
     }
 
 
@@ -233,6 +246,7 @@ def seed_deck_for_character(character: Dict) -> List[Dict]:
             per_day=feat.get("per_day", False),
             uses_max=feat.get("uses_max", 0),
             tags=["class", cls_key.lower()],
+            action_cost=feat.get("action_cost"),
         ))
 
     for lvl in range(2, character_level + 1):
@@ -374,6 +388,12 @@ def seed_deck_for_character(character: Dict) -> List[Dict]:
                 uses_max=0,
                 tags=spec["tags"],
                 metadata=spec["metadata"],
+                action_cost=spec.get("action_cost"),
+                components=spec.get("components"),
+                range_=spec.get("range", ""),
+                duration=spec.get("duration", ""),
+                concentration=spec.get("concentration", False),
+                ritual=spec.get("ritual", False),
             ))
             seen_spell_titles.add(spell_name)
 
@@ -393,6 +413,12 @@ def seed_deck_for_character(character: Dict) -> List[Dict]:
                     uses_max=spec["uses_max"],
                     tags=spec["tags"],
                     metadata=spec["metadata"],
+                    action_cost=spec.get("action_cost"),
+                    components=spec.get("components"),
+                    range_=spec.get("range", ""),
+                    duration=spec.get("duration", ""),
+                    concentration=spec.get("concentration", False),
+                    ritual=spec.get("ritual", False),
                 ))
                 seen_spell_titles.add(spell_name)
 

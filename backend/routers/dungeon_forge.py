@@ -2491,7 +2491,15 @@ async def process_action(request: dict):
             
             # ── Action Economy: check if action already used ──────────────────
             from services.dnd_rules import classify_action_cost
-            action_cost = classify_action_cost(player_action)
+            # Prefer the card's action_cost over free-text inference when a card is used
+            deck_cards_for_cost = (deck_doc.get("cards", []) if deck_doc else [])
+            card_action_cost = None
+            if card_used_id:
+                for _c in deck_cards_for_cost:
+                    if _c.get("id") == card_used_id:
+                        card_action_cost = _c.get("action_cost")
+                        break
+            action_cost = card_action_cost or classify_action_cost(player_action)
             player_turn_state = combat_state.get("player_turn_state", {
                 "action_used": False,
                 "bonus_action_used": False,
@@ -2514,7 +2522,7 @@ async def process_action(request: dict):
 
             # ── Resolve weapon from card or class default ─────────────────────
             from services.weapon_service import resolve_player_weapon
-            deck_cards = (deck_doc.get("cards", []) if deck_doc else [])
+            deck_cards = deck_cards_for_cost  # already fetched above
             weapon = resolve_player_weapon(
                 char_doc["character_state"],
                 card_used_id,

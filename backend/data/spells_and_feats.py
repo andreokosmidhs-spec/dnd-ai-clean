@@ -911,6 +911,218 @@ FEAT_CARDS: Dict[str, Dict[str, Any]] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Spell requirements — D&D-style casting constraints for each spell.
+# Keys: action_cost, components {V,S,M}, range, duration, concentration, ritual
+# Default assumed: action_cost="action", V+S components, concentration inferred
+# from "conc" in mechanical text.
+# ---------------------------------------------------------------------------
+_VS = {"V": True, "S": True, "M": None}
+_V  = {"V": True, "S": False, "M": None}
+_S  = {"V": False, "S": True, "M": None}
+
+def _M(text: str) -> Dict[str, Any]:
+    return {"V": True, "S": True, "M": text}
+
+def _VM(text: str) -> Dict[str, Any]:
+    return {"V": True, "S": False, "M": text}
+
+def _SM(text: str) -> Dict[str, Any]:
+    return {"V": False, "S": True, "M": text}
+
+SPELL_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
+    # ── CANTRIPS ────────────────────────────────────────────────────────────
+    "Eldritch Blast":  {"components": _VS, "range": "120 ft", "duration": "instantaneous"},
+    "Fire Bolt":       {"components": _VS, "range": "120 ft", "duration": "instantaneous"},
+    "Sacred Flame":    {"components": _VS, "range": "60 ft",  "duration": "instantaneous"},
+    "Vicious Mockery": {"components": _V,  "range": "60 ft",  "duration": "instantaneous"},
+    "Guidance":        {"components": _VS, "range": "touch",  "duration": "1 min", "concentration": True},
+    "Shillelagh":      {"action_cost": "bonus_action",
+                        "components": _M("mistletoe, shamrock leaf, club or staff"),
+                        "range": "touch", "duration": "1 min"},
+    "Produce Flame":   {"components": _VS, "range": "self",   "duration": "10 min"},
+    "Thorn Whip":      {"components": _M("plant stem"), "range": "30 ft", "duration": "instantaneous"},
+    "Mage Hand":       {"components": _VS, "range": "30 ft",  "duration": "1 min"},
+    "Minor Illusion":  {"components": _SM("bit of fleece"), "range": "30 ft", "duration": "1 min"},
+    "Prestidigitation":{"components": _VS, "range": "10 ft",  "duration": "1 hour"},
+    "Shocking Grasp":  {"components": _VS, "range": "touch",  "duration": "instantaneous"},
+    "Chill Touch":     {"components": _VS, "range": "120 ft", "duration": "1 round"},
+    "Ray of Frost":    {"components": _VS, "range": "60 ft",  "duration": "instantaneous"},
+    "Thaumaturgy":     {"components": _V,  "range": "30 ft",  "duration": "1 min"},
+    "Toll the Dead":   {"components": _VS, "range": "60 ft",  "duration": "instantaneous"},
+    "Mending":         {"components": _M("two lodestones"), "range": "touch", "duration": "instantaneous"},
+    "Thunderclap":     {"components": _S,  "range": "5 ft",   "duration": "instantaneous"},
+    "Spare the Dying": {"components": _VS, "range": "touch",  "duration": "instantaneous"},
+
+    # ── LEVEL 1 ──────────────────────────────────────────────────────────────
+    "Magic Missile":   {"components": _VS, "range": "120 ft", "duration": "instantaneous"},
+    "Shield":          {"action_cost": "reaction",
+                        "components": _VS, "range": "self",   "duration": "1 round"},
+    "Mage Armor":      {"components": _M("cured leather"), "range": "touch", "duration": "8 hours"},
+    "Sleep":           {"components": _M("sand, rose petals, or a cricket"),
+                        "range": "90 ft", "duration": "1 min"},
+    "Cure Wounds":     {"components": _VS, "range": "touch",  "duration": "instantaneous"},
+    "Healing Word":    {"action_cost": "bonus_action",
+                        "components": _V,  "range": "60 ft",  "duration": "instantaneous"},
+    "Bless":           {"components": _M("holy water"),
+                        "range": "30 ft", "duration": "1 min", "concentration": True},
+    "Guiding Bolt":    {"components": _VS, "range": "120 ft", "duration": "1 round"},
+    "Shield of Faith": {"action_cost": "bonus_action",
+                        "components": _M("a small parchment with holy text"),
+                        "range": "60 ft", "duration": "10 min", "concentration": True},
+    "Charm Person":    {"components": _VS, "range": "30 ft",  "duration": "1 hour"},
+    "Thunderwave":     {"components": _VS, "range": "self",   "duration": "instantaneous"},
+    "Entangle":        {"components": _VS, "range": "90 ft",  "duration": "1 min", "concentration": True},
+    "Faerie Fire":     {"components": _V,  "range": "60 ft",  "duration": "1 min", "concentration": True},
+    "Hex":             {"action_cost": "bonus_action",
+                        "components": _M("the petrified eye of a newt"),
+                        "range": "90 ft", "duration": "1 hour", "concentration": True},
+    "Armor of Agathys":{"components": _M("a cup of water"),
+                        "range": "self",  "duration": "1 hour"},
+    "Hellish Rebuke":  {"action_cost": "reaction",
+                        "components": _VS, "range": "60 ft",  "duration": "instantaneous"},
+    "Hunter's Mark":   {"action_cost": "bonus_action",
+                        "components": _V,  "range": "90 ft",  "duration": "1 hour", "concentration": True},
+    "Divine Favor":    {"action_cost": "bonus_action",
+                        "components": _VS, "range": "self",   "duration": "1 min", "concentration": True},
+    "Command":         {"components": _V,  "range": "60 ft",  "duration": "1 round"},
+    "Hideous Laughter":{"components": _M("tiny tarts and a feather"),
+                        "range": "30 ft", "duration": "1 min", "concentration": True},
+    "Goodberry":       {"components": _M("a sprig of mistletoe"),
+                        "range": "touch", "duration": "instantaneous"},
+    "Fog Cloud":       {"components": _VS, "range": "120 ft", "duration": "1 hour", "concentration": True},
+    "Speak with Animals":{"components": _VS, "range": "self", "duration": "10 min", "ritual": True},
+    "Detect Magic":    {"components": _VS, "range": "self",   "duration": "10 min",
+                        "concentration": True, "ritual": True},
+    "Burning Hands":   {"components": _VS, "range": "self",   "duration": "instantaneous"},
+    "Ensnaring Strike":{"action_cost": "bonus_action",
+                        "components": _V,  "range": "self",   "duration": "1 min", "concentration": True},
+    "Witch Bolt":      {"components": _M("a twig struck by lightning"),
+                        "range": "30 ft", "duration": "1 min", "concentration": True},
+
+    # ── LEVEL 2 ──────────────────────────────────────────────────────────────
+    "Misty Step":      {"action_cost": "bonus_action",
+                        "components": _V,  "range": "self",   "duration": "instantaneous"},
+    "Hold Person":     {"components": _M("a small, straight piece of iron"),
+                        "range": "60 ft", "duration": "1 min", "concentration": True},
+    "Invisibility":    {"components": _M("an eyelash encased in gum arabic"),
+                        "range": "touch", "duration": "1 hour", "concentration": True},
+    "Scorching Ray":   {"components": _VS, "range": "120 ft", "duration": "instantaneous"},
+    "Mirror Image":    {"components": _VS, "range": "self",   "duration": "1 min"},
+    "Aid":             {"components": _M("a tiny strip of white cloth"),
+                        "range": "30 ft", "duration": "8 hours"},
+    "Spiritual Weapon":{"action_cost": "bonus_action",
+                        "components": _VS, "range": "60 ft",  "duration": "1 min"},
+    "Lesser Restoration":{"components": _VS, "range": "touch","duration": "instantaneous"},
+    "Pass Without Trace":{"components": _M("ashes from a burned leaf of mistletoe and a sprig of spruce"),
+                        "range": "self",  "duration": "1 hour", "concentration": True},
+    "Shatter":         {"components": _M("a chip of mica"),
+                        "range": "60 ft", "duration": "instantaneous"},
+    "Silence":         {"components": _VS, "range": "120 ft", "duration": "10 min",
+                        "concentration": True, "ritual": True},
+    "Moonbeam":        {"components": _M("several seeds of any moonseed plant and a piece of opalescent feldspar"),
+                        "range": "120 ft","duration": "1 min", "concentration": True},
+    "Barkskin":        {"components": _M("a handful of oak bark"),
+                        "range": "touch", "duration": "1 hour", "concentration": True},
+    "Darkness":        {"components": _VM("bat fur and a drop of pitch or piece of coal"),
+                        "range": "60 ft", "duration": "10 min", "concentration": True},
+    "Phantasmal Force":{"components": _M("a bit of fleece"),
+                        "range": "60 ft", "duration": "1 min", "concentration": True},
+    "Suggestion":      {"components": _VM("a snake's tongue and either a bit of honeycomb or a drop of sweet oil"),
+                        "range": "30 ft", "duration": "8 hours", "concentration": True},
+    "Spike Growth":    {"components": _M("seven sharp thorns or seven small twigs, each sharpened to a point"),
+                        "range": "150 ft","duration": "10 min", "concentration": True},
+    "Zone of Truth":   {"components": _VS, "range": "60 ft",  "duration": "10 min"},
+    "Blur":            {"components": _V,  "range": "self",   "duration": "1 min", "concentration": True},
+    "Branding Smite":  {"action_cost": "bonus_action",
+                        "components": _V,  "range": "self",   "duration": "1 min", "concentration": True},
+
+    # ── LEVEL 3 ──────────────────────────────────────────────────────────────
+    "Fireball":        {"components": _M("a tiny ball of bat guano and sulfur"),
+                        "range": "150 ft","duration": "instantaneous"},
+    "Lightning Bolt":  {"components": _M("a bit of fur and a rod of amber, crystal, or glass"),
+                        "range": "self",  "duration": "instantaneous"},
+    "Counterspell":    {"action_cost": "reaction",
+                        "components": _S,  "range": "60 ft",  "duration": "instantaneous"},
+    "Dispel Magic":    {"components": _VS, "range": "120 ft", "duration": "instantaneous"},
+    "Revivify":        {"components": _M("diamonds worth at least 300 gp"),
+                        "range": "touch", "duration": "instantaneous"},
+    "Fly":             {"components": _M("a wing feather from any bird"),
+                        "range": "touch", "duration": "10 min", "concentration": True},
+    "Haste":           {"components": _M("a shaving of licorice root"),
+                        "range": "30 ft", "duration": "1 min", "concentration": True},
+    "Spirit Guardians":{"components": _M("a holy symbol"),
+                        "range": "self",  "duration": "10 min", "concentration": True},
+    "Mass Healing Word":{"action_cost": "bonus_action",
+                        "components": _V,  "range": "60 ft",  "duration": "instantaneous"},
+    "Fear":            {"components": _M("a white feather or the heart of a hen"),
+                        "range": "self",  "duration": "1 min", "concentration": True},
+    "Hypnotic Pattern":{"components": _SM("a glowing stick of incense or a crystal vial filled with phosphorescent material"),
+                        "range": "120 ft","duration": "1 min", "concentration": True},
+    "Major Image":     {"components": _M("a bit of fleece"),
+                        "range": "120 ft","duration": "10 min", "concentration": True},
+    "Hunger of Hadar": {"components": _M("a pickled octopus tentacle"),
+                        "range": "150 ft","duration": "1 min", "concentration": True},
+    "Bestow Curse":    {"components": _VS, "range": "touch",  "duration": "1 min", "concentration": True},
+    "Call Lightning":  {"components": _VS, "range": "120 ft", "duration": "10 min", "concentration": True},
+    "Conjure Animals": {"components": _VS, "range": "60 ft",  "duration": "1 hour", "concentration": True},
+    "Aura of Vitality":{"components": _V,  "range": "self",   "duration": "1 min", "concentration": True},
+    "Nondetection":    {"components": _M("a pinch of diamond dust worth 25 gp"),
+                        "range": "touch", "duration": "8 hours"},
+    "Lightning Arrow": {"action_cost": "bonus_action",
+                        "components": _VS, "range": "self",   "duration": "1 min", "concentration": True},
+    "Plant Growth":    {"components": _VS, "range": "150 ft", "duration": "instantaneous"},
+    "Conjure Barrage": {"components": _M("one piece of ammunition or a thrown weapon"),
+                        "range": "self",  "duration": "instantaneous"},
+
+    # ── LEVEL 4 ──────────────────────────────────────────────────────────────
+    "Greater Invisibility":{"components": _VS, "range": "touch", "duration": "1 min", "concentration": True},
+    "Polymorph":       {"components": _M("a caterpillar cocoon"),
+                        "range": "60 ft", "duration": "1 hour", "concentration": True},
+    "Banishment":      {"components": _M("an item distasteful to the target"),
+                        "range": "60 ft", "duration": "1 min", "concentration": True},
+    "Dimension Door":  {"components": _V,  "range": "500 ft", "duration": "instantaneous"},
+    "Death Ward":      {"components": _VS, "range": "touch",  "duration": "8 hours"},
+    "Confusion":       {"components": _M("three walnut shells"),
+                        "range": "90 ft", "duration": "1 min", "concentration": True},
+    "Guardian of Faith":{"components": _V, "range": "30 ft",  "duration": "8 hours"},
+    "Freedom of Movement":{"components": _M("a leather strap, bound around the arm or a similar appendage"),
+                        "range": "touch", "duration": "1 hour"},
+    "Conjure Woodland Beings":{"components": _M("one holly berry per creature summoned"),
+                        "range": "60 ft", "duration": "1 hour", "concentration": True},
+    "Aura of Life":    {"components": _V,  "range": "self",   "duration": "10 min", "concentration": True},
+    "Staggering Smite":{"action_cost": "bonus_action",
+                        "components": _V,  "range": "self",   "duration": "1 min", "concentration": True},
+
+    # ── LEVEL 5 ──────────────────────────────────────────────────────────────
+    "Hold Monster":    {"components": _M("a small, straight piece of iron"),
+                        "range": "90 ft", "duration": "1 min", "concentration": True},
+    "Mass Cure Wounds":{"components": _VS, "range": "60 ft",  "duration": "instantaneous"},
+    "Animate Dead":    {"components": _M("a drop of blood, a piece of flesh, and a pinch of bone dust"),
+                        "range": "10 ft", "duration": "instantaneous"},
+    "Dominate Person": {"components": _VS, "range": "60 ft",  "duration": "1 min", "concentration": True},
+    "Animate Objects": {"components": _VS, "range": "120 ft", "duration": "1 min", "concentration": True},
+    "Raise Dead":      {"components": _M("a diamond worth at least 500 gp"),
+                        "range": "touch", "duration": "instantaneous"},
+    "Destructive Wave":{"components": _V,  "range": "self",   "duration": "instantaneous"},
+    "Scrying":         {"components": _M("a focus worth at least 1,000 gp — a silver mirror, a font of holy water, or a crystal ball"),
+                        "range": "self",  "duration": "10 min", "concentration": True},
+    "Cone of Cold":    {"components": _M("a small crystal or glass cone"),
+                        "range": "self",  "duration": "instantaneous"},
+    "Conjure Elemental":{"components": _M("burning incense for air, soft clay for earth, sulfur and phosphorus for fire, or water and sand for water"),
+                        "range": "90 ft", "duration": "1 hour", "concentration": True},
+    "Swift Quiver":    {"action_cost": "bonus_action",
+                        "components": _M("a quiver containing at least one piece of ammunition"),
+                        "range": "self",  "duration": "1 min", "concentration": True},
+    "Conjure Volley":  {"components": _M("one piece of ammunition or a thrown weapon"),
+                        "range": "150 ft","duration": "instantaneous"},
+    "Wall of Force":   {"components": _M("a pinch of powder made by crushing a clear gemstone"),
+                        "range": "120 ft","duration": "10 min", "concentration": True},
+    "Awaken":          {"components": _M("an agate worth at least 1,000 gp"),
+                        "range": "touch", "duration": "30 days"},
+}
+
+
 def get_spell_card(spell_name: str) -> Dict[str, Any]:
     """Return card-ready dict for a spell from the catalog. Returns None if not found."""
     data = SPELL_CATALOG.get(spell_name)
@@ -918,16 +1130,26 @@ def get_spell_card(spell_name: str) -> Dict[str, Any]:
         return None
     level = data["level"]
     school = data.get("school", "")
+    reqs = SPELL_REQUIREMENTS.get(spell_name, {})
+    mechanical = data.get("mechanical", "")
+    # Infer concentration from mechanical text if not explicitly set
+    conc = reqs.get("concentration", "conc" in mechanical.lower())
     return {
         "source": "spell",
         "title": spell_name,
         "description": data["description"],
         "rarity": _spell_rarity(level),
-        "mechanical": data.get("mechanical", ""),
+        "mechanical": mechanical,
         "per_day": data.get("per_day", False),
         "uses_max": data.get("uses_max", 0),
         "tags": ["spell", school, f"level-{level}" if level > 0 else "cantrip"],
         "metadata": {"spell_level": level, "school": school},
+        "action_cost": reqs.get("action_cost", "action"),
+        "components": reqs.get("components", {"V": True, "S": True, "M": None}),
+        "range": reqs.get("range", ""),
+        "duration": reqs.get("duration", ""),
+        "concentration": conc,
+        "ritual": reqs.get("ritual", False),
     }
 
 

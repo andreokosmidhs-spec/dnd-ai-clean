@@ -749,10 +749,13 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
               : card.action_cost === 'action' ? '⚡'
               : null;
             const comps = card.components || {};
+            // M badge is amber when it has a gp cost (costly component)
+            const mText = typeof comps.M === 'string' ? comps.M : '';
+            const mIsCostly = /\d+\s*(?:,\d+)?\s*gp/i.test(mText);
             const compBadges = [
-              comps.V && 'V',
-              comps.S && 'S',
-              comps.M && 'M',
+              comps.V && { label: 'V', costly: false },
+              comps.S && { label: 'S', costly: false },
+              comps.M && { label: 'M', costly: mIsCostly, title: mText },
             ].filter(Boolean);
             return (
             <button
@@ -788,7 +791,15 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
               {(compBadges.length > 0 || card.concentration || card.ritual) && (
                 <div className="flex items-center gap-0.5 mt-0.5 flex-wrap">
                   {compBadges.map(b => (
-                    <span key={b} className="text-[9px] font-bold px-1 rounded bg-slate-700/60 text-slate-300 leading-tight">{b}</span>
+                    <span
+                      key={b.label}
+                      title={b.title || undefined}
+                      className={`text-[9px] font-bold px-1 rounded leading-tight ${
+                        b.costly
+                          ? 'bg-amber-900/60 text-amber-300 ring-1 ring-amber-600/50'
+                          : 'bg-slate-700/60 text-slate-300'
+                      }`}
+                    >{b.label}</span>
                   ))}
                   {card.concentration && (
                     <span className="text-[9px] font-bold px-1 rounded bg-blue-900/60 text-blue-300 leading-tight">C</span>

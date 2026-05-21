@@ -2520,6 +2520,34 @@ async def process_action(request: dict):
                     "player_updates": {},
                 })
 
+            # ── Spell component check ─────────────────────────────────────
+            from services.component_service import (
+                check_costly_component,
+                check_noncostly_component,
+                consume_component_if_needed,
+            )
+            _inventory = list(char_doc["character_state"].get("inventory", []))
+            _card_for_comp = next((c for c in deck_cards if c.get("id") == card_used_id), {})
+            _card_spell_name = _card_for_comp.get("title", "") if _card_for_comp.get("source") == "spell" else ""
+            _component_idx = None
+            if _card_spell_name:
+                _comp_ok, _comp_err, _component_idx = check_costly_component(_card_spell_name, _inventory)
+                if not _comp_ok:
+                    return api_success({
+                        "narration": _comp_err + "\n\nWhat do you do?",
+                        "combat_active": True,
+                        "world_state_update": {},
+                        "player_updates": {},
+                    })
+                # Advisory warning for non-costly M (doesn't block)
+                _, _noncostly_warn = check_noncostly_component(
+                    _card_spell_name,
+                    _card_for_comp.get("components", {}),
+                    _inventory,
+                )
+                if _noncostly_warn:
+                    logger.warning(_noncostly_warn)
+
             # ── Resolve weapon from card or class default ─────────────────────
             from services.weapon_service import resolve_player_weapon
             deck_cards = deck_cards_for_cost  # already fetched above
@@ -2557,6 +2585,14 @@ async def process_action(request: dict):
             elif action_cost == "reaction":
                 player_turn_state["reaction_used"] = True
             combat_state["player_turn_state"] = player_turn_state
+
+            # Consume costly M component if the spell was cast successfully
+            if _card_spell_name and _component_idx is not None:
+                _inventory = consume_component_if_needed(_card_spell_name, _inventory, _component_idx)
+                updated_inv = {**char_doc["character_state"], "inventory": _inventory}
+                await update_character_state(campaign_id, character_id, updated_inv)
+                char_doc["character_state"]["inventory"] = _inventory
+                logger.info(f"💎 Consumed component for {_card_spell_name}")
 
             # Update combat state
             combat_state.update(attack_result['combat_state_update'])

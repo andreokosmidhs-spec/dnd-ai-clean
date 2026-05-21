@@ -2530,12 +2530,36 @@ async def process_action(request: dict):
                 "combat_over": attack_result['combat_over'] or enemy_result.get('combat_over', False),
                 "outcome": combat_state.get('outcome')
             }
-            
-            # Generate narration
+
+            # Increment round after both sides have acted
+            if not mechanical_summary['combat_over']:
+                combat_state["round"] = combat_state.get("round", 1) + 1
+                combat_state["active_turn"] = "player"
+
+            # Generate narration (player attack portion only)
             narration = generate_combat_narration_from_mechanical(mechanical_summary, char_doc["character_state"])
-            
+
+            # Build individual enemy narrations for frontend popup sequencing
+            enemy_narrations = []
+            for ea in mechanical_summary['enemy_turns']:
+                attacker = ea.get('attacker', 'Enemy')
+                dmg = ea.get('damage', 0)
+                if ea.get('critical_miss'):
+                    en_text = f"The {attacker} swings wildly and misses completely!"
+                elif ea.get('critical'):
+                    en_text = f"Critical hit! The {attacker} strikes you with devastating force for {dmg} damage!"
+                elif ea.get('hit'):
+                    en_text = f"The {attacker} hits you for {dmg} damage!"
+                else:
+                    en_text = f"The {attacker} attacks but you manage to dodge!"
+                enemy_narrations.append({
+                    "text": en_text,
+                    "mechanics": ea,
+                })
+
             combat_result = {
                 "narration": narration,
+                "enemy_narrations": enemy_narrations,
                 "combat_state_update": combat_state,
                 "character_state_update": enemy_result.get('character_state_update', {}),
                 "combat_over": mechanical_summary['combat_over'],
@@ -2633,6 +2657,9 @@ async def process_action(request: dict):
             # v4.1 UNIFIED SPEC: No options field - narration ends with open prompts
             return {
                 "narration": combat_result["narration"],
+                "enemy_narrations": combat_result.get("enemy_narrations", []),
+                "mechanical_summary": mechanical_summary,
+                "combat_state": combat_result["combat_state_update"],
                 "combat_active": True,
                 "world_state_update": {},
                 "player_updates": {}  # P3: No updates mid-combat

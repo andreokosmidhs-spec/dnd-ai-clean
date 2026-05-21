@@ -8,7 +8,7 @@ const MechanicLine = ({ label, value, highlight }) => (
   </div>
 );
 
-const CombatNarrationPopup = ({ narration, mechanics, onDismiss, autoDismissMs = 0 }) => {
+const CombatNarrationPopup = ({ narration, mechanics, isEnemy = false, onDismiss, autoDismissMs = 0 }) => {
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -24,6 +24,13 @@ const CombatNarrationPopup = ({ narration, mechanics, onDismiss, autoDismissMs =
   const m = mechanics || {};
   const hasMechanics = m.attack_roll != null || m.damage != null;
 
+  // Top bar colour — enemy attacks use red/orange, player uses violet/yellow/green
+  const topBarColor = isEnemy
+    ? (m.critical ? 'bg-orange-500' : m.hit === false ? 'bg-slate-600' : 'bg-red-600')
+    : (m.critical ? 'bg-yellow-400' : m.hit === false ? 'bg-slate-600' : m.target_killed ? 'bg-red-500' : 'bg-violet-500');
+
+  const borderColor = isEnemy ? 'border-red-900/60' : 'border-slate-600/60';
+
   return (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center"
@@ -34,16 +41,11 @@ const CombatNarrationPopup = ({ narration, mechanics, onDismiss, autoDismissMs =
 
       {/* panel */}
       <div
-        className="relative z-10 max-w-lg w-full mx-4 rounded-2xl border border-slate-600/60 bg-slate-900/95 shadow-2xl overflow-hidden"
+        className={`relative z-10 max-w-lg w-full mx-4 rounded-2xl border ${borderColor} bg-slate-900/95 shadow-2xl overflow-hidden`}
         onClick={e => e.stopPropagation()}
       >
         {/* coloured top bar */}
-        <div className={`h-1 w-full ${
-          m.critical ? 'bg-yellow-400' :
-          m.hit === false ? 'bg-slate-600' :
-          m.target_killed ? 'bg-red-500' :
-          'bg-violet-500'
-        }`} />
+        <div className={`h-1 w-full ${topBarColor}`} />
 
         <div className="p-5">
           {/* close */}
@@ -53,6 +55,13 @@ const CombatNarrationPopup = ({ narration, mechanics, onDismiss, autoDismissMs =
           >
             <X size={18} />
           </button>
+
+          {/* turn label */}
+          <div className={`text-[10px] font-bold uppercase tracking-widest mb-2 ${
+            isEnemy ? 'text-red-400' : 'text-violet-400'
+          }`}>
+            {isEnemy ? '⚔ Enemy Attack' : '🗡 Your Attack'}
+          </div>
 
           {/* narration text */}
           <p className="text-slate-100 leading-relaxed text-[0.95rem] pr-6 mb-4">
@@ -64,7 +73,7 @@ const CombatNarrationPopup = ({ narration, mechanics, onDismiss, autoDismissMs =
             <div className="border-t border-slate-700 pt-3 space-y-1.5">
               {m.attack_roll != null && (
                 <MechanicLine
-                  label={`${m.attacker || 'You'} → ${m.target || 'Enemy'}`}
+                  label={isEnemy ? `${m.attacker || 'Enemy'} attacks you` : `${m.attacker || 'You'} → ${m.target || 'Enemy'}`}
                   value={`Roll ${m.attack_roll} + mods = ${m.total_attack ?? m.attack_roll} vs AC ${m.target_ac}`}
                   highlight={m.critical}
                 />
@@ -75,7 +84,7 @@ const CombatNarrationPopup = ({ narration, mechanics, onDismiss, autoDismissMs =
                 </div>
               )}
               {m.critical_miss && (
-                <div className="text-red-400 text-sm font-bold">Critical Miss!</div>
+                <div className="text-slate-400 text-sm font-bold">Critical Miss — attack fumbled!</div>
               )}
               {m.hit && m.damage != null && (
                 <MechanicLine
@@ -84,10 +93,10 @@ const CombatNarrationPopup = ({ narration, mechanics, onDismiss, autoDismissMs =
                   highlight
                 />
               )}
-              {m.hit === false && (
+              {m.hit === false && !m.critical_miss && (
                 <div className="text-slate-400 text-sm">Attack missed.</div>
               )}
-              {m.target_hp_remaining != null && m.target_max_hp != null && (
+              {!isEnemy && m.target_hp_remaining != null && m.target_max_hp != null && (
                 <div className="mt-2">
                   <div className="flex justify-between text-xs text-slate-500 mb-1">
                     <span>{m.target}</span>
@@ -121,7 +130,9 @@ const CombatNarrationPopup = ({ narration, mechanics, onDismiss, autoDismissMs =
           <div className="mt-4 flex justify-end">
             <button
               onClick={onDismiss}
-              className="px-4 py-1.5 rounded-lg bg-violet-700 hover:bg-violet-600 text-white text-sm font-semibold transition-colors"
+              className={`px-4 py-1.5 rounded-lg text-white text-sm font-semibold transition-colors ${
+                isEnemy ? 'bg-red-800 hover:bg-red-700' : 'bg-violet-700 hover:bg-violet-600'
+              }`}
             >
               Continue
             </button>

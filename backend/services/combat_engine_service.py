@@ -119,6 +119,7 @@ def start_combat_with_target(
         CombatState dict
     """
     from services.light_level_service import compute_light_level, passive_condition_chip
+    from services.dnd_rules import roll_d20, calculate_ability_modifier
 
     ws = world_state or {}
     clock_hour = ws.get("clock_hour", 9)
@@ -148,13 +149,57 @@ def start_combat_with_target(
         enemies.append(target_resolution['target_data'])
         logger.info(f"⚔️ Starting combat with enemy {target_resolution['target_name']}")
 
-    turn_order = ["player"] + [e["id"] for e in enemies]
+    # ── Roll initiative for every participant (d20 + DEX mod) ─────────────────
+    def _dex(abilities_dict):
+        return int((abilities_dict or {}).get("dex") or (abilities_dict or {}).get("DEX") or 10)
+
+    char_abilities = character_state.get("abilities") or character_state.get("abilityScores") or {}
+    player_dex = _dex(char_abilities)
+    player_roll = roll_d20()
+    player_init = player_roll + calculate_ability_modifier(player_dex)
+
+    char_name = (
+        character_state.get("identity", {}).get("name")
+        or character_state.get("name", "You")
+    )
+
+    initiative_order = [{
+        "id": "player",
+        "name": char_name,
+        "score": player_init,
+        "roll": player_roll,
+        "dex_mod": calculate_ability_modifier(player_dex),
+        "type": "player",
+    }]
+
+    for enemy in enemies:
+        enemy_dex = _dex(enemy.get("abilities"))
+        e_roll = roll_d20()
+        e_init = e_roll + calculate_ability_modifier(enemy_dex)
+        initiative_order.append({
+            "id": enemy["id"],
+            "name": enemy["name"],
+            "score": e_init,
+            "roll": e_roll,
+            "dex_mod": calculate_ability_modifier(enemy_dex),
+            "type": "enemy",
+        })
+
+    initiative_order.sort(key=lambda x: x["score"], reverse=True)
+    turn_order = [p["id"] for p in initiative_order]
+    first_turn = turn_order[0]
+
+    logger.info(
+        f"⚔️ Initiative rolled — order: "
+        + ", ".join(f"{p['name']} ({p['score']})" for p in initiative_order)
+    )
 
     combat_state = {
         "enemies": enemies,
         "participants": [],
         "turn_order": turn_order,
-        "active_turn": "player",
+        "initiative_order": initiative_order,
+        "active_turn": first_turn,
         "round": 1,
         "combat_over": False,
         "outcome": None,
@@ -164,7 +209,7 @@ def start_combat_with_target(
         "player_lane": 1,
     }
 
-    logger.info(f"⚔️ Combat initialized: {len(enemies)} enemies, light={light_level['level']}, player goes first")
+    logger.info(f"⚔️ Combat initialized: {len(enemies)} enemies, light={light_level['level']}, first turn: {first_turn}")
     return combat_state
 
 

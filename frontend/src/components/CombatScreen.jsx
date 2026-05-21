@@ -267,21 +267,33 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
       });
       const data = await res.json();
 
-      // Queue narration popup
-      if (data.narration) {
-        setNarrationQueue(q => [...q, {
-          narration: data.narration,
-          mechanics: data.mechanical_summary || data.mechanics || null,
-        }]);
-      }
-
-      // Update local combat state
+      // Update local combat state first (round, HP, enemies)
       if (data.combat_state) {
         setLocalCombat(prev => ({ ...prev, ...data.combat_state }));
       }
+
+      // Queue player attack popup
+      if (data.narration) {
+        setNarrationQueue(q => [...q, {
+          narration: data.narration,
+          mechanics: data.mechanical_summary?.player_attack || data.mechanics || null,
+          isEnemy: false,
+        }]);
+      }
+
+      // Queue individual enemy attack popups (one per enemy, shown sequentially)
+      const enemyNarrations = data.enemy_narrations || [];
+      enemyNarrations.forEach(en => {
+        setNarrationQueue(q => [...q, {
+          narration: en.text,
+          mechanics: en.mechanics,
+          isEnemy: true,
+        }]);
+      });
+
+      // Combat end checks
       if (data.combat_state?.enemies) {
-        const newEnemies = data.combat_state.enemies;
-        const anyAlive = newEnemies.some(e => (e.hp ?? 0) > 0);
+        const anyAlive = data.combat_state.enemies.some(e => (e.hp ?? 0) > 0);
         if (!anyAlive || data.combat_over) {
           setTimeout(() => {
             onCombatEnd({
@@ -308,6 +320,7 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
       setNarrationQueue(q => [...q, {
         narration: 'The action could not be resolved. Try again.',
         mechanics: null,
+        isEnemy: false,
       }]);
     } finally {
       setLoading(false);
@@ -508,29 +521,39 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
         </div>
 
         {/* Initiative sidebar */}
-        <div className="flex-shrink-0 w-44 bg-slate-900/60 border-l border-slate-700/60 p-3 flex flex-col gap-2">
-          <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Initiative</div>
-          {(localCombat.turn_order || ['player']).map((id, idx) => {
+        <div className="flex-shrink-0 w-44 bg-slate-900/60 border-l border-slate-700/60 p-3 flex flex-col gap-1.5">
+          <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">
+            Initiative — Round {round}
+          </div>
+          {(localCombat.initiative_order || localCombat.turn_order?.map(id => ({ id, name: id, score: null })) || []).map((entry) => {
+            const id = entry.id || entry;
             const isP = id === 'player';
             const enemy = allEnemies.find(e => e.id === id);
-            const name = isP
+            const name = entry.name || (isP
               ? (characterState?.identity?.name || characterState?.name || 'You')
-              : (enemy?.name || id);
+              : (enemy?.name || id));
+            const score = entry.score ?? null;
             const isActive = activeTurn === id;
             const isDead = !isP && !enemies.find(e => e.id === id);
             return (
               <div
                 key={id}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-all ${
-                  isActive ? 'bg-violet-800/50 text-white' :
-                  isDead ? 'opacity-30 line-through text-slate-500' :
-                  'text-slate-300'
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all ${
+                  isActive ? 'bg-violet-800/60 text-white ring-1 ring-violet-500/50' :
+                  isDead ? 'opacity-25 line-through text-slate-600' :
+                  'text-slate-300 hover:bg-slate-800/40'
                 }`}
               >
-                <span className="text-base">{isP ? '🧙' : '💀'}</span>
-                <span className="truncate flex-1">{name}</span>
-                {isActive && <ChevronRight size={12} className="text-violet-300 flex-shrink-0" />}
-                {idx === 0 && !isActive && <span className="text-[10px] text-slate-500">{idx + 1}</span>}
+                <span className="text-sm">{isP ? '🧙' : '💀'}</span>
+                <span className="truncate flex-1 leading-tight">{name}</span>
+                {score !== null && (
+                  <span className={`flex-shrink-0 text-[10px] font-bold tabular-nums ${
+                    isActive ? 'text-violet-300' : isDead ? 'text-slate-600' : 'text-slate-500'
+                  }`}>
+                    {score}
+                  </span>
+                )}
+                {isActive && <ChevronRight size={10} className="text-violet-300 flex-shrink-0" />}
               </div>
             );
           })}
@@ -685,6 +708,7 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
         <CombatNarrationPopup
           narration={narrationQueue[0].narration}
           mechanics={narrationQueue[0].mechanics}
+          isEnemy={narrationQueue[0].isEnemy || false}
           onDismiss={dismissPopup}
         />
       )}

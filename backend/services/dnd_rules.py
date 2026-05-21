@@ -58,6 +58,11 @@ def calculate_ability_modifier(ability_score: int) -> int:
     return (ability_score - 10) // 2
 
 
+def roll_initiative(dex_score: int = 10) -> int:
+    """D&D 5e initiative: d20 + DEX modifier."""
+    return roll_d20() + calculate_ability_modifier(int(dex_score))
+
+
 def proficiency_bonus_for_level(level: int) -> int:
     """5e proficiency bonus by character level."""
     try:

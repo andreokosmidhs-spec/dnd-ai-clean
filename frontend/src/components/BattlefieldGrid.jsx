@@ -11,6 +11,7 @@
  *  - Light-level darkness overlay (dim / dark columns)
  */
 import React, { useState, useCallback } from 'react';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 
 // ── Terrain visual config ─────────────────────────────────────────────────────
 export const TERRAIN_TYPES = [
@@ -85,13 +86,24 @@ const GridToken = ({ participant, isActive, isTarget, isPlayer, inAoO, onClick }
   const maxHp = participant.max_hp ?? hp;
   const pct   = maxHp > 0 ? Math.max(0, (hp / maxHp) * 100) : 0;
   const hpBg  = pct > 60 ? 'bg-green-500' : pct > 30 ? 'bg-yellow-500' : 'bg-red-500';
+  const tokenId = participant.id || (isPlayer ? '__player__' : participant.name || 'unknown');
 
   return (
-    <div
+    <motion.div
+      layoutId={`token-${tokenId}`}
+      layout
+      initial={{ opacity: 0, scale: 0.5 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.3 }}
+      transition={{
+        layout:   { type: 'spring', stiffness: 380, damping: 28 },
+        opacity:  { duration: 0.18 },
+        scale:    { duration: 0.18 },
+      }}
       onClick={e => { e.stopPropagation(); onClick && onClick(); }}
       className={`
         absolute inset-0.5 rounded flex flex-col items-center justify-center
-        cursor-pointer select-none transition-all z-10
+        cursor-pointer select-none z-10
         ${isPlayer
           ? 'bg-violet-900/85 border border-violet-500/80'
           : isTarget
@@ -106,7 +118,11 @@ const GridToken = ({ participant, isActive, isTarget, isPlayer, inAoO, onClick }
       </span>
       <div className="w-full px-1 mt-0.5">
         <div className="h-1 bg-slate-700 rounded-full overflow-hidden">
-          <div className={`h-full rounded-full ${hpBg}`} style={{ width: `${pct}%` }} />
+          <motion.div
+            className={`h-full rounded-full ${hpBg}`}
+            animate={{ width: `${pct}%` }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+          />
         </div>
       </div>
       {/* AoO badge on enemy when in player's threat range */}
@@ -120,7 +136,7 @@ const GridToken = ({ participant, isActive, isTarget, isPlayer, inAoO, onClick }
           <span className="text-[7px] text-white font-black">▶</span>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 };
 
@@ -218,6 +234,7 @@ const BattlefieldGrid = ({
   const cursorStyle = editMode ? 'cursor-crosshair' : 'cursor-default';
 
   return (
+    <LayoutGroup>
     <div
       className={`relative w-full h-full ${cursorStyle}`}
       style={{ minHeight: 0 }}
@@ -316,16 +333,19 @@ const BattlefieldGrid = ({
                 )}
 
                 {/* Participant token */}
-                {token && (
-                  <GridToken
-                    participant={token}
-                    isPlayer={token._isPlayer}
-                    isActive={activeTurn === (token._isPlayer ? 'player' : token.id)}
-                    isTarget={!token._isPlayer && token.id === selectedTarget}
-                    inAoO={tokenInAoO}
-                    onClick={!token._isPlayer && token.hp > 0 ? () => onSelectTarget?.(token.id) : undefined}
-                  />
-                )}
+                <AnimatePresence>
+                  {token && (
+                    <GridToken
+                      key={token._isPlayer ? '__player__' : token.id}
+                      participant={token}
+                      isPlayer={token._isPlayer}
+                      isActive={activeTurn === (token._isPlayer ? 'player' : token.id)}
+                      isTarget={!token._isPlayer && token.id === selectedTarget}
+                      inAoO={tokenInAoO}
+                      onClick={!token._isPlayer && token.hp > 0 ? () => onSelectTarget?.(token.id) : undefined}
+                    />
+                  )}
+                </AnimatePresence>
 
                 {/* Range measure label */}
                 {measureFt !== null && (
@@ -365,6 +385,7 @@ const BattlefieldGrid = ({
         )}
       </div>
     </div>
+    </LayoutGroup>
   );
 };
 

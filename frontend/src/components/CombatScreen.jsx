@@ -18,6 +18,7 @@ import CombatNarrationPopup from './CombatNarrationPopup';
 import BattlefieldConditionCard from './BattlefieldConditionCard';
 import ConditionInteractionModal from './ConditionInteractionModal';
 import BattlefieldGrid from './BattlefieldGrid';
+import EnemyLibraryPanel from './EnemyLibraryPanel';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -150,6 +151,7 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
   const inputRef = useRef();
 
   // ── DM grid-editing tools ─────────────────────────────────────────────────
+  const [showEnemyLibrary, setShowEnemyLibrary] = useState(false);
   const [showDmTools, setShowDmTools]   = useState(false);
   const [editMode, setEditMode]         = useState(null);  // 'terrain'|'spell'|'measure'|'erase'|null
   const [activeBrush, setActiveBrush]   = useState('wall');
@@ -747,6 +749,14 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
             )}
 
             <div className="flex-1" />
+
+            {/* Add Enemy */}
+            <button
+              onClick={() => setShowEnemyLibrary(true)}
+              className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold border border-violet-700/60 bg-violet-900/40 text-violet-300 hover:bg-violet-800/40 transition-all"
+            >
+              ➕ Enemy
+            </button>
 
             {/* Save */}
             <button
@@ -1482,6 +1492,24 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Enemy Library Panel (DM modal) ───────────────────────────────── */}
+      {showEnemyLibrary && (
+        <EnemyLibraryPanel
+          campaignId={campaignId}
+          characterId={activeCharacterId}
+          onClose={() => setShowEnemyLibrary(false)}
+          onEnemyAdded={(enemy) => {
+            // Optimistically update local combat state so the grid reflects the new enemy
+            if (enemy) {
+              setLocalCombat(prev => ({
+                ...prev,
+                enemies: [...(prev.enemies || []), enemy],
+              }));
+            }
+          }}
+        />
       )}
     </div>
   );

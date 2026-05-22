@@ -504,12 +504,15 @@ def process_enemy_turns(
     combat_state: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Process all enemy turns using D&D 5e mechanics.
-    
+    Process all enemy turns using D&D 5e mechanics with behavior-tree decisions.
+
+    Each alive enemy consults decide_enemy_action() to choose how to act this
+    turn, then the chosen action is resolved through the standard attack pipeline.
+
     Args:
         character_state: Player character state
         combat_state: Current combat state
-    
+
     Returns:
         {
             "enemy_actions": list of mechanical summaries,
@@ -518,9 +521,12 @@ def process_enemy_turns(
             "combat_over": bool
         }
     """
+    from services.enemy_behavior_service import decide_enemy_action, apply_special_effect
+    from services.dnd_rules import roll_d20 as _roll_d20
+
     enemies = combat_state.get('enemies', [])
-    alive_enemies = [e for e in enemies if e['hp'] > 0]
-    
+    alive_enemies = [e for e in enemies if e.get('hp', 0) > 0]
+
     if not alive_enemies:
         return {
             "enemy_actions": [],
@@ -528,58 +534,195 @@ def process_enemy_turns(
             "character_state_update": {},
             "combat_over": False
         }
-    
+
     enemy_actions = []
     total_damage = 0
     player_hp = character_state.get('hp', 10)
     player_max_hp = character_state.get('max_hp', 10)
-    
-    # Prepare target (player)
+
+    # Prepare mutable target dict (player)
     player_target = {
         "ac": character_state.get('ac', 10),
         "hp": player_hp,
-        "max_hp": player_max_hp
+        "max_hp": player_max_hp,
+        "name": character_state.get('name', 'Player'),
+        "abilities": character_state.get('abilities', {}),
+        "conditions": character_state.get('conditions', []),
     }
-    
+
+    # Build combat context for behavior decisions
+    combat_context: Dict[str, Any] = {
+        "round": combat_state.get('round', 1),
+        "alive_enemies": alive_enemies,
+        "grid_cells": (combat_state.get('battlefield_grid') or {}).get('cells', []),
+        "player_grid_x": combat_state.get('player_grid_x', 1),
+        "player_grid_y": combat_state.get('player_grid_y', 2),
+    }
+
     for enemy in alive_enemies:
-        # Enemy attacks player
+        enemy_name = enemy.get('name', 'Unknown Enemy')
+
+        # ── Behavior tree decision ────────────────────────────────────────────
+        try:
+            action = decide_enemy_action(enemy, player_target, combat_context)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Behavior tree failed for %s: %s — using plain attack", enemy_name, exc)
+            action = {
+                "action_type": "attack",
+                "attack_bonus": enemy.get("attack_bonus", 3),
+                "damage_die": enemy.get("damage_die", "1d6"),
+                "damage_type": enemy.get("damage_type", "slashing"),
+                "advantage": False,
+                "disadvantage": False,
+                "adv_reason": "",
+                "special_effect": None,
+                "grid_move": None,
+                "narration_hint": f"The {enemy_name} attacks.",
+                "abilities_used": [],
+            }
+
+        action_type = action.get("action_type", "attack")
+
+        # ── Apply grid move first (if any) ───────────────────────────────────
+        grid_move = action.get("grid_move")
+        if grid_move:
+            enemy["grid_x"] = enemy.get("grid_x", 2) + grid_move.get("dx", 0)
+            enemy["grid_y"] = enemy.get("grid_y", 2) + grid_move.get("dy", 0)
+
+        # ── Fled / Regenerated — no attack ───────────────────────────────────
+        if action_type == "flee":
+            enemy["hp"] = 0  # Mark as out of combat (fled)
+            enemy_actions.append({
+                "attacker": enemy_name,
+                "action_type": "flee",
+                "attack_roll": 0,
+                "total_attack": 0,
+                "target_ac": player_target["ac"],
+                "hit": False,
+                "critical": False,
+                "critical_miss": False,
+                "damage": 0,
+                "narration_hint": action.get("narration_hint", f"{enemy_name} fled."),
+                "abilities_used": action.get("abilities_used", []),
+            })
+            continue
+
+        if action_type == "regenerate":
+            enemy_actions.append({
+                "attacker": enemy_name,
+                "action_type": "regenerate",
+                "attack_roll": 0,
+                "total_attack": 0,
+                "target_ac": player_target["ac"],
+                "hit": False,
+                "critical": False,
+                "critical_miss": False,
+                "damage": 0,
+                "healed": action.get("special_effect", {}).get("healed", 0),
+                "narration_hint": action.get("narration_hint", f"{enemy_name} regenerates."),
+                "abilities_used": action.get("abilities_used", []),
+            })
+            continue
+
+        # ── Resolve the attack ────────────────────────────────────────────────
+        adv = action.get("advantage", False)
+        disadv = action.get("disadvantage", False)
+        weapon_damage = action.get("damage_die") or enemy.get("damage_die", "1d6")
+
         attack_result = resolve_attack(
             attacker=enemy,
             target=player_target,
             weapon_type="melee",
-            weapon_damage=enemy.get('damage_die', '1d6'),
-            is_unarmed=False
+            weapon_damage=weapon_damage,
+            is_unarmed=False,
+            advantage=adv,
+            disadvantage=disadv,
         )
-        
-        total_damage += attack_result['damage']
-        player_target['hp'] = attack_result['target_hp_remaining']
-        
-        enemy_actions.append({
-            "attacker": enemy['name'],
-            "attack_roll": attack_result['attack_roll'],
-            "total_attack": attack_result['total_attack'],
-            "target_ac": player_target['ac'],
-            "hit": attack_result['hit'],
-            "critical": attack_result['critical'],
-            "critical_miss": attack_result['critical_miss'],
-            "damage": attack_result['damage']
-        })
-    
-    # Update player HP
-    new_player_hp = player_target['hp']
+
+        hit = attack_result.get("hit", False)
+        damage_dealt = attack_result.get("damage", 0)
+        total_damage += damage_dealt
+        player_target["hp"] = attack_result["target_hp_remaining"]
+
+        # ── Apply special effect on hit ───────────────────────────────────────
+        special_effect_result = None
+        special_effect = action.get("special_effect")
+        if special_effect and hit and action_type in ("special_attack",):
+            eff_type = special_effect.get("type", "")
+
+            if eff_type in ("life_drain", "undead_fortitude"):
+                special_effect["damage_dealt"] = damage_dealt
+                special_effect_result = apply_special_effect(
+                    special_effect, player_target, _roll_d20
+                )
+            elif eff_type == "surprise_attack":
+                # Roll extra damage dice
+                from services.dnd_rules import roll_dice as _roll_dice
+                bonus_die = special_effect.get("bonus_damage_die", "2d6")
+                try:
+                    bonus_dmg = _roll_dice(bonus_die)
+                except Exception:
+                    bonus_dmg = 0
+                damage_dealt += bonus_dmg
+                total_damage += bonus_dmg
+                player_target["hp"] = max(0, player_target["hp"] - bonus_dmg)
+                special_effect_result = {
+                    "effect_type": "surprise_attack",
+                    "triggered": True,
+                    "bonus_damage": bonus_dmg,
+                    "description": f"Surprise Attack deals {bonus_dmg} extra damage.",
+                }
+            elif eff_type == "reckless_attack":
+                # Flag enemy for advantage-to-attackers this turn
+                enemy["_reckless_this_turn"] = True
+                special_effect_result = apply_special_effect(
+                    special_effect, enemy, _roll_d20
+                )
+
+        # ── Undead Fortitude check (enemy would die from player damage) ───────
+        # NOTE: This is only for when the enemy itself is at 0 HP after being hit,
+        # but here we're resolving enemy attacks on the player. The symmetric check
+        # (player reducing enemy to 0) happens in the caller's damage-apply step.
+        # We leave the enemy UF check to be called by apply_damage_to_enemy helper
+        # if added by callers. For now we track the flag in the enemy dict.
+
+        action_summary: Dict[str, Any] = {
+            "attacker": enemy_name,
+            "action_type": action_type,
+            "attack_roll": attack_result.get("attack_roll", 0),
+            "total_attack": attack_result.get("total_attack", 0),
+            "target_ac": player_target["ac"],
+            "hit": hit,
+            "critical": attack_result.get("critical", False),
+            "critical_miss": attack_result.get("critical_miss", False),
+            "damage": damage_dealt,
+            "advantage": adv,
+            "disadvantage": disadv,
+            "adv_reason": action.get("adv_reason", ""),
+            "narration_hint": action.get("narration_hint", ""),
+            "abilities_used": action.get("abilities_used", []),
+        }
+        if special_effect_result:
+            action_summary["special_effect_result"] = special_effect_result
+
+        enemy_actions.append(action_summary)
+
+    # ── Update player HP ──────────────────────────────────────────────────────
+    new_player_hp = player_target["hp"]
     player_dying = new_player_hp <= 0
 
-    # When player HP hits 0 → enter dying state instead of immediate defeat
     char_state_update: Dict[str, Any] = {"hp": new_player_hp}
     if player_dying:
-        char_state_update["death_saves"] = {"successes": 0, "failures": 0, "stable": False, "dead": False}
-        logger.warning("💀 Player HP dropped to 0 — entering dying state (death saves)")
+        char_state_update["death_saves"] = {
+            "successes": 0, "failures": 0, "stable": False, "dead": False
+        }
+        logger.warning("Player HP dropped to 0 — entering dying state (death saves)")
 
     return {
         "enemy_actions": enemy_actions,
         "total_damage_to_player": total_damage,
         "character_state_update": char_state_update,
-        "combat_over": False,  # Don't end combat immediately; wait for death saves
+        "combat_over": False,   # Wait for death saves
         "player_dying": player_dying,
         "death_saves": char_state_update.get("death_saves"),
         "outcome": None,

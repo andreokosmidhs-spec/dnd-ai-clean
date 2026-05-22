@@ -79,6 +79,12 @@ def build_context(
         "took_acid_damage_last_turn": bool(enemy.get("took_acid_damage_last_turn", False)),
         "is_first_attack_this_turn": bool(enemy.get("is_first_attack_this_turn", True)),
         "enemy": enemy,
+        # Faction / team context — populated by faction_combat_service if present
+        "enemy_faction_role":   combat_context.get("enemy_faction_role", "solo"),
+        "faction_leader_alive": combat_context.get("faction_leader_alive", True),
+        "faction_leader_hp_pct": combat_context.get("faction_leader_hp_pct", 1.0),
+        "faction_leader_id":    combat_context.get("faction_leader_id"),
+        "faction_followers":    combat_context.get("faction_followers", []),
     }
 
 
@@ -135,6 +141,28 @@ def _eval_condition(node: Dict[str, Any], ctx: Dict[str, Any]) -> bool:
 
     if check == "is_enemy_type":
         return ctx["enemy_type"].lower() == str(value or "").lower()
+
+    # ── Faction / team conditions ────────────────────────────────────────────
+    if check == "leader_alive":
+        return ctx.get("faction_leader_alive", True)
+
+    if check == "leader_hp_below":
+        return ctx.get("faction_leader_hp_pct", 1.0) < float(value or 0)
+
+    if check == "is_leader":
+        return ctx.get("enemy_faction_role") == "leader"
+
+    if check == "is_bodyguard":
+        return ctx.get("enemy_faction_role") == "bodyguard"
+
+    if check == "ally_count_below":
+        return len(ctx.get("alive_enemies", [])) < int(value or 1)
+
+    if check == "ally_count_above":
+        return len(ctx.get("alive_enemies", [])) > int(value or 0)
+
+    if check == "has_followers":
+        return len(ctx.get("faction_followers", [])) > 0
 
     logger.warning("Unknown condition check: %s", check)
     return False
@@ -348,6 +376,59 @@ def _build_action(node: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
         result["abilities_used"].append("grapple")
         result["narration_hint"] = (
             f"The {enemy.get('name', 'enemy')} attempts to grapple you!"
+        )
+
+    # ── PROTECT LEADER ────────────────────────────────────────────────────────
+    elif action_id == "protect_leader":
+        leader_id = ctx.get("faction_leader_id")
+        alive = ctx.get("alive_enemies", [])
+        leader = next((e for e in alive if e.get("id") == leader_id), None)
+        if leader:
+            # Move adjacent to leader; if leader is low HP also attack player
+            result["action_type"] = "move_and_attack"
+            result["grid_move"] = {"dx": 0, "dy": 0, "target_id": leader_id}
+            result["abilities_used"].append("protect_leader")
+            result["narration_hint"] = (
+                f"The {enemy.get('name', 'enemy')} moves to shield "
+                f"{leader.get('name', 'their leader')}!"
+            )
+        else:
+            # Leader gone — attack player instead
+            result["action_type"] = "attack"
+            result["narration_hint"] = (
+                f"The {enemy.get('name', 'enemy')} roars in fury at their leader's fall!"
+            )
+            result["advantage"] = True
+            result["adv_reason"] = "Enraged by leader's death"
+
+    # ── COMMAND FOLLOWERS ─────────────────────────────────────────────────────
+    elif action_id == "command_followers":
+        result["action_type"] = "special_attack"
+        result["special_effect"] = {"type": "command_followers", "bonus": 2}
+        result["abilities_used"].append("command_followers")
+        result["narration_hint"] = (
+            f"{enemy.get('name', 'The leader')} barks orders, rallying their allies!"
+        )
+
+    # ── RALLY ─────────────────────────────────────────────────────────────────
+    elif action_id == "rally":
+        result["action_type"] = "defend"
+        result["special_effect"] = {"type": "rally", "morale_bonus": 2}
+        result["abilities_used"].append("rally")
+        result["narration_hint"] = (
+            f"{enemy.get('name', 'The leader')} steadies their allies — "
+            f"\"Hold the line! Don't break!\""
+        )
+
+    # ── FOCUS FIRE ────────────────────────────────────────────────────────────
+    elif action_id == "focus_fire":
+        # Attack with advantage (flanking with leader)
+        result["action_type"] = "attack"
+        result["advantage"] = True
+        result["adv_reason"] = "Flanking with ally"
+        result["abilities_used"].append("focus_fire")
+        result["narration_hint"] = (
+            f"The {enemy.get('name', 'enemy')} flanks alongside their ally!"
         )
 
     else:

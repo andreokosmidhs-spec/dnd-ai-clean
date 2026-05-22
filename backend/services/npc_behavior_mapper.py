@@ -211,8 +211,17 @@ def get_behavior_tree_for_npc(npc_data: Dict[str, Any]) -> Dict[str, Any]:
     tag_set = {t.lower().replace("-", "_") for t in tags}
     full_text = _all_text(npc_data)
 
-    # 1. Pick base tree from role
-    tree_id = _base_tree_id(npc_data)
+    # 1. Pick base tree from role — check faction_role first (set by assign_faction_roles)
+    faction_role = npc_data.get("faction_role", "solo")
+    if faction_role == "leader":
+        tree_id = "guard_leader"
+    elif faction_role == "bodyguard":
+        tree_id = "bodyguard"
+    elif faction_role == "follower":
+        tree_id = "loyal_follower"
+    else:
+        tree_id = _base_tree_id(npc_data)
+
     base = get_tree(tree_id)
     if not base:
         base = DEFAULT_TREES.get("generic_brute", {})

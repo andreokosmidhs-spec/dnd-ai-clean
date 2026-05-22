@@ -557,6 +557,71 @@ DEFAULT_TREES: Dict[str, Dict[str, Any]] = {
             {"type": "action", "action": "move_toward_player"},
         ),
     },
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # FACTION TREES — leader / follower / bodyguard
+    # ─────────────────────────────────────────────────────────────────────────
+
+    "guard_leader": {
+        "id": "guard_leader",
+        "name": "Guard Leader",
+        "description": "Commands allies, rallies when outnumbered, fights to the last",
+        "node": _sel(
+            # If heavily outnumbered (only self left), fight recklessly
+            _seq(_cond("ally_count_below", 1),
+                 {"type": "action", "action": "reckless_attack", "label": "Last Stand"}),
+            # Rally allies if they are many and leader has low HP
+            _seq(_cond("is_leader"),
+                 _cond("has_followers"),
+                 _cond("hp_below", 0.5),
+                 {"type": "action", "action": "command_followers", "label": "Press On!"}),
+            # Standard attack
+            {"type": "action", "action": "attack_melee",
+             "damage_die": "1d8+3", "damage_type": "slashing", "label": "Longsword"},
+        ),
+    },
+
+    "loyal_follower": {
+        "id": "loyal_follower",
+        "name": "Loyal Follower",
+        "description": "Fights alongside leader; flees or rages when leader falls",
+        "node": _sel(
+            # Flee if leader is dead and morale broke (morale_break flag handled upstream)
+            _seq(_not(_cond("leader_alive")),
+                 _cond("hp_below", 0.5),
+                 {"type": "action", "action": "flee", "label": "Broken Morale"}),
+            # Focus fire with leader
+            _seq(_cond("leader_alive"),
+                 {"type": "action", "action": "focus_fire", "label": "Attack Together"}),
+            # Fallback attack
+            {"type": "action", "action": "attack_melee",
+             "damage_die": "1d6+1", "damage_type": "slashing", "label": "Short Sword"},
+        ),
+    },
+
+    "bodyguard": {
+        "id": "bodyguard",
+        "name": "Bodyguard",
+        "description": "Stays adjacent to leader, enrages if leader falls",
+        "node": _sel(
+            # If leader is dead: rage and attack with advantage
+            _seq(_not(_cond("leader_alive")),
+                 {"type": "action", "action": "attack_melee",
+                  "damage_die": "2d6+4", "damage_type": "slashing",
+                  "advantage": True, "adv_reason": "Enraged",
+                  "label": "Vengeful Strike"}),
+            # If leader is wounded: protect them
+            _seq(_cond("leader_alive"),
+                 _cond("leader_hp_below", 0.5),
+                 {"type": "action", "action": "protect_leader", "label": "Shield the Leader"}),
+            # Otherwise stay near leader and attack
+            _seq(_cond("leader_alive"),
+                 {"type": "action", "action": "focus_fire", "label": "Guard Position"}),
+            # Solo fallback
+            {"type": "action", "action": "attack_melee",
+             "damage_die": "2d6+4", "damage_type": "slashing", "label": "Greataxe"},
+        ),
+    },
 }
 
 

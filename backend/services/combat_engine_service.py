@@ -352,6 +352,14 @@ def process_player_attack(
     alive_enemies = [e for e in enemies if e['hp'] > 0]
     combat_over = len(alive_enemies) == 0
 
+    # Morale cascade if a leader was just killed
+    if attack_result.get('killed'):
+        try:
+            from services.faction_combat_service import apply_death_morale
+            apply_death_morale(target, alive_enemies)
+        except Exception:
+            pass
+
     # Update combat state - CRITICAL: Always set combat_over correctly
     combat_state_update = {
         "enemies": enemies,
@@ -472,6 +480,14 @@ def process_save_spell(
     alive_enemies = [e for e in enemies if e["hp"] > 0]
     combat_over = len(alive_enemies) == 0
 
+    # Morale cascade when a leader is killed
+    if killed:
+        try:
+            from services.faction_combat_service import apply_death_morale
+            apply_death_morale(target, alive_enemies)
+        except Exception:
+            pass
+
     xp_gained = 0
     if combat_over:
         try:
@@ -535,6 +551,9 @@ def process_enemy_turns(
     """
     from services.enemy_behavior_service import decide_enemy_action, apply_special_effect
     from services.dnd_rules import roll_d20 as _roll_d20
+    from services.faction_combat_service import (
+        assign_faction_roles, faction_context_for, apply_morale_modifiers
+    )
 
     enemies = combat_state.get('enemies', [])
     alive_enemies = [e for e in enemies if e.get('hp', 0) > 0]
@@ -546,6 +565,10 @@ def process_enemy_turns(
             "character_state_update": {},
             "combat_over": False
         }
+
+    # Assign faction roles if not already done (idempotent — skips if role set)
+    if any("faction_role" not in e for e in alive_enemies):
+        assign_faction_roles(alive_enemies)
 
     enemy_actions = []
     total_damage = 0
@@ -562,8 +585,8 @@ def process_enemy_turns(
         "conditions": character_state.get('conditions', []),
     }
 
-    # Build combat context for behavior decisions
-    combat_context: Dict[str, Any] = {
+    # Build base combat context for behavior decisions
+    base_combat_context: Dict[str, Any] = {
         "round": combat_state.get('round', 1),
         "alive_enemies": alive_enemies,
         "grid_cells": (combat_state.get('battlefield_grid') or {}).get('cells', []),
@@ -574,9 +597,16 @@ def process_enemy_turns(
     for enemy in alive_enemies:
         enemy_name = enemy.get('name', 'Unknown Enemy')
 
+        # ── Faction context (per-enemy) ───────────────────────────────────────
+        faction_ctx = faction_context_for(enemy, alive_enemies)
+        combat_context = {**base_combat_context, **faction_ctx}
+
+        # ── Morale override (leader death) ────────────────────────────────────
+        morale_action = apply_morale_modifiers(enemy, combat_context)
+
         # ── Behavior tree decision ────────────────────────────────────────────
         try:
-            action = decide_enemy_action(enemy, player_target, combat_context)
+            action = morale_action or decide_enemy_action(enemy, player_target, combat_context)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Behavior tree failed for %s: %s — using plain attack", enemy_name, exc)
             action = {

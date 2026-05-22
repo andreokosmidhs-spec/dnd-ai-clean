@@ -666,88 +666,129 @@ def process_enemy_turns(
             })
             continue
 
-        # ── Resolve the attack ────────────────────────────────────────────────
+        # ── Resolve the attack(s) ─────────────────────────────────────────────
         adv = action.get("advantage", False)
         disadv = action.get("disadvantage", False)
-        weapon_damage = action.get("damage_die") or enemy.get("damage_die", "1d6")
-
-        attack_result = resolve_attack(
-            attacker=enemy,
-            target=player_target,
-            weapon_type="melee",
-            weapon_damage=weapon_damage,
-            is_unarmed=False,
-            advantage=adv,
-            disadvantage=disadv,
-        )
-
-        hit = attack_result.get("hit", False)
-        damage_dealt = attack_result.get("damage", 0)
-        total_damage += damage_dealt
-        player_target["hp"] = attack_result["target_hp_remaining"]
-
-        # ── Apply special effect on hit ───────────────────────────────────────
-        special_effect_result = None
         special_effect = action.get("special_effect")
-        if special_effect and hit and action_type in ("special_attack",):
-            eff_type = special_effect.get("type", "")
 
-            if eff_type in ("life_drain", "undead_fortitude"):
-                special_effect["damage_dealt"] = damage_dealt
-                special_effect_result = apply_special_effect(
-                    special_effect, player_target, _roll_d20
-                )
-            elif eff_type == "surprise_attack":
-                # Roll extra damage dice
-                from services.dnd_rules import roll_dice as _roll_dice
-                bonus_die = special_effect.get("bonus_damage_die", "2d6")
-                try:
-                    bonus_dmg = _roll_dice(bonus_die)
-                except Exception:
-                    bonus_dmg = 0
-                damage_dealt += bonus_dmg
-                total_damage += bonus_dmg
-                player_target["hp"] = max(0, player_target["hp"] - bonus_dmg)
-                special_effect_result = {
-                    "effect_type": "surprise_attack",
-                    "triggered": True,
-                    "bonus_damage": bonus_dmg,
-                    "description": f"Surprise Attack deals {bonus_dmg} extra damage.",
-                }
-            elif eff_type == "reckless_attack":
-                # Flag enemy for advantage-to-attackers this turn
-                enemy["_reckless_this_turn"] = True
-                special_effect_result = apply_special_effect(
-                    special_effect, enemy, _roll_d20
+        attacks_list = action.get("attacks")
+        if attacks_list and isinstance(attacks_list, list):
+            # ── Multiattack: resolve each sub-attack independently ────────────
+            for atk_idx, atk in enumerate(attacks_list):
+                atk_damage_die = atk.get("damage_die") or action.get("damage_die") or enemy.get("damage_die", "1d6")
+                atk_adv  = atk.get("advantage",    adv)
+                atk_disadv = atk.get("disadvantage", disadv)
+
+                atk_result = resolve_attack(
+                    attacker=enemy,
+                    target=player_target,
+                    weapon_type="melee",
+                    weapon_damage=atk_damage_die,
+                    is_unarmed=False,
+                    advantage=atk_adv,
+                    disadvantage=atk_disadv,
                 )
 
-        # ── Undead Fortitude check (enemy would die from player damage) ───────
-        # NOTE: This is only for when the enemy itself is at 0 HP after being hit,
-        # but here we're resolving enemy attacks on the player. The symmetric check
-        # (player reducing enemy to 0) happens in the caller's damage-apply step.
-        # We leave the enemy UF check to be called by apply_damage_to_enemy helper
-        # if added by callers. For now we track the flag in the enemy dict.
+                atk_hit = atk_result.get("hit", False)
+                atk_dmg = atk_result.get("damage", 0)
+                total_damage += atk_dmg
+                player_target["hp"] = atk_result["target_hp_remaining"]
 
-        action_summary: Dict[str, Any] = {
-            "attacker": enemy_name,
-            "action_type": action_type,
-            "attack_roll": attack_result.get("attack_roll", 0),
-            "total_attack": attack_result.get("total_attack", 0),
-            "target_ac": player_target["ac"],
-            "hit": hit,
-            "critical": attack_result.get("critical", False),
-            "critical_miss": attack_result.get("critical_miss", False),
-            "damage": damage_dealt,
-            "advantage": adv,
-            "disadvantage": disadv,
-            "adv_reason": action.get("adv_reason", ""),
-            "narration_hint": action.get("narration_hint", ""),
-            "abilities_used": action.get("abilities_used", []),
-        }
-        if special_effect_result:
-            action_summary["special_effect_result"] = special_effect_result
+                atk_hint = atk.get("narration_hint") or (
+                    f"The {enemy_name} strikes with {atk.get('name', 'a weapon')}!"
+                    if atk_idx == 0
+                    else f"The {enemy_name} follows up with {atk.get('name', 'another strike')}!"
+                )
 
-        enemy_actions.append(action_summary)
+                enemy_actions.append({
+                    "attacker": enemy_name,
+                    "action_type": action_type,
+                    "attack_name": atk.get("name", "attack"),
+                    "attack_roll": atk_result.get("attack_roll", 0),
+                    "total_attack": atk_result.get("total_attack", 0),
+                    "target_ac": player_target["ac"],
+                    "hit": atk_hit,
+                    "critical": atk_result.get("critical", False),
+                    "critical_miss": atk_result.get("critical_miss", False),
+                    "damage": atk_dmg,
+                    "advantage": atk_adv,
+                    "disadvantage": atk_disadv,
+                    "adv_reason": atk.get("adv_reason", action.get("adv_reason", "")),
+                    "narration_hint": atk_hint,
+                    "abilities_used": action.get("abilities_used", []) if atk_idx == 0 else [],
+                    "multiattack_index": atk_idx,
+                })
+        else:
+            # ── Single attack ─────────────────────────────────────────────────
+            weapon_damage = action.get("damage_die") or enemy.get("damage_die", "1d6")
+
+            attack_result = resolve_attack(
+                attacker=enemy,
+                target=player_target,
+                weapon_type="melee",
+                weapon_damage=weapon_damage,
+                is_unarmed=False,
+                advantage=adv,
+                disadvantage=disadv,
+            )
+
+            hit = attack_result.get("hit", False)
+            damage_dealt = attack_result.get("damage", 0)
+            total_damage += damage_dealt
+            player_target["hp"] = attack_result["target_hp_remaining"]
+
+            # ── Apply special effect on hit ───────────────────────────────────
+            special_effect_result = None
+            if special_effect and hit and action_type in ("special_attack",):
+                eff_type = special_effect.get("type", "")
+
+                if eff_type in ("life_drain", "undead_fortitude"):
+                    special_effect["damage_dealt"] = damage_dealt
+                    special_effect_result = apply_special_effect(
+                        special_effect, player_target, _roll_d20
+                    )
+                elif eff_type == "surprise_attack":
+                    from services.dnd_rules import roll_dice as _roll_dice
+                    bonus_die = special_effect.get("bonus_damage_die", "2d6")
+                    try:
+                        bonus_dmg = _roll_dice(bonus_die)
+                    except Exception:
+                        bonus_dmg = 0
+                    damage_dealt += bonus_dmg
+                    total_damage += bonus_dmg
+                    player_target["hp"] = max(0, player_target["hp"] - bonus_dmg)
+                    special_effect_result = {
+                        "effect_type": "surprise_attack",
+                        "triggered": True,
+                        "bonus_damage": bonus_dmg,
+                        "description": f"Surprise Attack deals {bonus_dmg} extra damage.",
+                    }
+                elif eff_type == "reckless_attack":
+                    enemy["_reckless_this_turn"] = True
+                    special_effect_result = apply_special_effect(
+                        special_effect, enemy, _roll_d20
+                    )
+
+            action_summary: Dict[str, Any] = {
+                "attacker": enemy_name,
+                "action_type": action_type,
+                "attack_roll": attack_result.get("attack_roll", 0),
+                "total_attack": attack_result.get("total_attack", 0),
+                "target_ac": player_target["ac"],
+                "hit": hit,
+                "critical": attack_result.get("critical", False),
+                "critical_miss": attack_result.get("critical_miss", False),
+                "damage": damage_dealt,
+                "advantage": adv,
+                "disadvantage": disadv,
+                "adv_reason": action.get("adv_reason", ""),
+                "narration_hint": action.get("narration_hint", ""),
+                "abilities_used": action.get("abilities_used", []),
+            }
+            if special_effect_result:
+                action_summary["special_effect_result"] = special_effect_result
+
+            enemy_actions.append(action_summary)
 
     # ── Update player HP ──────────────────────────────────────────────────────
     new_player_hp = player_target["hp"]

@@ -1203,3 +1203,497 @@ class TestFullCombatRound:
                 weapon_type="melee", weapon_damage="1d8", weapon_name="Sword"
             )
         assert result["success"] is True
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Behavior Tree Engine
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestBehaviorTreeEngine:
+    """Tests for the pure-Python behavior tree evaluator."""
+
+    @pytest.fixture
+    def simple_enemy(self):
+        return {
+            "id": "orc_1", "name": "Orc",
+            "hp": 15, "max_hp": 15, "ac": 13,
+            "attack_bonus": 3, "damage_die": "1d8",
+            "damage_type": "slashing",
+            "grid_x": 1, "grid_y": 2,
+            "abilities": {"str": 16, "dex": 10, "con": 14, "int": 7, "wis": 11, "cha": 10},
+            "conditions": [], "resistances": [], "immunities": [],
+        }
+
+    @pytest.fixture
+    def player_adjacent(self):
+        return {"hp": 20, "max_hp": 20, "ac": 14, "name": "Hero",
+                "grid_x": 1, "grid_y": 2, "abilities": {}}
+
+    @pytest.fixture
+    def player_far(self):
+        return {"hp": 20, "max_hp": 20, "ac": 14, "name": "Hero",
+                "grid_x": 7, "grid_y": 2, "abilities": {}}
+
+    def test_context_hp_pct(self, simple_enemy, player_adjacent):
+        from services.behavior_tree_engine import build_context
+        simple_enemy["hp"] = 8
+        ctx = build_context(simple_enemy, player_adjacent, {"round": 1, "alive_enemies": [simple_enemy]})
+        assert abs(ctx["enemy_hp_pct"] - 8 / 15) < 0.01
+
+    def test_in_melee_range_adjacent(self, simple_enemy, player_adjacent):
+        from services.behavior_tree_engine import build_context
+        ctx = build_context(simple_enemy, player_adjacent, {
+            "round": 1, "alive_enemies": [simple_enemy],
+            "player_grid_x": player_adjacent["grid_x"], "player_grid_y": player_adjacent["grid_y"],
+        })
+        assert ctx["in_melee_range"] is True
+
+    def test_not_in_melee_range_far(self, simple_enemy, player_far):
+        from services.behavior_tree_engine import build_context
+        ctx = build_context(simple_enemy, player_far, {
+            "round": 1, "alive_enemies": [simple_enemy],
+            "player_grid_x": player_far["grid_x"], "player_grid_y": player_far["grid_y"],
+        })
+        assert ctx["in_melee_range"] is False
+
+    def _ctx(self, enemy, player, round_=1):
+        from services.behavior_tree_engine import build_context
+        return build_context(enemy, player, {
+            "round": round_, "alive_enemies": [enemy],
+            "player_grid_x": player["grid_x"], "player_grid_y": player["grid_y"],
+        })
+
+    def test_condition_hp_below_true(self, simple_enemy, player_adjacent):
+        simple_enemy["hp"] = 3
+        ctx = self._ctx(simple_enemy, player_adjacent)
+        from services.behavior_tree_engine import evaluate
+        node = {"type": "condition", "check": "hp_below", "value": 0.5}
+        success, _ = evaluate(node, ctx)
+        assert success is True
+
+    def test_condition_hp_below_false(self, simple_enemy, player_adjacent):
+        ctx = self._ctx(simple_enemy, player_adjacent)
+        from services.behavior_tree_engine import evaluate
+        node = {"type": "condition", "check": "hp_below", "value": 0.1}
+        success, _ = evaluate(node, ctx)
+        assert success is False
+
+    def test_condition_in_melee_range(self, simple_enemy, player_adjacent):
+        ctx = self._ctx(simple_enemy, player_adjacent)
+        from services.behavior_tree_engine import evaluate
+        node = {"type": "condition", "check": "in_melee_range"}
+        success, _ = evaluate(node, ctx)
+        assert success is True
+
+    def test_selector_picks_first_success(self, simple_enemy, player_adjacent):
+        from services.behavior_tree_engine import evaluate
+        ctx = self._ctx(simple_enemy, player_adjacent)
+        tree = {
+            "type": "selector",
+            "children": [
+                {"type": "condition", "check": "in_melee_range"},
+                {"type": "action", "action": "flee"},
+            ],
+        }
+        success, result = evaluate(tree, ctx)
+        assert success is True
+
+    def test_sequence_fails_if_any_child_fails(self, simple_enemy, player_far):
+        from services.behavior_tree_engine import evaluate
+        ctx = self._ctx(simple_enemy, player_far)
+        tree = {
+            "type": "sequence",
+            "children": [
+                {"type": "condition", "check": "in_melee_range"},  # False — enemy far
+                {"type": "action", "action": "attack_melee"},
+            ],
+        }
+        success, _ = evaluate(tree, ctx)
+        assert success is False
+
+    def test_action_attack_returns_action_dict(self, simple_enemy, player_adjacent):
+        from services.behavior_tree_engine import evaluate
+        ctx = self._ctx(simple_enemy, player_adjacent)
+        node = {"type": "action", "action": "attack_melee", "label": "Strike"}
+        success, result = evaluate(node, ctx)
+        assert success is True
+        assert result["action_type"] in ("attack", "special_attack")
+
+    def test_action_flee_returns_flee_dict(self, simple_enemy, player_adjacent):
+        from services.behavior_tree_engine import evaluate
+        ctx = self._ctx(simple_enemy, player_adjacent)
+        node = {"type": "action", "action": "flee"}
+        success, result = evaluate(node, ctx)
+        assert success is True
+        assert result["action_type"] == "flee"
+
+    def test_not_decorator_inverts(self, simple_enemy, player_adjacent):
+        from services.behavior_tree_engine import evaluate
+        ctx = self._ctx(simple_enemy, player_adjacent)
+        node = {"type": "not", "child": {"type": "condition", "check": "in_melee_range"}}
+        success, _ = evaluate(node, ctx)
+        assert success is False  # in_melee_range True → NOT → False
+
+    def test_list_conditions_not_empty(self):
+        from services.behavior_tree_engine import list_available_conditions
+        conditions = list_available_conditions()
+        assert len(conditions) >= 10
+        ids = [c["id"] for c in conditions]
+        assert "hp_below" in ids
+        assert "in_melee_range" in ids
+
+    def test_list_actions_not_empty(self):
+        from services.behavior_tree_engine import list_available_actions
+        actions = list_available_actions()
+        assert len(actions) >= 8
+        ids = [a["id"] for a in actions]
+        assert "attack_melee" in ids
+        assert "flee" in ids
+        assert "multiattack" in ids
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Multiattack Resolution
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestMultiattack:
+    """Verify process_enemy_turns resolves every attack in a multiattack."""
+
+    @pytest.fixture
+    def dragon_enemy(self):
+        return {
+            "id": "dragon_1", "name": "Young Dragon",
+            "hp": 120, "max_hp": 120, "ac": 17,
+            "attack_bonus": 7, "damage_die": "2d6+5",
+            "damage_type": "slashing",
+            "grid_x": 1, "grid_y": 2,
+            "abilities": {"str": 21, "dex": 10, "con": 19, "int": 14, "wis": 11, "cha": 19},
+            "conditions": [], "resistances": [], "immunities": [],
+            "faction_role": "solo",
+        }
+
+    @pytest.fixture
+    def dragon_combat(self, dragon_enemy):
+        return {
+            "combat_id": "c1", "round": 2, "combat_over": False,
+            "enemies": [dragon_enemy],
+            "player_hp": 50, "player_max_hp": 50,
+            "player_ac": 16, "player_name": "Hero",
+            "player_grid_x": 1, "player_grid_y": 2,
+        }
+
+    def _multiattack_action(self):
+        return {
+            "action_type": "special_attack",
+            "attacks": [
+                {"name": "Bite", "damage_die": "2d10+5", "damage_type": "piercing"},
+                {"name": "Claw", "damage_die": "2d6+5",  "damage_type": "slashing"},
+                {"name": "Claw", "damage_die": "2d6+5",  "damage_type": "slashing"},
+            ],
+            "advantage": False,
+            "disadvantage": False,
+            "adv_reason": "",
+            "special_effect": {"type": "multiattack", "extra_attacks": 2},
+            "grid_move": None,
+            "narration_hint": "The dragon attacks with fury.",
+            "abilities_used": ["multiattack"],
+        }
+
+    def test_multiattack_produces_three_action_entries(self, dragon_combat, dragon_enemy):
+        from services.combat_engine_service import process_enemy_turns
+        char = {
+            "hp": 50, "max_hp": 50, "ac": 14, "name": "Hero",
+            "abilities": {"str": 10, "dex": 10, "con": 12, "int": 10, "wis": 10, "cha": 10},
+            "conditions": [],
+        }
+        multiattack = self._multiattack_action()
+
+        with patch("services.enemy_behavior_service.decide_enemy_action", return_value=multiattack):
+            with patch("services.dnd_rules.roll_d20", return_value=15):
+                result = process_enemy_turns(char, dragon_combat)
+
+        # Expect 3 entries — one per attack in the multiattack list
+        assert len(result["enemy_actions"]) == 3
+
+    def test_multiattack_each_entry_has_attack_name(self, dragon_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {
+            "hp": 50, "max_hp": 50, "ac": 14, "name": "Hero",
+            "abilities": {"str": 10, "dex": 10, "con": 12, "int": 10, "wis": 10, "cha": 10},
+            "conditions": [],
+        }
+        multiattack = self._multiattack_action()
+
+        with patch("services.enemy_behavior_service.decide_enemy_action", return_value=multiattack):
+            with patch("services.dnd_rules.roll_d20", return_value=18):
+                result = process_enemy_turns(char, dragon_combat)
+
+        names = [a.get("attack_name") for a in result["enemy_actions"]]
+        assert "Bite" in names
+        assert names.count("Claw") == 2
+
+    def test_multiattack_total_damage_is_cumulative(self, dragon_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {
+            "hp": 80, "max_hp": 80, "ac": 5,  # very low AC so all attacks hit
+            "name": "Hero",
+            "abilities": {"str": 10, "dex": 10, "con": 12, "int": 10, "wis": 10, "cha": 10},
+            "conditions": [],
+        }
+        multiattack = self._multiattack_action()
+
+        with patch("services.enemy_behavior_service.decide_enemy_action", return_value=multiattack):
+            with patch("services.dnd_rules.roll_d20", return_value=18):
+                with patch("services.dnd_rules.roll_dice", return_value=6):
+                    result = process_enemy_turns(char, dragon_combat)
+
+        # Sum of individual action damages must equal total
+        summed = sum(a["damage"] for a in result["enemy_actions"])
+        assert result["total_damage_to_player"] == summed
+
+    def test_single_attack_produces_one_action_entry(self, dragon_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {
+            "hp": 50, "max_hp": 50, "ac": 14, "name": "Hero",
+            "abilities": {"str": 10, "dex": 10, "con": 12, "int": 10, "wis": 10, "cha": 10},
+            "conditions": [],
+        }
+        single = {
+            "action_type": "attack",
+            "attacks": None,
+            "advantage": False, "disadvantage": False,
+            "adv_reason": "", "special_effect": None, "grid_move": None,
+            "narration_hint": "The dragon bites.", "abilities_used": [],
+        }
+
+        with patch("services.enemy_behavior_service.decide_enemy_action", return_value=single):
+            with patch("services.dnd_rules.roll_d20", return_value=12):
+                result = process_enemy_turns(char, dragon_combat)
+
+        assert len(result["enemy_actions"]) == 1
+
+    def test_multiattack_index_field_is_sequential(self, dragon_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {
+            "hp": 50, "max_hp": 50, "ac": 14, "name": "Hero",
+            "abilities": {"str": 10, "dex": 10, "con": 12, "int": 10, "wis": 10, "cha": 10},
+            "conditions": [],
+        }
+        multiattack = self._multiattack_action()
+
+        with patch("services.enemy_behavior_service.decide_enemy_action", return_value=multiattack):
+            with patch("services.dnd_rules.roll_d20", return_value=15):
+                result = process_enemy_turns(char, dragon_combat)
+
+        indices = [a.get("multiattack_index") for a in result["enemy_actions"]]
+        assert indices == [0, 1, 2]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Faction Combat Service
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestFactionCombat:
+    """Tests for leader/follower role assignment and morale cascade."""
+
+    def _make_enemy(self, id_, name, role="", hp=20, faction_id="gang_1"):
+        return {
+            "id": id_, "name": name, "role": role,
+            "hp": hp, "max_hp": hp, "ac": 12,
+            "attack_bonus": 2, "damage_die": "1d6",
+            "abilities": {"str": 12, "dex": 10, "con": 12, "int": 8, "wis": 10, "cha": 8},
+            "conditions": [], "resistances": [], "immunities": [],
+            "faction_id": faction_id,
+        }
+
+    def test_leader_keyword_assigns_leader_role(self):
+        from services.faction_combat_service import assign_faction_roles
+        captain = self._make_enemy("c1", "Guard Captain", role="captain")
+        grunt   = self._make_enemy("g1", "Guard Grunt")
+        assign_faction_roles([captain, grunt])
+        assert captain["faction_role"] == "leader"
+        assert grunt["faction_role"] in ("follower", "flanker", "bodyguard")
+
+    def test_highest_hp_becomes_leader_when_no_keyword(self):
+        from services.faction_combat_service import assign_faction_roles
+        weak   = self._make_enemy("w1", "Weak Thug", hp=10)
+        strong = self._make_enemy("s1", "Strong Thug", hp=30)
+        assign_faction_roles([weak, strong])
+        assert strong["faction_role"] == "leader"
+        assert weak["faction_role"] in ("follower",)
+
+    def test_bodyguard_keyword_assigns_bodyguard_role(self):
+        from services.faction_combat_service import assign_faction_roles
+        captain   = self._make_enemy("c1", "Captain", role="captain")
+        bodyguard = self._make_enemy("b1", "Bodyguard Champion", role="bodyguard")
+        assign_faction_roles([captain, bodyguard])
+        assert bodyguard["faction_role"] == "bodyguard"
+
+    def test_solo_enemy_gets_solo_role(self):
+        from services.faction_combat_service import assign_faction_roles
+        lone = self._make_enemy("l1", "Lone Wolf", faction_id=None)
+        lone.pop("faction_id")
+        assign_faction_roles([lone])
+        assert lone.get("faction_role", "solo") == "solo"
+
+    def test_leader_id_set_on_followers(self):
+        from services.faction_combat_service import assign_faction_roles
+        captain = self._make_enemy("c1", "Captain", role="captain")
+        grunt   = self._make_enemy("g1", "Grunt")
+        assign_faction_roles([captain, grunt])
+        assert grunt.get("leader_id") == "c1"
+
+    def test_faction_context_leader_alive(self):
+        from services.faction_combat_service import assign_faction_roles, faction_context_for
+        captain = self._make_enemy("c1", "Captain", role="captain")
+        grunt   = self._make_enemy("g1", "Grunt")
+        assign_faction_roles([captain, grunt])
+        ctx = faction_context_for(grunt, [captain, grunt])
+        assert ctx["faction_leader_alive"] is True
+        assert ctx["faction_leader_id"] == "c1"
+
+    def test_faction_context_leader_dead(self):
+        from services.faction_combat_service import assign_faction_roles, faction_context_for
+        captain = self._make_enemy("c1", "Captain", role="captain")
+        grunt   = self._make_enemy("g1", "Grunt")
+        assign_faction_roles([captain, grunt])
+        # Leader is absent from alive list
+        ctx = faction_context_for(grunt, [grunt])
+        assert ctx["faction_leader_alive"] is False
+
+    def test_morale_break_on_failed_wis_save(self):
+        from services.faction_combat_service import apply_death_morale
+        dead_captain = self._make_enemy("c1", "Captain", role="captain")
+        dead_captain["faction_role"] = "leader"
+        grunt = self._make_enemy("g1", "Grunt")
+        grunt["faction_role"] = "follower"
+        # WIS 10 = +0 mod; roll 1 → total 1, well below DC 13
+        with patch("services.dnd_rules.roll_d20", return_value=1):
+            result = apply_death_morale(dead_captain, [grunt])
+        assert result[0].get("morale_break") is True
+
+    def test_morale_rage_on_passed_wis_save(self):
+        from services.faction_combat_service import apply_death_morale
+        dead_captain = self._make_enemy("c1", "Captain", role="captain")
+        dead_captain["faction_role"] = "leader"
+        grunt = self._make_enemy("g1", "Grunt")
+        grunt["faction_role"] = "follower"
+        # Roll 20 → always pass DC 13
+        with patch("services.dnd_rules.roll_d20", return_value=20):
+            result = apply_death_morale(dead_captain, [grunt])
+        assert result[0].get("morale_rage") is True
+
+    def test_non_leader_death_no_cascade(self):
+        from services.faction_combat_service import apply_death_morale
+        dead_grunt = self._make_enemy("g1", "Grunt")
+        dead_grunt["faction_role"] = "follower"
+        survivor = self._make_enemy("g2", "Grunt 2")
+        result = apply_death_morale(dead_grunt, [survivor])
+        assert not result[0].get("morale_break")
+        assert not result[0].get("morale_rage")
+
+    def test_morale_break_overrides_to_flee_action(self):
+        from services.faction_combat_service import apply_morale_modifiers
+        enemy = self._make_enemy("g1", "Grunt")
+        enemy["morale_break"] = True
+        result = apply_morale_modifiers(enemy, {})
+        assert result is not None
+        assert result["action_type"] == "flee"
+
+    def test_morale_rage_grants_advantage(self):
+        from services.faction_combat_service import apply_morale_modifiers
+        enemy = self._make_enemy("g1", "Grunt")
+        enemy["morale_rage"] = True
+        result = apply_morale_modifiers(enemy, {})
+        assert result is not None
+        assert result["advantage"] is True
+        # Flag cleared after use
+        assert not enemy.get("morale_rage")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# NPC Behavior Mapper
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestNpcBehaviorMapper:
+    """Tests for rule-based personality → behavior tree mapping."""
+
+    def _npc(self, role="guard", tags=None, name="Test NPC"):
+        return {
+            "id": "npc_1", "name": name,
+            "role": role,
+            "personality_tags": tags or [],
+            "description": "", "personality": "",
+            "traits": [], "occupation": role,
+        }
+
+    def test_guard_maps_to_orc_base_tree(self):
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        tree = get_behavior_tree_for_npc(self._npc(role="guard"))
+        assert tree["_source_tree"] == "orc"
+
+    def test_assassin_maps_to_assassin_tree(self):
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        tree = get_behavior_tree_for_npc(self._npc(role="assassin"))
+        assert tree["_source_tree"] == "assassin"
+
+    def test_mage_maps_to_cult_fanatic_tree(self):
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        tree = get_behavior_tree_for_npc(self._npc(role="mage"))
+        assert tree["_source_tree"] == "cult_fanatic"
+
+    def test_merchant_maps_to_goblin_flee_tree(self):
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        tree = get_behavior_tree_for_npc(self._npc(role="merchant"))
+        assert tree["_source_tree"] == "goblin"
+
+    def test_cowardly_tag_high_flee_threshold(self):
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        tree = get_behavior_tree_for_npc(self._npc(tags=["cowardly"]))
+        assert tree["_flee_threshold"] >= 0.5
+
+    def test_fearless_tag_no_flee(self):
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        tree = get_behavior_tree_for_npc(self._npc(tags=["fearless"]))
+        assert tree["_flee_threshold"] is None
+
+    def test_brave_tag_low_flee_threshold(self):
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        tree = get_behavior_tree_for_npc(self._npc(tags=["brave"]))
+        assert tree["_flee_threshold"] <= 0.15
+
+    def test_reckless_tag_injects_reckless_action(self):
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        import json
+        tree = get_behavior_tree_for_npc(self._npc(tags=["reckless"]))
+        tree_str = json.dumps(tree["node"])
+        assert "reckless_attack" in tree_str
+
+    def test_hesitant_tag_wraps_in_hesitation(self):
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        import json
+        tree = get_behavior_tree_for_npc(self._npc(tags=["morally_conflicted"]))
+        tree_str = json.dumps(tree["node"])
+        assert "is_first_round" in tree_str
+
+    def test_faction_leader_role_overrides_to_guard_leader(self):
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        npc = self._npc(role="guard")
+        npc["faction_role"] = "leader"
+        tree = get_behavior_tree_for_npc(npc)
+        assert tree["_source_tree"] == "guard_leader"
+
+    def test_faction_bodyguard_role_overrides(self):
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        npc = self._npc(role="guard")
+        npc["faction_role"] = "bodyguard"
+        tree = get_behavior_tree_for_npc(npc)
+        assert tree["_source_tree"] == "bodyguard"
+
+    def test_tree_has_required_fields(self):
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        tree = get_behavior_tree_for_npc(self._npc())
+        assert "id" in tree
+        assert "name" in tree
+        assert "node" in tree
+        assert tree["node"]  # non-empty

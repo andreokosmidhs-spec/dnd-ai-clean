@@ -1060,6 +1060,33 @@ class TestBattlefieldLayout:
         assert _parse_json_grid('{"cols": 8, "cells": []}') is None  # too few cells
 
 
+    def test_normalize_enemy_list_preserves_grid_positions(self):
+        """normalize_enemy_list must not strip grid_x/grid_y (combat resume regression)."""
+        from models.normalized_entities import normalize_enemy_list
+        enemies = [{
+            "id": "e1", "name": "Orc", "hp": 15, "max_hp": 15, "ac": 13,
+            "grid_x": 6, "grid_y": 2, "lane": 3,
+            "conditions": ["poisoned"], "resistances": ["fire"],
+            "proficiency_bonus": 2, "attack_bonus": 3, "damage_die": "1d8",
+        }]
+        result = normalize_enemy_list(enemies)
+        assert result[0]["grid_x"] == 6
+        assert result[0]["grid_y"] == 2
+        assert result[0]["lane"] == 3
+        assert result[0]["conditions"] == ["poisoned"]
+        assert result[0]["resistances"] == ["fire"]
+        assert result[0]["proficiency_bonus"] == 2
+
+    def test_normalize_enemy_list_guarantees_required_fields(self):
+        """normalize_enemy_list must fill in missing combat stats."""
+        from models.normalized_entities import normalize_enemy_list
+        enemies = [{"id": "e1", "name": "Skeleton"}]  # minimal — no hp/ac
+        result = normalize_enemy_list(enemies)
+        assert result[0]["hp"] > 0
+        assert result[0]["max_hp"] > 0
+        assert result[0]["ac"] >= 1
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 8. INTEGRATION — Full combat round simulation
 # ══════════════════════════════════════════════════════════════════════════════

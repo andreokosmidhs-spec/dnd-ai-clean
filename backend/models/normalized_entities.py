@@ -134,9 +134,14 @@ def normalize_enemy_list(enemies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Normalize a list of enemies for combat.
     Returns list of dicts (not Pydantic models) for compatibility.
+    Preserves extra fields (grid_x, grid_y, conditions, resistances, etc.)
+    while guaranteeing required combat stats are always present.
     """
     normalized = []
     for enemy_data in enemies:
         enemy_model = normalize_enemy(enemy_data)
-        normalized.append(enemy_model.model_dump(by_alias=True))
+        # Preserve all original fields first, then overwrite with guaranteed values
+        merged = dict(enemy_data)
+        merged.update(enemy_model.model_dump(by_alias=True))
+        normalized.append(merged)
     return normalized

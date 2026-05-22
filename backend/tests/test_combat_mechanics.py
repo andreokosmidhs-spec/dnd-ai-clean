@@ -1697,3 +1697,323 @@ class TestNpcBehaviorMapper:
         assert "name" in tree
         assert "node" in tree
         assert tree["node"]  # non-empty
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# New Mechanics: Breath Weapon Saves, Concentration, Downed Player, Fire/Acid
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestBreathWeaponSave:
+    """Dragon breath weapon requires DEX save, not an attack roll."""
+
+    @pytest.fixture
+    def dragon_combat(self):
+        dragon = {
+            "id": "dragon_1", "name": "Young Dragon",
+            "hp": 120, "max_hp": 120, "ac": 17,
+            "attack_bonus": 7, "damage_die": "2d6+5",
+            "grid_x": 1, "grid_y": 2,
+            "abilities": {"str": 21, "dex": 10, "con": 19, "int": 14, "wis": 11, "cha": 19},
+            "conditions": [], "resistances": [], "immunities": [],
+            "faction_role": "solo",
+        }
+        return {
+            "combat_id": "c1", "round": 1, "combat_over": False,
+            "enemies": [dragon],
+            "player_hp": 40, "player_max_hp": 40, "player_ac": 14,
+            "player_name": "Hero", "player_grid_x": 1, "player_grid_y": 2,
+        }
+
+    def _breath_action(self, dc=14):
+        return {
+            "action_type": "special_attack",
+            "attacks": None,
+            "advantage": False, "disadvantage": False, "adv_reason": "",
+            "special_effect": {
+                "type": "breath_weapon",
+                "dc": dc,
+                "save": "dex",
+                "damage_die": "8d6",
+                "damage_type": "fire",
+            },
+            "grid_move": None,
+            "narration_hint": "The dragon exhales fire!",
+            "abilities_used": ["breath_weapon"],
+        }
+
+    def test_breath_weapon_action_type_is_special_attack(self, dragon_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {"hp": 40, "max_hp": 40, "ac": 14, "name": "Hero",
+                "abilities": {"str": 10, "dex": 10, "con": 12, "int": 10, "wis": 10, "cha": 10},
+                "conditions": []}
+        with patch("services.enemy_behavior_service.decide_enemy_action", return_value=self._breath_action()):
+            with patch("services.dnd_rules.roll_d20", return_value=8):
+                with patch("services.dnd_rules.roll_dice", return_value=20):
+                    result = process_enemy_turns(char, dragon_combat)
+        action = result["enemy_actions"][0]
+        assert action["action_type"] == "special_attack"
+
+    def test_failed_breath_save_deals_full_damage(self, dragon_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {"hp": 40, "max_hp": 40, "ac": 14, "name": "Hero",
+                "abilities": {"str": 10, "dex": 10, "con": 12, "int": 10, "wis": 10, "cha": 10},
+                "conditions": []}
+        # roll 5 + 0 dex mod = 5 < DC 14 → fail → full 24 damage
+        with patch("services.enemy_behavior_service.decide_enemy_action", return_value=self._breath_action(dc=14)):
+            with patch("services.dnd_rules.roll_d20", return_value=5):
+                with patch("services.dnd_rules.roll_dice", return_value=24):
+                    result = process_enemy_turns(char, dragon_combat)
+        action = result["enemy_actions"][0]
+        assert action["saved"] is False
+        assert action["damage"] == 24
+
+    def test_passed_breath_save_halves_damage(self, dragon_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {"hp": 40, "max_hp": 40, "ac": 14, "name": "Hero",
+                "abilities": {"str": 10, "dex": 10, "con": 12, "int": 10, "wis": 10, "cha": 10},
+                "conditions": []}
+        # roll 20 + 0 dex mod = 20 ≥ DC 14 → save → half of 24 = 12
+        with patch("services.enemy_behavior_service.decide_enemy_action", return_value=self._breath_action(dc=14)):
+            with patch("services.dnd_rules.roll_d20", return_value=20):
+                with patch("services.dnd_rules.roll_dice", return_value=24):
+                    result = process_enemy_turns(char, dragon_combat)
+        action = result["enemy_actions"][0]
+        assert action["saved"] is True
+        assert action["damage"] == 12
+
+    def test_breath_weapon_save_result_fields(self, dragon_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {"hp": 40, "max_hp": 40, "ac": 14, "name": "Hero",
+                "abilities": {"str": 10, "dex": 10, "con": 12, "int": 10, "wis": 10, "cha": 10},
+                "conditions": []}
+        with patch("services.enemy_behavior_service.decide_enemy_action", return_value=self._breath_action()):
+            with patch("services.dnd_rules.roll_d20", return_value=10):
+                with patch("services.dnd_rules.roll_dice", return_value=18):
+                    result = process_enemy_turns(char, dragon_combat)
+        action = result["enemy_actions"][0]
+        assert "save_type" in action
+        assert "save_dc" in action
+        assert "save_roll" in action
+        assert action["save_dc"] == 14
+
+
+class TestConcentrationBreak:
+    """Concentration spell drops when player fails CON save after taking damage."""
+
+    @pytest.fixture
+    def one_enemy_combat(self):
+        enemy = {
+            "id": "orc_1", "name": "Orc",
+            "hp": 15, "max_hp": 15, "ac": 13,
+            "attack_bonus": 3, "damage_die": "1d8",
+            "grid_x": 1, "grid_y": 2,
+            "abilities": {"str": 16, "dex": 10, "con": 14, "int": 7, "wis": 11, "cha": 10},
+            "conditions": [], "resistances": [], "immunities": [],
+            "faction_role": "solo",
+        }
+        return {
+            "combat_id": "c1", "round": 2, "combat_over": False,
+            "enemies": [enemy],
+            "player_hp": 20, "player_max_hp": 20, "player_ac": 14,
+            "player_name": "Hero", "player_grid_x": 1, "player_grid_y": 2,
+        }
+
+    def test_failed_con_save_breaks_concentration(self, one_enemy_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {"hp": 20, "max_hp": 20, "ac": 14, "name": "Hero",
+                "abilities": {"str": 10, "dex": 10, "con": 10, "int": 10, "wis": 10, "cha": 10},
+                "conditions": [], "concentration_spell": "Bless"}
+        hit_action = {
+            "action_type": "attack", "attacks": None,
+            "advantage": False, "disadvantage": False, "adv_reason": "",
+            "special_effect": None, "grid_move": None,
+            "narration_hint": "Orc attacks.", "abilities_used": [],
+        }
+        # roll_d20 called twice: attack roll (18 = hit) then CON save (1 = fail)
+        with patch("services.enemy_behavior_service.decide_enemy_action", return_value=hit_action):
+            with patch("services.dnd_rules.roll_d20", side_effect=[18, 1]):
+                with patch("services.dnd_rules.roll_dice", return_value=8):
+                    result = process_enemy_turns(char, one_enemy_combat)
+        assert result["concentration_save"] is not None
+        assert result["concentration_save"]["saved"] is False
+        assert result["character_state_update"].get("concentration_spell") is None
+
+    def test_passed_con_save_keeps_concentration(self, one_enemy_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {"hp": 20, "max_hp": 20, "ac": 14, "name": "Hero",
+                "abilities": {"str": 10, "dex": 10, "con": 10, "int": 10, "wis": 10, "cha": 10},
+                "conditions": [], "concentration_spell": "Bless"}
+        hit_action = {
+            "action_type": "attack", "attacks": None,
+            "advantage": False, "disadvantage": False, "adv_reason": "",
+            "special_effect": None, "grid_move": None,
+            "narration_hint": "Orc attacks.", "abilities_used": [],
+        }
+        # attack roll 18 = hit, CON save 20 = pass
+        with patch("services.enemy_behavior_service.decide_enemy_action", return_value=hit_action):
+            with patch("services.dnd_rules.roll_d20", side_effect=[18, 20]):
+                with patch("services.dnd_rules.roll_dice", return_value=4):
+                    result = process_enemy_turns(char, one_enemy_combat)
+        assert result["concentration_save"]["saved"] is True
+        assert "concentration_spell" not in result["character_state_update"]
+
+    def test_no_concentration_no_save_rolled(self, one_enemy_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {"hp": 20, "max_hp": 20, "ac": 14, "name": "Hero",
+                "abilities": {"str": 10, "dex": 10, "con": 10, "int": 10, "wis": 10, "cha": 10},
+                "conditions": []}  # no concentration_spell key
+        hit_action = {
+            "action_type": "attack", "attacks": None,
+            "advantage": False, "disadvantage": False, "adv_reason": "",
+            "special_effect": None, "grid_move": None,
+            "narration_hint": "Orc attacks.", "abilities_used": [],
+        }
+        with patch("services.enemy_behavior_service.decide_enemy_action", return_value=hit_action):
+            with patch("services.dnd_rules.roll_d20", return_value=18):
+                with patch("services.dnd_rules.roll_dice", return_value=6):
+                    result = process_enemy_turns(char, one_enemy_combat)
+        assert result["concentration_save"] is None
+
+
+class TestDownedPlayerAttacks:
+    """Enemies attacking a downed player (HP=0) add death save failures."""
+
+    @pytest.fixture
+    def downed_combat(self):
+        enemy = {
+            "id": "orc_1", "name": "Orc",
+            "hp": 15, "max_hp": 15, "ac": 13,
+            "attack_bonus": 3, "damage_die": "1d8",
+            "grid_x": 1, "grid_y": 2,  # adjacent to player
+            "abilities": {"str": 16, "dex": 10, "con": 14, "int": 7, "wis": 11, "cha": 10},
+            "conditions": [], "resistances": [], "immunities": [],
+            "faction_role": "solo",
+        }
+        return {
+            "combat_id": "c1", "round": 2, "combat_over": False,
+            "enemies": [enemy],
+            "player_hp": 0, "player_max_hp": 20, "player_ac": 14,
+            "player_name": "Hero", "player_grid_x": 1, "player_grid_y": 2,
+        }
+
+    def test_adjacent_enemy_adds_two_failures(self, downed_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {"hp": 0, "max_hp": 20, "ac": 14, "name": "Hero",
+                "abilities": {"str": 10, "dex": 10, "con": 10, "int": 10, "wis": 10, "cha": 10},
+                "conditions": [], "death_saves": {"successes": 0, "failures": 0, "stable": False, "dead": False}}
+        result = process_enemy_turns(char, downed_combat)
+        action = result["enemy_actions"][0]
+        assert action["action_type"] == "attack_downed"
+        assert action["death_save_failures"] == 2
+
+    def test_existing_saves_preserved_not_reset(self, downed_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {"hp": 0, "max_hp": 20, "ac": 14, "name": "Hero",
+                "abilities": {"str": 10, "dex": 10, "con": 10, "int": 10, "wis": 10, "cha": 10},
+                "conditions": [],
+                "death_saves": {"successes": 2, "failures": 0, "stable": False, "dead": False}}
+        result = process_enemy_turns(char, downed_combat)
+        saves = result["character_state_update"].get("death_saves", {})
+        # Existing 2 successes must be preserved
+        assert saves.get("successes") == 2
+
+    def test_three_failures_marks_dead(self, downed_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {"hp": 0, "max_hp": 20, "ac": 14, "name": "Hero",
+                "abilities": {"str": 10, "dex": 10, "con": 10, "int": 10, "wis": 10, "cha": 10},
+                "conditions": [],
+                "death_saves": {"successes": 0, "failures": 2, "stable": False, "dead": False}}
+        # Adjacent enemy → 2 more failures → total 4 ≥ 3 → dead
+        result = process_enemy_turns(char, downed_combat)
+        saves = result["character_state_update"].get("death_saves", {})
+        assert saves.get("dead") is True
+
+    def test_downed_player_takes_no_hp_damage(self, downed_combat):
+        from services.combat_engine_service import process_enemy_turns
+        char = {"hp": 0, "max_hp": 20, "ac": 14, "name": "Hero",
+                "abilities": {"str": 10, "dex": 10, "con": 10, "int": 10, "wis": 10, "cha": 10},
+                "conditions": [],
+                "death_saves": {"successes": 0, "failures": 0, "stable": False, "dead": False}}
+        result = process_enemy_turns(char, downed_combat)
+        assert result["total_damage_to_player"] == 0
+        assert result["character_state_update"]["hp"] == 0
+
+
+class TestFireAcidTracking:
+    """Fire/acid damage flags on enemies suppress troll-type regeneration."""
+
+    def test_fire_damage_sets_flag_on_enemy(self):
+        from services.combat_engine_service import process_player_attack
+        enemy = {
+            "id": "troll_1", "name": "Troll",
+            "hp": 20, "max_hp": 84, "ac": 15,
+            "attack_bonus": 5, "damage_die": "1d6",
+            "abilities": {"str": 18, "dex": 13, "con": 20, "int": 7, "wis": 9, "cha": 7},
+            "conditions": [], "resistances": [], "immunities": [],
+        }
+        combat = {
+            "combat_id": "c1", "round": 1, "combat_over": False,
+            "enemies": [enemy], "player_hp": 30, "player_max_hp": 30,
+        }
+        char = {"hp": 30, "max_hp": 30, "ac": 14, "name": "Hero",
+                "abilities": {"str": 16, "dex": 12, "con": 14, "int": 10, "wis": 10, "cha": 10},
+                "proficiency_bonus": 2, "attack_bonus": 0, "conditions": []}
+        with patch("services.dnd_rules.roll_d20", return_value=18):
+            with patch("services.dnd_rules.roll_dice", return_value=6):
+                process_player_attack(
+                    "troll_1", char, combat,
+                    weapon_type="melee", weapon_damage="1d6",
+                    weapon_name="Fire Bolt", damage_type="fire"
+                )
+        assert enemy.get("_took_fire_damage") is True
+
+    def test_acid_damage_sets_flag_on_enemy(self):
+        from services.combat_engine_service import process_player_attack
+        enemy = {
+            "id": "troll_1", "name": "Troll",
+            "hp": 30, "max_hp": 84, "ac": 15,
+            "attack_bonus": 5, "damage_die": "1d6",
+            "abilities": {"str": 18, "dex": 13, "con": 20, "int": 7, "wis": 9, "cha": 7},
+            "conditions": [], "resistances": [], "immunities": [],
+        }
+        combat = {
+            "combat_id": "c1", "round": 1, "combat_over": False,
+            "enemies": [enemy], "player_hp": 30, "player_max_hp": 30,
+        }
+        char = {"hp": 30, "max_hp": 30, "ac": 14, "name": "Hero",
+                "abilities": {"str": 16, "dex": 12, "con": 14, "int": 10, "wis": 10, "cha": 10},
+                "proficiency_bonus": 2, "attack_bonus": 0, "conditions": []}
+        with patch("services.dnd_rules.roll_d20", return_value=15):
+            with patch("services.dnd_rules.roll_dice", return_value=5):
+                process_player_attack(
+                    "troll_1", char, combat,
+                    weapon_type="melee", weapon_damage="1d6",
+                    weapon_name="Acid Splash", damage_type="acid"
+                )
+        assert enemy.get("_took_acid_damage") is True
+
+    def test_non_elemental_damage_no_flag(self):
+        from services.combat_engine_service import process_player_attack
+        enemy = {
+            "id": "troll_1", "name": "Troll",
+            "hp": 30, "max_hp": 84, "ac": 15,
+            "attack_bonus": 5, "damage_die": "1d6",
+            "abilities": {"str": 18, "dex": 13, "con": 20, "int": 7, "wis": 9, "cha": 7},
+            "conditions": [], "resistances": [], "immunities": [],
+        }
+        combat = {
+            "combat_id": "c1", "round": 1, "combat_over": False,
+            "enemies": [enemy], "player_hp": 30, "player_max_hp": 30,
+        }
+        char = {"hp": 30, "max_hp": 30, "ac": 14, "name": "Hero",
+                "abilities": {"str": 16, "dex": 12, "con": 14, "int": 10, "wis": 10, "cha": 10},
+                "proficiency_bonus": 2, "attack_bonus": 0, "conditions": []}
+        with patch("services.dnd_rules.roll_d20", return_value=15):
+            with patch("services.dnd_rules.roll_dice", return_value=5):
+                process_player_attack(
+                    "troll_1", char, combat,
+                    weapon_type="melee", weapon_damage="1d6",
+                    weapon_name="Sword", damage_type="slashing"
+                )
+        assert not enemy.get("_took_fire_damage")
+        assert not enemy.get("_took_acid_damage")

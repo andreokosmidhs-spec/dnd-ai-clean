@@ -2828,6 +2828,16 @@ async def process_action(request: dict):
                         "successes": 0, "failures": 0, "stable": False, "dead": False
                     })
 
+                # Concentration save result
+                conc_save = enemy_result.get("concentration_save")
+                if conc_save:
+                    combat_state["_concentration_save"] = conc_save
+                    if not conc_save["saved"]:
+                        combat_state["_concentration_broken"] = True
+                        char_doc["character_state"]["concentration_spell"] = None
+                        char_doc["character_state"]["concentration_card_id"] = None
+                        logger.info("🎯 Concentration broken (dungeon_forge sync): %s", conc_save["spell"])
+
                 # Check if player defeated (fallback — shouldn't happen now with death saves)
                 if enemy_result.get('combat_over'):
                     combat_state['combat_over'] = True

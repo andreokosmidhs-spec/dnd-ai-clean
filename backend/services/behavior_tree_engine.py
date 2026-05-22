@@ -75,8 +75,8 @@ def build_context(
         "enemy_type": enemy.get("type", "humanoid"),
         "special_abilities": enemy.get("special_abilities") or [],
         "ability_charges": ability_charges,
-        "took_fire_damage_last_turn": bool(enemy.get("took_fire_damage_last_turn", False)),
-        "took_acid_damage_last_turn": bool(enemy.get("took_acid_damage_last_turn", False)),
+        "took_fire_damage_last_turn": bool(enemy.get("took_fire_damage_last_turn") or enemy.get("_took_fire_damage")),
+        "took_acid_damage_last_turn": bool(enemy.get("took_acid_damage_last_turn") or enemy.get("_took_acid_damage")),
         "is_first_attack_this_turn": bool(enemy.get("is_first_attack_this_turn", True)),
         "enemy": enemy,
         # Faction / team context — populated by faction_combat_service if present

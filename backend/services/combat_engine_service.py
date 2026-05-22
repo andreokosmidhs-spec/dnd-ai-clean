@@ -247,6 +247,7 @@ def process_player_attack(
     weapon_type: str = "melee",
     weapon_damage: str = "1d4",
     weapon_name: str = "Unarmed",
+    damage_type: str = "",
 ) -> Dict[str, Any]:
     """
     Process player's attack action with strict D&D 5e mechanics.
@@ -340,6 +341,14 @@ def process_player_attack(
 
     # Update target HP
     target['hp'] = attack_result['new_target_hp']
+
+    # Track fire/acid damage so troll-type regeneration can be suppressed next turn
+    if attack_result.get('hit') and damage_type:
+        dt = damage_type.lower()
+        if "fire" in dt:
+            target["_took_fire_damage"] = True
+        if "acid" in dt:
+            target["_took_acid_damage"] = True
 
     # Handle unconscious state
     if attack_result['knocked_unconscious']:
@@ -555,6 +564,8 @@ def process_enemy_turns(
         assign_faction_roles, faction_context_for, apply_morale_modifiers
     )
 
+    from services.dnd_rules import roll_d20 as _roll_d20, roll_dice as _roll_dice
+
     enemies = combat_state.get('enemies', [])
     alive_enemies = [e for e in enemies if e.get('hp', 0) > 0]
 
@@ -572,6 +583,7 @@ def process_enemy_turns(
 
     enemy_actions = []
     total_damage = 0
+    death_save_failures = 0   # accumulated when enemies attack a downed player
     player_hp = character_state.get('hp', 10)
     player_max_hp = character_state.get('max_hp', 10)
 
@@ -625,6 +637,38 @@ def process_enemy_turns(
 
         action_type = action.get("action_type", "attack")
 
+        # ── Clear per-turn damage flags so regen suppression is accurate ─────
+        enemy.pop("_took_fire_damage", None)
+        enemy.pop("_took_acid_damage", None)
+
+        # ── Player already downed → attack adds death save failures, not damage
+        if player_target["hp"] <= 0:
+            ex = enemy.get("grid_x", 2)
+            ey = enemy.get("grid_y", 2)
+            px2 = base_combat_context.get("player_grid_x", 1)
+            py2 = base_combat_context.get("player_grid_y", 2)
+            is_adjacent = max(abs(ex - px2), abs(ey - py2)) <= 1
+            failures = 2 if is_adjacent else 1
+            death_save_failures += failures
+            enemy_actions.append({
+                "attacker": enemy_name,
+                "action_type": "attack_downed",
+                "attack_roll": 0,
+                "total_attack": 0,
+                "target_ac": player_target["ac"],
+                "hit": True,
+                "critical": is_adjacent,
+                "critical_miss": False,
+                "damage": 0,
+                "death_save_failures": failures,
+                "narration_hint": action.get(
+                    "narration_hint",
+                    f"The {enemy_name} strikes the fallen hero, dealing {failures} death save failure{'s' if failures > 1 else ''}!"
+                ),
+                "abilities_used": action.get("abilities_used", []),
+            })
+            continue
+
         # ── Apply grid move first (if any) ───────────────────────────────────
         grid_move = action.get("grid_move")
         if grid_move:
@@ -670,6 +714,76 @@ def process_enemy_turns(
         adv = action.get("advantage", False)
         disadv = action.get("disadvantage", False)
         special_effect = action.get("special_effect")
+
+        # ── Saving-throw attacks: breath weapon, frightful presence ───────────
+        se_type = (special_effect or {}).get("type", "")
+        if se_type in ("breath_weapon", "frightful_presence"):
+            dc       = special_effect.get("dc", 14)
+            save_stat = special_effect.get("save", "dex") if se_type == "breath_weapon" else "wis"
+            stat_val  = player_target.get("abilities", {}).get(save_stat, 10)
+            save_mod  = calculate_ability_modifier(stat_val)
+            save_roll = _roll_d20()
+            save_total = save_roll + save_mod
+            saved = save_total >= dc
+
+            if se_type == "breath_weapon":
+                raw_dmg = _roll_dice(special_effect.get("damage_die", "6d6"))
+                dmg_dealt = raw_dmg // 2 if saved else raw_dmg
+                total_damage += dmg_dealt
+                player_target["hp"] = max(0, player_target["hp"] - dmg_dealt)
+                enemy_actions.append({
+                    "attacker": enemy_name,
+                    "action_type": "special_attack",
+                    "save_type": save_stat,
+                    "save_roll": save_roll,
+                    "save_total": save_total,
+                    "save_dc": dc,
+                    "saved": saved,
+                    "attack_roll": save_roll,
+                    "total_attack": save_total,
+                    "target_ac": dc,
+                    "hit": not saved,
+                    "critical": False,
+                    "critical_miss": False,
+                    "damage": dmg_dealt,
+                    "advantage": False,
+                    "disadvantage": False,
+                    "adv_reason": "Half damage on save" if saved else "",
+                    "narration_hint": action.get("narration_hint", f"The {enemy_name} uses its breath weapon!"),
+                    "abilities_used": action.get("abilities_used", []),
+                })
+            else:  # frightful_presence
+                if not saved:
+                    conditions = player_target.get("conditions", [])
+                    if "frightened" not in conditions:
+                        conditions.append("frightened")
+                        player_target["conditions"] = conditions
+                enemy_actions.append({
+                    "attacker": enemy_name,
+                    "action_type": "special_attack",
+                    "save_type": "wis",
+                    "save_roll": save_roll,
+                    "save_total": save_total,
+                    "save_dc": dc,
+                    "saved": saved,
+                    "attack_roll": save_roll,
+                    "total_attack": save_total,
+                    "target_ac": dc,
+                    "hit": not saved,
+                    "critical": False,
+                    "critical_miss": False,
+                    "damage": 0,
+                    "advantage": False,
+                    "disadvantage": False,
+                    "adv_reason": "",
+                    "narration_hint": action.get(
+                        "narration_hint",
+                        f"The {enemy_name} exerts its terrifying presence! DC {dc} WIS save — {'you hold your nerve.' if saved else 'you are frightened!'}"
+                    ),
+                    "abilities_used": action.get("abilities_used", []),
+                    "condition_applied": None if saved else "frightened",
+                })
+            continue
 
         attacks_list = action.get("attacks")
         if attacks_list and isinstance(attacks_list, list):
@@ -790,16 +904,66 @@ def process_enemy_turns(
 
             enemy_actions.append(action_summary)
 
-    # ── Update player HP ──────────────────────────────────────────────────────
+    # ── Update player HP and conditions ──────────────────────────────────────
     new_player_hp = player_target["hp"]
+    was_already_dying = player_hp <= 0          # HP at start of enemy turns
     player_dying = new_player_hp <= 0
 
     char_state_update: Dict[str, Any] = {"hp": new_player_hp}
-    if player_dying:
+
+    # Propagate any conditions the enemy applied (e.g. frightened)
+    if player_target.get("conditions") != character_state.get("conditions", []):
+        char_state_update["conditions"] = player_target["conditions"]
+
+    # ── Death save tracking ───────────────────────────────────────────────────
+    existing_saves = dict(character_state.get("death_saves") or {})
+    if was_already_dying and death_save_failures > 0:
+        new_failures = existing_saves.get("failures", 0) + death_save_failures
+        dead = new_failures >= 3
+        updated_saves = {**existing_saves, "failures": new_failures, "dead": dead, "stable": False}
+        char_state_update["death_saves"] = updated_saves
+        if dead:
+            logger.warning("💀 Player has accumulated 3 death save failures — dead.")
+        else:
+            logger.warning("💔 Player takes %d death save failure(s) while downed (%d/3)", death_save_failures, new_failures)
+    elif player_dying and not was_already_dying:
         char_state_update["death_saves"] = {
             "successes": 0, "failures": 0, "stable": False, "dead": False
         }
         logger.warning("Player HP dropped to 0 — entering dying state (death saves)")
+    elif was_already_dying:
+        # Still dying but no extra failures this turn — preserve existing saves
+        char_state_update["death_saves"] = existing_saves
+
+    # ── Concentration break on damage ────────────────────────────────────────
+    conc_save_result = None
+    if total_damage > 0 and character_state.get("concentration_spell"):
+        conc_dc = max(10, total_damage // 2)
+        con_mod = calculate_ability_modifier(
+            character_state.get("abilities", {}).get("con", 10)
+        )
+        conc_roll  = _roll_d20()
+        conc_total = conc_roll + con_mod
+        conc_saved = conc_total >= conc_dc
+        conc_save_result = {
+            "roll": conc_roll,
+            "total": conc_total,
+            "dc": conc_dc,
+            "saved": conc_saved,
+            "spell": character_state["concentration_spell"],
+        }
+        if not conc_saved:
+            char_state_update["concentration_spell"] = None
+            char_state_update["concentration_card_id"] = None
+            logger.info(
+                "🎯 Concentration broken: %s rolled %d vs DC %d",
+                character_state["concentration_spell"], conc_total, conc_dc,
+            )
+        else:
+            logger.info(
+                "✅ Concentration held: %s rolled %d vs DC %d",
+                character_state["concentration_spell"], conc_total, conc_dc,
+            )
 
     return {
         "enemy_actions": enemy_actions,
@@ -808,6 +972,7 @@ def process_enemy_turns(
         "combat_over": False,   # Wait for death saves
         "player_dying": player_dying,
         "death_saves": char_state_update.get("death_saves"),
+        "concentration_save": conc_save_result,
         "outcome": None,
     }
 

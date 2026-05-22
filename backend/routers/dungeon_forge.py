@@ -2937,7 +2937,7 @@ async def process_action(request: dict):
                     active_npcs = world_state["world_state"].get("active_npcs", [])
                     enemy_names = [e["name"] for e in combat_result["combat_state_update"]["enemies"]]
                     world_state_update["active_npcs"] = [n for n in active_npcs if n not in enemy_names]
-                    
+
                     # P3: Apply XP gain and level-ups
                     xp_gained = combat_result.get("xp_gained", 0)
                     if xp_gained > 0:
@@ -2951,6 +2951,24 @@ async def process_action(request: dict):
                         player_updates["xp_gained"] = xp_gained
                         player_updates["level_up_events"] = level_up_events
                         logger.info(f"💰 Awarded {xp_gained} XP, level-ups: {level_up_events}")
+
+                    # ── Generate loot for all defeated enemies ──────────────
+                    try:
+                        from services.loot_service import generate_combat_loot
+                        defeated_enemies = combat_result["combat_state_update"].get("enemies", [])
+                        loot_results = generate_combat_loot(
+                            defeated_enemies,
+                            char_doc["character_state"],
+                        )
+                        player_updates["pending_loot"] = loot_results
+                        total_loot_items = sum(
+                            len(l["guaranteed"]) + len(l["hidden"]) for l in loot_results
+                        )
+                        total_gold = sum(l["gold"] for l in loot_results)
+                        logger.info("🎒 Generated loot: %d items, %d gp across %d enemies",
+                                    total_loot_items, total_gold, len(defeated_enemies))
+                    except Exception as _le:
+                        logger.warning("⚠️ Loot generation failed: %s", _le)
                 
                 elif combat_result["outcome"] == "player_defeated":
                     # P3: Handle player defeat

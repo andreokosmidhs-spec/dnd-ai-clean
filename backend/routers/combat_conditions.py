@@ -548,3 +548,84 @@ async def make_saving_throw(campaign_id: str, body: dict = Body(default={})):
     )
 
     return {"ok": True, "result": result}
+
+
+# ── Loot ──────────────────────────────────────────────────────────────────────
+
+@router.post("/{campaign_id}/combat/take-loot")
+async def take_loot(campaign_id: str, body: dict = Body(default={})):
+    """
+    Player takes loot items after combat victory.
+
+    Body: {
+        character_id: str,
+        take_item_names?: [str]   # omit or null to take everything
+    }
+    Returns: { ok, inventory, gold, items_added, gold_added }
+    """
+    character_id = body.get("character_id")
+    if not character_id:
+        raise HTTPException(400, "character_id required")
+
+    take_item_names = body.get("take_item_names")  # None = take all
+
+    db = _db()
+
+    char_doc = await db.characters.find_one({"character_id": character_id})
+    if not char_doc:
+        raise HTTPException(404, "Character not found")
+
+    char_state = char_doc.get("character_state", {})
+    pending_loot: list = char_state.get("pending_loot", [])
+
+    if not pending_loot:
+        return {
+            "ok": True,
+            "inventory": char_state.get("inventory", []),
+            "gold": char_state.get("gold", 0),
+            "items_added": [],
+            "gold_added": 0,
+            "message": "No pending loot",
+        }
+
+    from services.loot_service import apply_loot
+    patch = apply_loot(pending_loot, char_state, take_item_names=take_item_names)
+
+    # Determine whether all loot was taken
+    if take_item_names is None:
+        remaining_loot = []
+    else:
+        taken_set = set(take_item_names)
+        remaining_loot = []
+        for loot_entry in pending_loot:
+            remaining_items = [
+                item for item in loot_entry.get("guaranteed", []) + loot_entry.get("hidden", [])
+                if item["name"] not in taken_set
+            ]
+            if remaining_items:
+                remaining_loot.append({**loot_entry, "guaranteed": remaining_items, "hidden": [], "gold": 0})
+
+    new_char_state = {
+        **char_state,
+        "inventory": patch["inventory"],
+        "gold": patch["gold"],
+        "pending_loot": remaining_loot,
+    }
+
+    await db.characters.update_one(
+        {"character_id": character_id},
+        {"$set": {"character_state": new_char_state}},
+    )
+
+    logger.info(
+        "🎒 Loot taken — character %s: +%d items, +%d gp",
+        character_id, len(patch["_items_added"]), patch["_gold_added"],
+    )
+
+    return {
+        "ok": True,
+        "inventory": patch["inventory"],
+        "gold": patch["gold"],
+        "items_added": patch["_items_added"],
+        "gold_added": patch["_gold_added"],
+    }

@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import GameEscapeMenu from './GameEscapeMenu';
 import DMNotebookPanel from './DMNotebookPanel';
 import CanonTimelinePanel from './CanonTimelinePanel';
+import LootPanel from './LootPanel';
 import { checkLevelUp, getLevelFromXP, getXPForNextLevel } from '../data/levelingData';
 import { useSessionCore } from '../store/useSessionCore';
 import { raceData as RACE_DATA } from '../data/raceData';
@@ -104,6 +105,8 @@ const RPGGame = () => {
   const [gameState, setGameState] = useState('main-menu'); // main-menu, playing
   // Full-screen combat overlay — set to the combatState dict when combat begins, null otherwise.
   const [combatScene, setCombatScene] = useState(null);
+  // Loot panel shown after victory; holds pending_loot array from the backend.
+  const [pendingLoot, setPendingLoot] = useState(null);
   // ESC pause menu — only meaningful in-game.
   const [escMenuOpen, setEscMenuOpen] = useState(false);
   // DM Notebook — opened from the ESC pause menu, shows persistent lessons.
@@ -1256,7 +1259,7 @@ const RPGGame = () => {
       {combatScene && (
         <CombatScreen
           combatState={combatScene}
-          onCombatEnd={({ outcome, narration }) => {
+          onCombatEnd={({ outcome, narration, pendingLoot: loot }) => {
             setCombatScene(null);
             if (narration) {
               addToGameLog({ type: 'dm', message: narration, timestamp: Date.now() });
@@ -1270,7 +1273,19 @@ const RPGGame = () => {
                   : '💀 You were defeated...',
               timestamp: Date.now(),
             });
+            if (outcome === 'victory' && loot?.length > 0) {
+              setPendingLoot(loot);
+            }
           }}
+        />
+      )}
+
+      {pendingLoot && (
+        <LootPanel
+          pendingLoot={pendingLoot}
+          campaignId={activeCampaignId || campaignId}
+          characterId={activeCharacterId}
+          onClose={() => setPendingLoot(null)}
         />
       )}
     </div>

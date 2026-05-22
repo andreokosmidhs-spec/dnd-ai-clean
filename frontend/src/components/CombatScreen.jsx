@@ -449,13 +449,18 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
             onCombatEnd({
               outcome: data.outcome || (anyAlive ? 'fled' : 'victory'),
               narration: data.narration,
+              pendingLoot: data.player_updates?.pending_loot || null,
             });
           }, 800);
         }
       }
       if (data.combat_over) {
         setTimeout(() => {
-          onCombatEnd({ outcome: data.outcome || 'victory', narration: data.narration });
+          onCombatEnd({
+            outcome: data.outcome || 'victory',
+            narration: data.narration,
+            pendingLoot: data.player_updates?.pending_loot || null,
+          });
         }, 800);
       }
 

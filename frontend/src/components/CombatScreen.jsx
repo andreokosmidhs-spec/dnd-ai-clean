@@ -891,14 +891,21 @@ const CombatScreen = ({ combatState, onCombatEnd }) => {
         </div>
       )}
 
-      {/* ── DM Tools toggle (shown when toolbar is closed) ────────────────── */}
+      {/* ── Battle Config (shown when toolbar is closed) ─────────────────────── */}
       {!showDmTools && (
-        <div className="flex-shrink-0 flex justify-end px-4 py-1 bg-slate-900/70 border-b border-slate-800/40">
+        <div className="flex-shrink-0 flex items-center justify-end gap-2 px-4 py-1 bg-slate-900/70 border-b border-slate-800/40">
+          <a
+            href="#/behavior-trees"
+            className="flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-lg border border-slate-700/60 text-slate-500 hover:border-amber-500/60 hover:text-amber-400 transition-all"
+            title="Edit enemy AI behavior trees"
+          >
+            AI Trees
+          </a>
           <button
             onClick={() => setShowDmTools(true)}
             className="flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-lg border border-slate-700/60 text-slate-500 hover:border-violet-500/60 hover:text-violet-400 transition-all"
           >
-            🗺 DM Map Tools
+            Battle Config
           </button>
         </div>
       )}

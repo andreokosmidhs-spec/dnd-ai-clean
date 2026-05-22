@@ -20,6 +20,7 @@ import CampaignSetup from "./pages/CampaignSetup";
 import CampaignGenerate from "./pages/CampaignGenerate";
 import DevCampaignLogPreview from "./pages/DevCampaignLogPreview";
 import PressureDashboard from "./pages/PressureDashboard";
+import BehaviorTreePage from "./pages/BehaviorTreePage";
 import { hydrateFromLegacyStorage, cleanupLegacyStorage } from "./utils/stateHydration";
 import "./devStoreDebug"; // Dev-only: expose store in console
 
@@ -148,6 +149,9 @@ function App() {
 
               {/* DM Tool: Living Campaign Pressure Engine dashboard */}
               <Route path="/pressure-dashboard" element={<PressureRoute />} />
+
+              {/* DM Tool: Behavior Tree Editor */}
+              <Route path="/behavior-trees" element={<BehaviorTreePage />} />
             </Routes>
             <FeedbackButton />
           </BrowserRouter>

@@ -309,7 +309,16 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
             <p>✨ Create your character and embark on an epic adventure</p>
             <p>🎭 AI-powered Dungeon Master guides your story</p>
             <p>🎲 D&D-style mechanics and ability checks</p>
-            <div className="pt-2">
+            <div className="pt-2 flex flex-wrap justify-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white"
+                onClick={() => navigate("/behavior-trees")}
+                title="Edit enemy AI behavior trees"
+              >
+                AI Battle Trees
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"

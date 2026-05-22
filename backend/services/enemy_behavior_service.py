@@ -380,6 +380,45 @@ def _maybe_regenerate(enemy: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# BEHAVIOR TREE INTEGRATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _load_tree_for_enemy(enemy: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Resolve the behavior tree for this enemy.
+
+    Priority:
+      1. enemy["behavior_tree_id"]
+      2. enemy["id"]  (template id, e.g. "goblin")
+      3. enemy["behavior_profile"]  (legacy profile name, mapped to tree id)
+      4. "generic_brute"
+    """
+    try:
+        from data.behavior_trees import DEFAULT_TREES
+    except ImportError:
+        logger.error("Cannot import DEFAULT_TREES from data.behavior_trees")
+        return None
+
+    # Candidates in priority order
+    candidates = [
+        enemy.get("behavior_tree_id"),
+        enemy.get("template_id"),  # may be set by build_combat_enemy
+        # Try to map old behavior_profile names to tree ids
+        enemy.get("behavior_profile"),
+        "generic_brute",
+    ]
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        tree = DEFAULT_TREES.get(candidate)
+        if tree:
+            return tree
+
+    return DEFAULT_TREES.get("generic_brute")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # MAIN DECISION FUNCTION
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -389,26 +428,48 @@ def decide_enemy_action(
     combat_context: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    Decide what the enemy does on its turn using the behavior tree.
+    Decide what the enemy does on its turn using the behavior tree engine.
+
+    Behavior tree resolution order:
+      1. enemy["behavior_tree_id"]
+      2. enemy["id"] / enemy["template_id"]
+      3. enemy["behavior_profile"] (legacy fallback)
+      4. "generic_brute" (ultimate fallback)
 
     Args:
         enemy: Enemy dict with hp, stats, behavior_profile, special_abilities, etc.
         player_target: Dict with at minimum {"ac", "hp", "max_hp"}.
         combat_context: {
             "round": int,
-            "alive_enemies": list,       # all enemies still alive including self
-            "grid_cells": list,          # optional grid state
+            "alive_enemies": list,
             "player_grid_x": int,
             "player_grid_y": int,
         }
 
     Returns:
-        Action dict with keys:
-            action_type, attack_bonus, damage_die, damage_type,
-            advantage, disadvantage, adv_reason, special_effect,
-            grid_move, narration_hint, abilities_used
+        Action dict compatible with existing combat engine.
     """
-    # Priority 0: Regeneration (heals before acting; skip attack if full heal brings over threshold)
+    tree = _load_tree_for_enemy(enemy)
+
+    if tree is not None:
+        try:
+            from services.behavior_tree_engine import run_tree
+            node = tree.get("node")
+            if node:
+                action = run_tree(node, enemy, player_target, combat_context)
+                # Ensure required keys are always present
+                defaults = _default_action(enemy)
+                for key, val in defaults.items():
+                    action.setdefault(key, val)
+                return action
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Behavior tree '%s' raised %s; falling back to profile.",
+                tree.get("id"), exc
+            )
+
+    # ── Legacy profile fallback (if tree engine fails or tree not found) ──────
+    # Priority 0: Regeneration
     regen_action = _maybe_regenerate(enemy)
     if regen_action:
         return regen_action

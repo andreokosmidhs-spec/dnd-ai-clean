@@ -854,6 +854,16 @@ class TestTargetResolver:
         assert is_hostile_action("I strike with my sword") is True
         assert is_hostile_action("I kill the guard") is True
 
+    def test_duel_and_challenge_are_hostile(self):
+        from services.target_resolver import is_hostile_action
+        assert is_hostile_action("I challenge him to a duel") is True
+        assert is_hostile_action("I challenge the guard") is True
+        assert is_hostile_action("I want to duel this man") is True
+        assert is_hostile_action("accept the duel") is True
+        assert is_hostile_action("I draw my sword and face him") is True
+        assert is_hostile_action("fight me if you dare") is True
+        assert is_hostile_action("I spar with the knight") is True
+
     def test_peaceful_action_not_hostile(self):
         from services.target_resolver import is_hostile_action
         assert is_hostile_action("I talk to the merchant") is False

@@ -388,11 +388,16 @@ def _load_tree_for_enemy(enemy: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     Resolve the behavior tree for this enemy.
 
     Priority:
+      0. enemy["behavior_tree"]  — inline tree embedded by NPC behavior mapper
       1. enemy["behavior_tree_id"]
       2. enemy["id"]  (template id, e.g. "goblin")
       3. enemy["behavior_profile"]  (legacy profile name, mapped to tree id)
       4. "generic_brute"
     """
+    # Priority 0: inline tree from NPC character card mapping (highest priority)
+    if enemy.get("behavior_tree") and isinstance(enemy["behavior_tree"], dict):
+        return enemy["behavior_tree"]
+
     try:
         from data.behavior_trees import DEFAULT_TREES
     except ImportError:

@@ -77,11 +77,11 @@ def convert_npc_to_enemy(
     
     # Scale HP for character level
     scaled_hp = base_hp + (character_level - 1) * 2
-    
+
     # Create enemy ID
     enemy_id = f"npc_enemy_{npc_data.get('id', npc_data.get('name', 'unknown').lower().replace(' ', '_'))}"
-    
-    return {
+
+    enemy = {
         "id": enemy_id,
         "name": npc_data.get('name', 'Hostile NPC'),
         "hp": scaled_hp,
@@ -95,8 +95,20 @@ def convert_npc_to_enemy(
         "faction_id": None,
         "participant_type": "npc",
         "is_essential": False,
-        "plot_armor_attempts": 0
+        "plot_armor_attempts": 0,
     }
+
+    # Derive behavior tree from NPC character card (role + personality_tags)
+    try:
+        from services.npc_behavior_mapper import get_behavior_tree_for_npc
+        npc_tree = get_behavior_tree_for_npc({**npc_data, "damage_die": damage_die})
+        enemy["behavior_tree"] = npc_tree
+        enemy["behavior_tree_id"] = npc_tree["id"]
+        logger.info(f"🎭 {enemy['name']} behavior tree: {npc_tree['_source_tree']} (flee@{npc_tree.get('_flee_threshold')})")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not map NPC behavior for {enemy['name']}: {e}")
+
+    return enemy
 
 
 def start_combat_with_target(

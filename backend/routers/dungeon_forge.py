@@ -1719,6 +1719,9 @@ async def create_character_endpoint(request: CharacterCreateRequest):
             if not character_state_dict.get("concentration_spell"):
                 character_state_dict["concentration_spell"] = None
                 character_state_dict["concentration_card_id"] = None
+            # Initialise hit dice tracking (max = level, all available at start)
+            character_state_dict["hit_dice_max"] = _char_level
+            character_state_dict.setdefault("hit_dice_remaining", _char_level)
             logger.info(f"🔮 Spell slots for {_cls_name} lv{_char_level}: {_slots}")
 
             char_doc = await create_character_doc(
@@ -2159,15 +2162,18 @@ async def process_action(request: dict):
                     "hp": _result["hp"],
                     "spell_slots": _result["spell_slots"],
                     "conditions": _result["conditions"],
+                    "hit_dice_remaining": _result["hit_dice_remaining"],
+                    "hit_dice_max": _result["hit_dice_max"],
                 }
                 if "spell_slots_max" in _result:
                     _updated_char["spell_slots_max"] = _result["spell_slots_max"]
 
                 await update_character_state(campaign_id, character_id, _updated_char)
                 logger.info(
-                    "💤 %s rest: HP %d→%d, slots recovered: %s",
+                    "💤 %s rest: HP %d→%d, hit dice %d/%d, slots recovered: %s",
                     _rest_type.title(),
                     char_state.get("hp", 0), _result["hp"],
+                    _result["hit_dice_remaining"], _result["hit_dice_max"],
                     _result.get("slots_recovered", {}),
                 )
 
@@ -2178,6 +2184,8 @@ async def process_action(request: dict):
                         "rest_result": _result,
                         "hp": _result["hp"],
                         "spell_slots": _result["spell_slots"],
+                        "hit_dice_remaining": _result["hit_dice_remaining"],
+                        "hit_dice_max": _result["hit_dice_max"],
                     },
                     "world_state_update": {},
                     "entity_mentions": [],

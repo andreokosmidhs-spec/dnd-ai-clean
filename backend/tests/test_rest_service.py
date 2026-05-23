@@ -51,8 +51,9 @@ class TestDetectRestIntent:
 
 # ── compute_short_rest ────────────────────────────────────────────────────────
 
-def make_char(cls="fighter", level=3, hp=5, max_hp=10, con=12, conditions=None, spell_slots=None, spell_slots_max=None):
-    return {
+def make_char(cls="fighter", level=3, hp=5, max_hp=10, con=12, conditions=None, spell_slots=None, spell_slots_max=None,
+              hit_dice_remaining=None, hit_dice_max=None):
+    char = {
         "class": cls,
         "level": level,
         "hp": hp,
@@ -62,6 +63,11 @@ def make_char(cls="fighter", level=3, hp=5, max_hp=10, con=12, conditions=None, 
         "spell_slots": spell_slots or {},
         "spell_slots_max": spell_slots_max or {},
     }
+    if hit_dice_remaining is not None:
+        char["hit_dice_remaining"] = hit_dice_remaining
+    if hit_dice_max is not None:
+        char["hit_dice_max"] = hit_dice_max
+    return char
 
 
 class TestComputeShortRest:
@@ -260,3 +266,92 @@ class TestBuildRestNarration:
     def test_no_location_for_unknown(self):
         result = build_rest_narration("short", self._short_result(), location="Unknown")
         assert "Unknown" not in result
+
+
+# ── hit dice tracking ─────────────────────────────────────────────────────────
+
+class TestHitDiceTracking:
+    def test_short_rest_decrements_hit_dice(self):
+        char = make_char(level=3, hit_dice_remaining=3, hit_dice_max=3)
+        result = compute_short_rest(char)
+        assert result["hit_dice_remaining"] == 2
+
+    def test_short_rest_no_dice_available(self):
+        char = make_char(level=3, hit_dice_remaining=0, hit_dice_max=3)
+        result = compute_short_rest(char)
+        assert result["no_hit_dice"] is True
+        assert result["hp_gained"] == 0
+        assert result["hit_dice_remaining"] == 0
+
+    def test_short_rest_no_dice_no_hp_recovery(self):
+        char = make_char(hp=5, max_hp=10, hit_dice_remaining=0, hit_dice_max=3)
+        result = compute_short_rest(char)
+        assert result["hp"] == 5  # no change
+
+    def test_short_rest_with_last_die(self):
+        char = make_char(level=2, hit_dice_remaining=1, hit_dice_max=2)
+        result = compute_short_rest(char)
+        assert result["hit_dice_remaining"] == 0
+        assert result["no_hit_dice"] is False
+
+    def test_short_rest_result_includes_hit_dice_max(self):
+        char = make_char(level=4, hit_dice_remaining=2, hit_dice_max=4)
+        result = compute_short_rest(char)
+        assert result["hit_dice_max"] == 4
+
+    def test_long_rest_recovers_half_level(self):
+        # Level 4: recover max(1, 4//2) = 2 dice
+        char = make_char(level=4, hit_dice_remaining=0, hit_dice_max=4)
+        result = compute_long_rest(char)
+        assert result["hit_dice_remaining"] == 2
+        assert result["hit_dice_recovered"] == 2
+
+    def test_long_rest_level_1_recovers_at_least_1(self):
+        # Level 1: max(1, 1//2) = max(1, 0) = 1
+        char = make_char(level=1, hit_dice_remaining=0, hit_dice_max=1)
+        result = compute_long_rest(char)
+        assert result["hit_dice_remaining"] == 1
+        assert result["hit_dice_recovered"] == 1
+
+    def test_long_rest_level_3_recovers_1(self):
+        # Level 3: max(1, 3//2) = max(1, 1) = 1
+        char = make_char(level=3, hit_dice_remaining=1, hit_dice_max=3)
+        result = compute_long_rest(char)
+        assert result["hit_dice_remaining"] == 2
+        assert result["hit_dice_recovered"] == 1
+
+    def test_long_rest_does_not_exceed_max(self):
+        char = make_char(level=4, hit_dice_remaining=3, hit_dice_max=4)
+        result = compute_long_rest(char)
+        assert result["hit_dice_remaining"] <= 4
+
+    def test_long_rest_already_full_dice(self):
+        char = make_char(level=4, hit_dice_remaining=4, hit_dice_max=4)
+        result = compute_long_rest(char)
+        assert result["hit_dice_remaining"] == 4
+        assert result["hit_dice_recovered"] == 0
+
+    def test_default_remaining_equals_level(self):
+        # Character without hit_dice_remaining tracked defaults to level
+        char = make_char(level=3)  # no hit_dice_remaining key
+        result = compute_short_rest(char)
+        # Defaults to level=3, so spending 1 gives 2
+        assert result["hit_dice_remaining"] == 2
+
+    def test_narration_shows_remaining_dice(self):
+        char = make_char(level=3, hit_dice_remaining=3, hit_dice_max=3)
+        result = compute_short_rest(char)
+        narration = build_rest_narration("short", result)
+        assert "2/3" in narration  # decremented from 3 to 2
+
+    def test_narration_no_dice_message(self):
+        char = make_char(level=3, hit_dice_remaining=0, hit_dice_max=3)
+        result = compute_short_rest(char)
+        narration = build_rest_narration("short", result)
+        assert "no hit dice" in narration.lower() or "long rest" in narration.lower()
+
+    def test_narration_long_rest_shows_dice_recovered(self):
+        char = make_char(level=4, hit_dice_remaining=0, hit_dice_max=4)
+        result = compute_long_rest(char)
+        narration = build_rest_narration("long", result)
+        assert "hit di" in narration.lower()  # "hit die" or "hit dice"

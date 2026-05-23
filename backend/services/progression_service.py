@@ -139,6 +139,12 @@ def apply_xp_gain(
             character["proficiency_bonus"] = proficiency_bonus_for_level(level)
             logger.info(f"📖 Proficiency bonus updated to {character['proficiency_bonus']}")
 
+            # Update hit dice max (max = level in D&D 5e)
+            character["hit_dice_max"] = level
+            # Gain 1 new hit die on level up — add it to remaining pool
+            character["hit_dice_remaining"] = min(level, character.get("hit_dice_remaining", level - 1) + 1)
+            logger.info(f"🎲 Hit dice: {character['hit_dice_remaining']}/{level}")
+
             # Update spell slots max for caster classes
             try:
                 from data.spell_slots import get_spell_slots

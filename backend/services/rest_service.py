@@ -3,7 +3,9 @@ Rest mechanics for D&D 5e.
 
 Short rest: roll 1 hit die + CON mod, recover HP up to max.
              Warlock pact magic slots fully recover.
+             Requires at least 1 hit die remaining.
 Long rest:  full HP, all spell slots, clear short-term conditions.
+             Recover max(1, level // 2) hit dice.
 """
 from __future__ import annotations
 
@@ -63,18 +65,67 @@ def _con_mod(char_state: Dict[str, Any]) -> int:
     return (int(con) - 10) // 2
 
 
+def _get_hit_dice_remaining(char_state: Dict[str, Any]) -> int:
+    """Return current hit dice remaining; defaults to level (full) if not yet tracked."""
+    stored = char_state.get("hit_dice_remaining")
+    if stored is not None:
+        return int(stored)
+    return int(char_state.get("level", 1))
+
+
 def compute_short_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Short rest mechanics:
+    - Requires at least 1 hit die remaining; returns no_hit_dice=True if none left
     - Roll 1 hit die + CON mod, minimum 1, capped at max_hp
+    - Decrement hit_dice_remaining by 1
     - Warlocks recover all pact magic slots
     Returns a result dict (not the full char_state patch — caller merges).
     """
     cls = _class_key(char_state)
     hit_die = _HIT_DICE.get(cls, 8)
     con = _con_mod(char_state)
+    level = int(char_state.get("level", 1))
+
+    # Check hit dice availability
+    hit_dice_remaining = _get_hit_dice_remaining(char_state)
+    hit_dice_max = int(char_state.get("hit_dice_max", level))
+
+    if hit_dice_remaining <= 0:
+        # No hit dice left — can still short rest but no HP recovery
+        current_hp = int(char_state.get("hp", 1))
+        current_slots: Dict[str, int] = dict(char_state.get("spell_slots") or {})
+        recovered_slots: Dict[str, int] = {}
+        if cls in _PACT_CASTERS:
+            full = get_spell_slots(cls.title(), level)
+            for slot_lvl, count in full.items():
+                prev = current_slots.get(slot_lvl, 0)
+                current_slots[slot_lvl] = count
+                if count > prev:
+                    recovered_slots[slot_lvl] = count - prev
+        conditions: List[str] = list(char_state.get("conditions") or [])
+        cleared = [c for c in conditions if c.lower() in _SHORT_REST_CLEARS]
+        conditions = [c for c in conditions if c.lower() not in _SHORT_REST_CLEARS]
+        return {
+            "rest_type": "short",
+            "no_hit_dice": True,
+            "hp": current_hp,
+            "hp_gained": 0,
+            "hit_die_roll": 0,
+            "hit_die_type": hit_die,
+            "con_mod": con,
+            "hit_dice_remaining": 0,
+            "hit_dice_max": hit_dice_max,
+            "spell_slots": current_slots,
+            "slots_recovered": recovered_slots,
+            "conditions": conditions,
+            "conditions_cleared": cleared,
+        }
+
+    # Spend 1 hit die
     roll = random.randint(1, hit_die)
     hp_gain = max(1, roll + con)
+    hit_dice_remaining -= 1
 
     current_hp = int(char_state.get("hp", 1))
     max_hp = int(char_state.get("max_hp", current_hp))
@@ -82,35 +133,36 @@ def compute_short_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
     actual_gain = new_hp - current_hp
 
     # Slot recovery: Warlock recovers all pact slots
-    current_slots: Dict[str, int] = dict(char_state.get("spell_slots") or {})
-    slots_max: Dict[str, int] = dict(char_state.get("spell_slots_max") or {})
-    level = int(char_state.get("level", 1))
-    recovered_slots: Dict[str, int] = {}
+    current_slots_2: Dict[str, int] = dict(char_state.get("spell_slots") or {})
+    recovered_slots_2: Dict[str, int] = {}
 
     if cls in _PACT_CASTERS:
         full = get_spell_slots(cls.title(), level)
         for slot_lvl, count in full.items():
-            prev = current_slots.get(slot_lvl, 0)
-            current_slots[slot_lvl] = count
+            prev = current_slots_2.get(slot_lvl, 0)
+            current_slots_2[slot_lvl] = count
             if count > prev:
-                recovered_slots[slot_lvl] = count - prev
+                recovered_slots_2[slot_lvl] = count - prev
 
     # Conditions — clear frightened on short rest
-    conditions: List[str] = list(char_state.get("conditions") or [])
-    cleared = [c for c in conditions if c.lower() in _SHORT_REST_CLEARS]
-    conditions = [c for c in conditions if c.lower() not in _SHORT_REST_CLEARS]
+    conditions_2: List[str] = list(char_state.get("conditions") or [])
+    cleared_2 = [c for c in conditions_2 if c.lower() in _SHORT_REST_CLEARS]
+    conditions_2 = [c for c in conditions_2 if c.lower() not in _SHORT_REST_CLEARS]
 
     return {
         "rest_type": "short",
+        "no_hit_dice": False,
         "hp": new_hp,
         "hp_gained": actual_gain,
         "hit_die_roll": roll,
         "hit_die_type": hit_die,
         "con_mod": con,
-        "spell_slots": current_slots,
-        "slots_recovered": recovered_slots,
-        "conditions": conditions,
-        "conditions_cleared": cleared,
+        "hit_dice_remaining": hit_dice_remaining,
+        "hit_dice_max": hit_dice_max,
+        "spell_slots": current_slots_2,
+        "slots_recovered": recovered_slots_2,
+        "conditions": conditions_2,
+        "conditions_cleared": cleared_2,
     }
 
 
@@ -119,6 +171,7 @@ def compute_long_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
     Long rest mechanics:
     - Full HP recovery
     - All spell slots restored to maximum
+    - Recover max(1, level // 2) hit dice
     - Short-term conditions cleared
     Returns a result dict (caller merges into char_state).
     """
@@ -138,6 +191,13 @@ def compute_long_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
         if count > prev:
             recovered_slots[slot_lvl] = count - prev
 
+    # Recover hit dice: regain max(1, level // 2), capped at hit_dice_max
+    hit_dice_max = int(char_state.get("hit_dice_max", level))
+    hit_dice_before = _get_hit_dice_remaining(char_state)
+    hit_dice_recovered = max(1, level // 2)
+    hit_dice_after = min(hit_dice_max, hit_dice_before + hit_dice_recovered)
+    actual_dice_recovered = hit_dice_after - hit_dice_before
+
     # Clear long-rest conditions
     conditions: List[str] = list(char_state.get("conditions") or [])
     cleared = [c for c in conditions if c.lower() in _LONG_REST_CLEARS]
@@ -150,6 +210,9 @@ def compute_long_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
         "spell_slots": current_slots,
         "spell_slots_max": full_slots,
         "slots_recovered": recovered_slots,
+        "hit_dice_remaining": hit_dice_after,
+        "hit_dice_max": hit_dice_max,
+        "hit_dice_recovered": actual_dice_recovered,
         "conditions": conditions,
         "conditions_cleared": cleared,
     }
@@ -161,30 +224,50 @@ def build_rest_narration(rest_type: str, result: Dict[str, Any], location: str =
 
     if rest_type == "short":
         hp_gained = result.get("hp_gained", 0)
-        roll = result.get("hit_die_roll", 1)
+        roll = result.get("hit_die_roll", 0)
         die = result.get("hit_die_type", 8)
         slots = result.get("slots_recovered", {})
+        no_dice = result.get("no_hit_dice", False)
+        remaining = result.get("hit_dice_remaining", 0)
+        hit_dice_max = result.get("hit_dice_max", 1)
 
-        hp_line = (
-            f"You bind your wounds and catch your breath, recovering {hp_gained} hit point{'s' if hp_gained != 1 else ''}."
-            if hp_gained > 0
-            else "You rest, but your wounds are too fresh to heal further."
-        )
+        if no_dice:
+            dice_line = " You have no hit dice remaining — you need a long rest to fully recover."
+            hp_line = "You rest briefly, but have no reserves left to draw on."
+        else:
+            dice_line = f" ({remaining}/{hit_dice_max} hit dice remaining)"
+            hp_line = (
+                f"You bind your wounds and catch your breath, recovering {hp_gained} hit point{'s' if hp_gained != 1 else ''}."
+                if hp_gained > 0
+                else "You rest, but your wounds are too fresh to heal further."
+            )
+
         slot_line = ""
         if slots:
             slot_line = " Your magical reserves return as you clear your mind."
 
+        if no_dice:
+            return f"You take a short rest{loc}. {hp_line}{dice_line}{slot_line}"
+
+        con_str = ""
+        if result.get("con_mod", 0) > 0:
+            con_str = f" + {result['con_mod']}"
+        elif result.get("con_mod", 0) < 0:
+            con_str = f" - {abs(result['con_mod'])}"
+
         return (
             f"You take a short rest{loc}. "
-            f"({roll} on a d{die}" + (f" + {result['con_mod']}" if result['con_mod'] > 0 else (f" - {abs(result['con_mod'])}" if result['con_mod'] < 0 else "")) + f") "
-            f"{hp_line}{slot_line}"
+            f"({roll} on a d{die}{con_str}) "
+            f"{hp_line}{dice_line}{slot_line}"
         )
 
     else:  # long
         hp_gained = result.get("hp_gained", 0)
-        hp = result.get("hp", 0)
         slots = result.get("slots_recovered", {})
         cleared = result.get("conditions_cleared", [])
+        dice_recovered = result.get("hit_dice_recovered", 0)
+        hit_dice_remaining = result.get("hit_dice_remaining", 0)
+        hit_dice_max = result.get("hit_dice_max", 1)
 
         recovery_lines = []
         if hp_gained > 0:
@@ -194,6 +277,11 @@ def build_rest_narration(rest_type: str, result: Dict[str, Any], location: str =
         if slots:
             total = sum(slots.values())
             recovery_lines.append(f"{total} spell slot{'s' if total != 1 else ''} recovered")
+        if dice_recovered > 0:
+            recovery_lines.append(
+                f"{dice_recovered} hit {'die' if dice_recovered == 1 else 'dice'} recovered "
+                f"({hit_dice_remaining}/{hit_dice_max} available)"
+            )
         if cleared:
             recovery_lines.append(f"{', '.join(cleared)} cleared")
 
@@ -204,3 +292,4 @@ def build_rest_narration(rest_type: str, result: Dict[str, Any], location: str =
             f"When you wake, you feel refreshed — {recovery_str}. "
             f"You are ready to face whatever the day brings."
         )
+

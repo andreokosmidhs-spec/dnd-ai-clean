@@ -1035,11 +1035,18 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           if (rr.spell_slots !== undefined) patch.spell_slots = rr.spell_slots;
           if (rr.spell_slots_max !== undefined) patch.spell_slots_max = rr.spell_slots_max;
           if (rr.conditions !== undefined) patch.conditions = rr.conditions;
+          if (rr.hit_dice_remaining !== undefined) patch.hit_dice_remaining = rr.hit_dice_remaining;
+          if (rr.hit_dice_max !== undefined) patch.hit_dice_max = rr.hit_dice_max;
           updateCharContext(patch);
           if (window.showToast) {
+            const diceInfo = rr.hit_dice_remaining !== undefined
+              ? ` (${rr.hit_dice_remaining}/${rr.hit_dice_max} hit dice)`
+              : '';
             const msg = rr.rest_type === 'long'
               ? `💤 Long Rest — fully restored! +${rr.hp_gained} HP`
-              : `⏸️ Short Rest — +${rr.hp_gained} HP`;
+              : rr.no_hit_dice
+                ? `⏸️ Short Rest — no hit dice remaining`
+                : `⏸️ Short Rest — +${rr.hp_gained} HP${diceInfo}`;
             window.showToast(msg, 'success');
           }
         }

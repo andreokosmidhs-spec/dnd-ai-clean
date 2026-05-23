@@ -2174,16 +2174,18 @@ async def process_action(request: dict):
         # ── REST DETECTION: short-circuit before DM pipeline ─────────────────────
         # Rest is deterministic — don't route through the LLM, just compute and return.
         if is_combat_active:
-            # Block rest attempts during combat — give the player clear feedback
+            # Block rest attempts during combat — give the player clear feedback.
+            # Must return a flat dict (NOT api_success wrapper) so CombatScreen's
+            # response handler can read data.narration directly.
             from services.rest_service import detect_rest_intent
             if detect_rest_intent(player_action):
-                return api_success({
+                return {
                     "narration": "You can't rest while enemies are attacking! Finish the fight first.\n\nWhat do you do?",
                     "combat_active": True,
                     "world_state_update": {},
                     "player_updates": {},
                     "entity_mentions": [],
-                })
+                }
         if not is_combat_active:
             from services.rest_service import detect_rest_intent, compute_short_rest, compute_long_rest, build_rest_narration
             _rest_type = detect_rest_intent(player_action)

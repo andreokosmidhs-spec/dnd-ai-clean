@@ -2734,20 +2734,28 @@ async def process_action(request: dict):
             if _is_concentration_spell and _prev_conc_spell and _prev_conc_spell != _card_spell_name:
                 logger.info(f"⚡ Concentration broken: {_prev_conc_spell} → {_card_spell_name}")
 
-            # ── Route: save-spell vs attack-roll spell ─────────────────────────
+            # ── Route: save-spell / attack-spell / heal / auto-hit / weapon ──────
             from services.combat_engine_service import process_save_spell
             from services.saving_throw_service import spell_save_dc as calc_spell_save_dc
             from data.spell_slots import get_spellcasting_ability
 
             _card_for_attack = next((c for c in deck_cards if c.get("id") == card_used_id), None)
             _is_save_spell = bool(_card_for_attack and _card_for_attack.get("save_type"))
+            _spell_type = (_card_for_attack.get("spell_type") or "") if _card_for_attack else ""
 
-            if _is_save_spell:
-                # Save-based spell: find target, compute DC, resolve
-                _target_enemy = next(
+            def _get_target_enemy():
+                return next(
                     (e for e in combat_state.get("enemies", [])
                      if e.get("id") == target_resolution.get("target_id")), None
                 )
+
+            def _caster_cls_name():
+                _cls = (char_doc["character_state"].get("class") or char_doc["character_state"].get("class_") or "")
+                return (_cls.get("name") or _cls.get("key") or "").strip().title() if isinstance(_cls, dict) else str(_cls).strip().title()
+
+            if _is_save_spell:
+                # Save-based spell: find target, compute DC, resolve
+                _target_enemy = _get_target_enemy()
                 if not _target_enemy:
                     return api_success({
                         "narration": "No valid target for that spell. Choose a different target.\n\nWhat do you do?",
@@ -2755,9 +2763,7 @@ async def process_action(request: dict):
                         "world_state_update": {},
                         "player_updates": {},
                     })
-                _caster_cls = (char_doc["character_state"].get("class") or char_doc["character_state"].get("class_") or "")
-                _caster_cls_name = (_caster_cls.get("name") or _caster_cls.get("key") or "").strip().title() if isinstance(_caster_cls, dict) else str(_caster_cls).strip().title()
-                _sc_ability = get_spellcasting_ability(_caster_cls_name) or "int"
+                _sc_ability = get_spellcasting_ability(_caster_cls_name()) or "int"
                 _dc = calc_spell_save_dc(char_doc["character_state"], _sc_ability)
                 attack_result = process_save_spell(
                     spell_name=_card_spell_name,
@@ -2767,8 +2773,53 @@ async def process_action(request: dict):
                     spell_save_dc=_dc,
                     combat_state=combat_state,
                 )
+            elif _spell_type == "attack":
+                # Attack-roll spell: uses spellcasting ability modifier
+                from services.combat_engine_service import process_spell_attack
+                _target_enemy = _get_target_enemy()
+                if not _target_enemy:
+                    return api_success({
+                        "narration": "No valid target for that spell. Choose a different target.\n\nWhat do you do?",
+                        "combat_active": True,
+                        "world_state_update": {},
+                        "player_updates": {},
+                    })
+                attack_result = process_spell_attack(
+                    spell_name=_card_spell_name,
+                    spell_card=_card_for_attack,
+                    caster_state=char_doc["character_state"],
+                    target_id=target_resolution["target_id"],
+                    combat_state=combat_state,
+                )
+            elif _spell_type == "heal":
+                # Healing spell: restore caster HP (no target required)
+                from services.combat_engine_service import process_heal_spell
+                attack_result = process_heal_spell(
+                    spell_name=_card_spell_name,
+                    spell_card=_card_for_attack,
+                    caster_state=char_doc["character_state"],
+                    combat_state=combat_state,
+                )
+            elif _spell_type == "auto_hit":
+                # Auto-hit spell: no attack roll (Magic Missile)
+                from services.combat_engine_service import process_auto_hit_spell
+                _target_enemy = _get_target_enemy()
+                if not _target_enemy:
+                    return api_success({
+                        "narration": "No valid target for that spell. Choose a different target.\n\nWhat do you do?",
+                        "combat_active": True,
+                        "world_state_update": {},
+                        "player_updates": {},
+                    })
+                attack_result = process_auto_hit_spell(
+                    spell_name=_card_spell_name,
+                    spell_card=_card_for_attack,
+                    caster_state=char_doc["character_state"],
+                    target_id=target_resolution["target_id"],
+                    combat_state=combat_state,
+                )
             else:
-                # Attack-roll spell or weapon attack
+                # Weapon attack (or buff spell played as weapon — falls through)
                 from services.weapon_service import resolve_player_weapon
                 weapon = resolve_player_weapon(
                     char_doc["character_state"],
@@ -2833,6 +2884,11 @@ async def process_action(request: dict):
                 _updated_char = {**char_doc["character_state"], **_char_state_patch}
                 await update_character_state(campaign_id, character_id, _updated_char)
                 char_doc["character_state"].update(_char_state_patch)
+
+            # Apply immediate character state changes (e.g. heal spells) before enemy turns
+            _spell_char_patch = attack_result.get("character_state_update", {})
+            if _spell_char_patch:
+                char_doc["character_state"].update(_spell_char_patch)
 
             # Update combat state
             combat_state.update(attack_result['combat_state_update'])

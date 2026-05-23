@@ -536,6 +536,297 @@ def process_save_spell(
     }
 
 
+def process_spell_attack(
+    spell_name: str,
+    spell_card: Dict[str, Any],
+    caster_state: Dict[str, Any],
+    target_id: str,
+    combat_state: Dict[str, Any],
+    force_non_lethal: bool = False,
+) -> Dict[str, Any]:
+    """
+    Resolve an attack-roll spell (Fire Bolt, Eldritch Blast, Guiding Bolt, etc.).
+    Uses the caster's spellcasting ability for the hit bonus.
+    Cantrips scale at levels 5/11/17 (2x/3x/4x dice).
+    """
+    import re
+    from services.dnd_rules import roll_d20, roll_dice, calculate_ability_modifier, proficiency_bonus_for_level
+    from data.spell_slots import get_spellcasting_ability
+
+    enemies = combat_state.get("enemies", [])
+    target = next((e for e in enemies if e["id"] == target_id and e["hp"] > 0), None)
+    if not target:
+        return {
+            "success": False,
+            "mechanical_summary": {"error": f"Target {target_id} not found or already defeated"},
+            "combat_state_update": {},
+            "character_state_update": {},
+            "combat_over": False,
+            "xp_gained": 0,
+        }
+
+    caster_cls_raw = caster_state.get("class") or caster_state.get("class_") or ""
+    if isinstance(caster_cls_raw, dict):
+        caster_cls = (caster_cls_raw.get("name") or caster_cls_raw.get("key") or "").strip().title()
+    else:
+        caster_cls = str(caster_cls_raw).strip().title()
+    sc_ability = get_spellcasting_ability(caster_cls) or "int"
+    abilities = caster_state.get("abilities") or {}
+    sc_score = int(abilities.get(sc_ability, 10))
+    sc_mod = calculate_ability_modifier(sc_score)
+    level = int(caster_state.get("level", 1))
+    prof = proficiency_bonus_for_level(level)
+
+    spell_level = int((spell_card.get("metadata") or {}).get("spell_level", 0))
+    damage_dice = spell_card.get("damage_dice") or "1d6"
+
+    # Cantrip scaling: multiply number of dice at 5/11/17
+    if spell_level == 0:
+        num_dice = 1 + (level >= 5) + (level >= 11) + (level >= 17)
+        m = re.match(r"(\d+)d(\d+)", damage_dice)
+        if m:
+            damage_dice = f"{int(m.group(1)) * num_dice}d{m.group(2)}"
+
+    # Attack roll: d20 + prof + sc_mod vs target AC
+    roll1, roll2 = roll_d20(), roll_d20()
+    roll = roll1  # no adv/disadv by default
+    is_crit = roll == 20
+    is_miss = roll == 1
+    total = roll + prof + sc_mod
+    hit = is_crit or (not is_miss and total >= target["ac"])
+
+    damage = 0
+    if hit:
+        damage = roll_dice(damage_dice)
+        if is_crit:
+            m2 = re.match(r"(\d+)d(\d+)", damage_dice)
+            if m2:
+                damage += roll_dice(f"{m2.group(1)}d{m2.group(2)}")
+
+    damage_type = spell_card.get("damage_type", "")
+    resistances = [r.lower() for r in target.get("resistances", [])]
+    immunities = [i.lower() for i in target.get("immunities", [])]
+    dt = damage_type.lower()
+    if dt in immunities:
+        damage = 0
+    elif dt in resistances:
+        damage = damage // 2
+
+    target["hp"] = max(0, target["hp"] - damage)
+    killed = target["hp"] <= 0
+    knocked_unconscious = False
+    if killed and force_non_lethal:
+        target["hp"] = 0
+        killed = False
+        knocked_unconscious = True
+        conds = target.get("conditions", [])
+        if "unconscious" not in conds:
+            conds.append("unconscious")
+            target["conditions"] = conds
+
+    for i, e in enumerate(enemies):
+        if e["id"] == target["id"]:
+            enemies[i] = target
+            break
+    alive_enemies = [e for e in enemies if e["hp"] > 0]
+    combat_over = len(alive_enemies) == 0
+
+    if killed:
+        try:
+            from services.faction_combat_service import apply_death_morale
+            apply_death_morale(target, alive_enemies)
+        except Exception:
+            pass
+
+    xp_gained = 0
+    if combat_over:
+        try:
+            from services.progression_service import calculate_xp_for_enemy
+            xp_gained = sum(calculate_xp_for_enemy(e) for e in enemies)
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "mechanical_summary": {
+            "attacker": caster_state.get("name", "You"),
+            "target": target["name"],
+            "spell_name": spell_name,
+            "damage_dice": damage_dice,
+            "attack_roll": roll,
+            "total_attack": total,
+            "target_ac": target["ac"],
+            "hit": hit,
+            "critical": is_crit,
+            "critical_miss": is_miss and not hit,
+            "damage": damage,
+            "damage_type": damage_type,
+            "target_hp_remaining": target["hp"],
+            "target_max_hp": target["max_hp"],
+            "target_killed": killed,
+            "knocked_unconscious": knocked_unconscious,
+            "ability_used": sc_ability.upper(),
+            "spell_attack_bonus": prof + sc_mod,
+            "is_spell_attack": True,
+        },
+        "combat_state_update": {
+            "enemies": enemies,
+            "combat_over": combat_over,
+            "outcome": "victory" if combat_over else None,
+        },
+        "character_state_update": {},
+        "combat_over": combat_over,
+        "xp_gained": xp_gained,
+    }
+
+
+def process_heal_spell(
+    spell_name: str,
+    spell_card: Dict[str, Any],
+    caster_state: Dict[str, Any],
+    combat_state: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Resolve a healing spell (Cure Wounds, Healing Word, Goodberry).
+    Heals the caster (self-target in combat). Returns hp in character_state_update.
+    """
+    from services.dnd_rules import roll_dice, calculate_ability_modifier
+    from data.spell_slots import get_spellcasting_ability
+
+    caster_cls_raw = caster_state.get("class") or caster_state.get("class_") or ""
+    if isinstance(caster_cls_raw, dict):
+        caster_cls = (caster_cls_raw.get("name") or caster_cls_raw.get("key") or "").strip().title()
+    else:
+        caster_cls = str(caster_cls_raw).strip().title()
+    sc_ability = get_spellcasting_ability(caster_cls) or "wis"
+    abilities = caster_state.get("abilities") or {}
+    sc_score = int(abilities.get(sc_ability, 10))
+    sc_mod = calculate_ability_modifier(sc_score)
+
+    heal_dice = spell_card.get("heal_dice") or "1d4"
+    # Goodberry uses "1" as heal dice (1 HP per berry, simplified)
+    try:
+        heal_roll = roll_dice(heal_dice)
+    except Exception:
+        heal_roll = 1
+    heal_amount = max(1, heal_roll + sc_mod)
+
+    current_hp = int(caster_state.get("hp", 1))
+    max_hp = int(caster_state.get("max_hp", current_hp))
+    new_hp = min(max_hp, current_hp + heal_amount)
+    actual_heal = new_hp - current_hp
+
+    return {
+        "success": True,
+        "mechanical_summary": {
+            "spell_name": spell_name,
+            "heal_dice": heal_dice,
+            "heal_roll": heal_roll,
+            "sc_mod": sc_mod,
+            "heal_amount": actual_heal,
+            "new_hp": new_hp,
+            "hit": True,
+            "is_heal_spell": True,
+        },
+        "combat_state_update": {},
+        "character_state_update": {"hp": new_hp},
+        "combat_over": False,
+        "xp_gained": 0,
+    }
+
+
+def process_auto_hit_spell(
+    spell_name: str,
+    spell_card: Dict[str, Any],
+    caster_state: Dict[str, Any],
+    target_id: str,
+    combat_state: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Resolve an auto-hit spell like Magic Missile (3 darts, no attack roll).
+    """
+    from services.dnd_rules import roll_dice
+
+    enemies = combat_state.get("enemies", [])
+    target = next((e for e in enemies if e["id"] == target_id and e["hp"] > 0), None)
+    if not target:
+        return {
+            "success": False,
+            "mechanical_summary": {"error": f"Target {target_id} not found or already defeated"},
+            "combat_state_update": {},
+            "character_state_update": {},
+            "combat_over": False,
+            "xp_gained": 0,
+        }
+
+    damage_dice = spell_card.get("damage_dice") or "1d4+1"
+    damage_type = spell_card.get("damage_type", "force")
+    # Magic Missile fires 3 darts; simplify by rolling all at once
+    num_darts = 3
+    total_damage = sum(roll_dice(damage_dice) for _ in range(num_darts))
+
+    resistances = [r.lower() for r in target.get("resistances", [])]
+    immunities = [i.lower() for i in target.get("immunities", [])]
+    dt = damage_type.lower()
+    if dt in immunities:
+        total_damage = 0
+    elif dt in resistances:
+        total_damage = total_damage // 2
+
+    target["hp"] = max(0, target["hp"] - total_damage)
+    killed = target["hp"] <= 0
+
+    for i, e in enumerate(enemies):
+        if e["id"] == target["id"]:
+            enemies[i] = target
+            break
+    alive_enemies = [e for e in enemies if e["hp"] > 0]
+    combat_over = len(alive_enemies) == 0
+
+    if killed:
+        try:
+            from services.faction_combat_service import apply_death_morale
+            apply_death_morale(target, alive_enemies)
+        except Exception:
+            pass
+
+    xp_gained = 0
+    if combat_over:
+        try:
+            from services.progression_service import calculate_xp_for_enemy
+            xp_gained = sum(calculate_xp_for_enemy(e) for e in enemies)
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "mechanical_summary": {
+            "attacker": caster_state.get("name", "You"),
+            "target": target["name"],
+            "spell_name": spell_name,
+            "num_darts": num_darts,
+            "damage_dice": damage_dice,
+            "damage": total_damage,
+            "damage_type": damage_type,
+            "hit": True,
+            "auto_hit": True,
+            "critical": False,
+            "critical_miss": False,
+            "target_hp_remaining": target["hp"],
+            "target_max_hp": target["max_hp"],
+            "target_killed": killed,
+        },
+        "combat_state_update": {
+            "enemies": enemies,
+            "combat_over": combat_over,
+            "outcome": "victory" if combat_over else None,
+        },
+        "character_state_update": {},
+        "combat_over": combat_over,
+        "xp_gained": xp_gained,
+    }
+
+
 def process_enemy_turns(
     character_state: Dict[str, Any],
     combat_state: Dict[str, Any]

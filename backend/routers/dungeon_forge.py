@@ -989,7 +989,25 @@ Reasoning: {intent_flags.get('dc_reasoning', '')}
         check_result_info = f"**CHECK RESULT:** Player rolled {check_result}"
     else:
         check_result_info = "No check result yet - await player roll if check required."
-    
+
+    # Build active quest context for the DM
+    _active_quests_list = [q for q in world_state.get("quests", []) if q.get("status") == "active"]
+    if _active_quests_list:
+        _quest_lines = []
+        for _q in _active_quests_list:
+            _obj_strs = []
+            for _i, _obj in enumerate(_q.get("objectives", [])):
+                _prog = _obj.get("progress", 0)
+                _cnt = _obj.get("count", 1)
+                _desc = _obj.get("description", _obj.get("target", ""))
+                _obj_strs.append(f"  [{_i}] {_desc} ({_prog}/{_cnt})")
+            _quest_lines.append(
+                f"- {_q['name']} (id: {_q['quest_id']})\n" + "\n".join(_obj_strs)
+            )
+        quest_state_block = "Active Quests\n```\n" + "\n".join(_quest_lines) + "\n```"
+    else:
+        quest_state_block = "Active Quests\n```\nNone\n```"
+
     prompt = f"""DUNGEON MASTER AGENT — SYSTEM PROMPT (v6.1 Unified Edition)
 
 SYSTEM
@@ -1214,6 +1232,8 @@ Ongoing Situations
 {ongoing_situations if ongoing_situations else "None"}
 ```
 
+{quest_state_block}
+
 Auto-Revealed Information (Passive Perception)
 ```
 {", ".join(auto_revealed_info) if auto_revealed_info else "Nothing automatically noticed."}
@@ -1264,14 +1284,28 @@ Return ONLY this JSON:
   "entities": [],
   "scene_mode": "intro | exploration | combat | social | travel | rest",
   "world_state_update": {{}},
-  "player_updates": {{}}
+  "player_updates": {{}},
+  "quest_updates": {{
+      "new_quests": [],
+      "progress_events": [
+          {{"quest_id": "string", "objective_index": 0, "progress_delta": 1}}
+      ],
+      "completed_quest_ids": []
+  }},
+  "xp_reward": null | {{"amount": 0, "reason": "string"}}
 }}
+
+Quest update rules:
+- Emit progress_events when the player visibly advances a tracked quest objective (entered a location, talked to an NPC, found an item). Use the exact quest_id from the injected quest_state.
+- Emit completed_quest_ids when all objectives of a quest are satisfied by this action.
+- Emit new_quests only when an NPC explicitly offers a new quest the player accepts.
+- Grant xp_reward (10–50 XP) for significant non-combat accomplishments: solving a puzzle, gathering key information, forging an alliance. Omit for trivial actions.
 
 Restrictions:
 
 requested_check ONLY when absolutely necessary.
 
-NEVER add fields not defined above.
+NEVER invent quest_ids not present in the injected quest_state.
 
 NEVER invent entities unless visible.
 
@@ -1339,6 +1373,8 @@ Ongoing Situations
 ```
 {ongoing_situations if ongoing_situations else "None"}
 ```
+
+{quest_state_block}
 
 Auto-Revealed Information (Passive Perception)
 ```
@@ -3470,6 +3506,7 @@ async def process_action(request: dict):
         # WORLD MUTATOR (apply state changes)
         logger.info("🌍 Running WORLD MUTATOR...")
         world_state_update = dm_response.get("world_state_update", {})
+        _quest_completion_xp = 0  # accumulated from completed quests below
         
         if world_state_update:
             updated_state = {**world_state["world_state"], **world_state_update}
@@ -3550,11 +3587,12 @@ async def process_action(request: dict):
                             quest["status"] = "completed"
                             logger.info(f"✅ Quest '{quest['name']}' completed!")
             
-            # Handle completed quests
+            # Handle completed quests — accumulate XP from all completions
             for quest_id in quest_updates.get("completed_quest_ids", []):
-                quest_xp = complete_quest(current_world, quest_id)
-                logger.info(f"🎊 Quest completed, awarding {quest_xp} XP")
-            
+                _qxp = complete_quest(current_world, quest_id)
+                _quest_completion_xp += _qxp
+                logger.info(f"🎊 Quest completed, awarding {_qxp} XP")
+
             # Save updated world state with quests
             await update_world_state(campaign_id, current_world)
         
@@ -3569,8 +3607,10 @@ async def process_action(request: dict):
         
         # Legacy support: also check player_updates.xp_gained
         xp_from_legacy = player_updates.get("xp_gained", 0)
-        
-        total_xp = xp_from_action + xp_from_legacy
+
+        total_xp = xp_from_action + xp_from_legacy + _quest_completion_xp
+        if _quest_completion_xp > 0:
+            xp_reason = xp_reason or "Quest completed"
         
         if total_xp > 0:
             from services.progression_service import apply_xp_gain

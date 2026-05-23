@@ -1032,7 +1032,7 @@ SPELL_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
                         "condition_on_fail": "incapacitated (prone laughing)"},
     "Goodberry":       {"components": _M("a sprig of mistletoe"),
                         "range": "touch", "duration": "instantaneous",
-                        "spell_type": "heal", "heal_dice": "1"},
+                        "spell_type": "heal", "heal_dice": "1d1"},
     "Fog Cloud":       {"components": _VS, "range": "120 ft", "duration": "1 hour",
                         "concentration": True, "spell_type": "buff"},
     "Speak with Animals":{"components": _VS, "range": "self", "duration": "10 min",

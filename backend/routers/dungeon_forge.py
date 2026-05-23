@@ -1419,31 +1419,90 @@ def generate_combat_narration_from_mechanical(
         Narration string
     """
     narration_parts = []
-    
-    # Player attack
+
+    # Player attack / spell result
     player_attack = mechanical_summary['player_attack']
-    target = player_attack['target']
-    
-    if player_attack['critical_miss']:
-        narration_parts.append(f"You swing at the {target}, but your attack goes completely awry!")
-    elif player_attack['critical']:
+
+    # ── Heal spell ────────────────────────────────────────────────────────
+    if player_attack.get("is_heal_spell"):
+        spell_name = player_attack.get("spell_name", "your spell")
+        heal_amount = player_attack.get("heal_amount", 0)
+        new_hp = player_attack.get("new_hp", 0)
+        if heal_amount > 0:
+            narration_parts.append(
+                f"You cast **{spell_name}**, restoring **{heal_amount} hit points**! "
+                f"(HP: {new_hp})"
+            )
+        else:
+            narration_parts.append(
+                f"You cast **{spell_name}**, but your wounds are too severe to heal further."
+            )
+
+    # ── Spell attack ──────────────────────────────────────────────────────
+    elif player_attack.get("is_spell_attack"):
+        spell_name = player_attack.get("spell_name", "your spell")
+        target = player_attack.get("target", "the enemy")
+        if player_attack.get("critical_miss"):
+            narration_parts.append(f"You hurl **{spell_name}** at the {target}, but it fizzles wide!")
+        elif player_attack.get("critical"):
+            narration_parts.append(
+                f"**Critical hit!** Your **{spell_name}** strikes the {target} with devastating force "
+                f"for **{player_attack['damage']} damage**!"
+            )
+            if player_attack.get("target_killed"):
+                narration_parts.append(f" The {target} collapses!")
+        elif player_attack.get("hit"):
+            narration_parts.append(
+                f"Your **{spell_name}** hits the {target} for **{player_attack['damage']} damage**! "
+                f"({player_attack['target_hp_remaining']}/{player_attack['target_max_hp']} HP remaining)"
+            )
+            if player_attack.get("target_killed"):
+                narration_parts.append(f" The {target} falls defeated!")
+        else:
+            narration_parts.append(
+                f"Your **{spell_name}** streaks toward the {target} but misses! "
+                f"(Rolled {player_attack['total_attack']} vs AC {player_attack['target_ac']})"
+            )
+
+    # ── Auto-hit spell (Magic Missile) ────────────────────────────────────
+    elif player_attack.get("auto_hit"):
+        spell_name = player_attack.get("spell_name", "your spell")
+        target = player_attack.get("target", "the enemy")
         narration_parts.append(
-            f"**Critical hit!** You strike the {target} with devastating force for **{player_attack['damage']} damage**!"
-        )
-        if player_attack['target_killed']:
-            narration_parts.append(f"The {target} collapses, defeated!")
-    elif player_attack['hit']:
-        narration_parts.append(
-            f"You hit the {target} for **{player_attack['damage']} damage**! "
+            f"Your **{spell_name}** unerringly strikes the {target} for **{player_attack['damage']} damage**! "
             f"({player_attack['target_hp_remaining']}/{player_attack['target_max_hp']} HP remaining)"
         )
-        if player_attack['target_killed']:
-            narration_parts.append(f"The {target} falls defeated!")
+        if player_attack.get("target_killed"):
+            narration_parts.append(f" The {target} is destroyed!")
+
+    # ── Buff spell ────────────────────────────────────────────────────────
+    elif player_attack.get("is_buff_spell"):
+        spell_name = player_attack.get("spell_name", "your spell")
+        narration_parts.append(player_attack.get("narration", f"You cast **{spell_name}**."))
+
+    # ── Weapon attack ─────────────────────────────────────────────────────
     else:
-        narration_parts.append(
-            f"You attack the {target}, but miss! "
-            f"(Rolled {player_attack['total_attack']} vs AC {player_attack['target_ac']})"
-        )
+        target = player_attack.get("target", "the enemy")
+        if player_attack.get("critical_miss"):
+            narration_parts.append(f"You swing at the {target}, but your attack goes completely awry!")
+        elif player_attack.get("critical"):
+            narration_parts.append(
+                f"**Critical hit!** You strike the {target} with devastating force for **{player_attack['damage']} damage**!"
+            )
+            if player_attack.get("target_killed"):
+                narration_parts.append(f" The {target} collapses, defeated!")
+        elif player_attack.get("hit"):
+            narration_parts.append(
+                f"You hit the {target} for **{player_attack['damage']} damage**! "
+                f"({player_attack['target_hp_remaining']}/{player_attack['target_max_hp']} HP remaining)"
+            )
+            if player_attack.get("target_killed"):
+                narration_parts.append(f" The {target} falls defeated!")
+        else:
+            narration_parts.append(
+                f"You attack the {target}, but miss! "
+                f"(Rolled {player_attack['total_attack']} vs AC {player_attack['target_ac']})"
+            )
     
     # Enemy turns
     if mechanical_summary['enemy_turns']:
@@ -2075,6 +2134,17 @@ async def process_action(request: dict):
 
         # ── REST DETECTION: short-circuit before DM pipeline ─────────────────────
         # Rest is deterministic — don't route through the LLM, just compute and return.
+        if is_combat_active:
+            # Block rest attempts during combat — give the player clear feedback
+            from services.rest_service import detect_rest_intent
+            if detect_rest_intent(player_action):
+                return api_success({
+                    "narration": "You can't rest while enemies are attacking! Finish the fight first.\n\nWhat do you do?",
+                    "combat_active": True,
+                    "world_state_update": {},
+                    "player_updates": {},
+                    "entity_mentions": [],
+                })
         if not is_combat_active:
             from services.rest_service import detect_rest_intent, compute_short_rest, compute_long_rest, build_rest_narration
             _rest_type = detect_rest_intent(player_action)
@@ -2818,6 +2888,36 @@ async def process_action(request: dict):
                     target_id=target_resolution["target_id"],
                     combat_state=combat_state,
                 )
+            elif _spell_type == "buff" or (_card_spell_name and not _is_save_spell and not _spell_type):
+                # Buff/utility spell — no attack roll, no damage, just apply and narrate
+                _buff_narration = {
+                    "Bless": "Divine favor washes over you, bolstering your attacks and saves.",
+                    "Shield of Faith": "A shimmering field of holy energy surrounds you (+2 AC).",
+                    "Hex": "A dark curse settles over your target.",
+                    "Hunter's Mark": "You mark your quarry with spectral light.",
+                    "Armor of Agathys": "Icy magical armor wraps around you, dealing cold damage to attackers.",
+                    "Divine Favor": "Your weapon pulses with radiant energy.",
+                    "Mirror Image": "Three illusory copies of you appear, confusing your enemies.",
+                    "Invisibility": "You fade from sight.",
+                    "Misty Step": "You vanish in a puff of silver mist and reappear nearby.",
+                    "Shield": "A magical barrier flares to life, deflecting the blow.",
+                    "Mage Armor": "Magical force wraps around you like armor (AC 13 + DEX).",
+                    "Guidance": "A touch of divine guidance steadies your hand.",
+                    "Shillelagh": "Your staff glows with natural magic.",
+                }.get(_card_spell_name, f"You cast {_card_spell_name}.")
+                attack_result = {
+                    "success": True,
+                    "mechanical_summary": {
+                        "spell_name": _card_spell_name,
+                        "is_buff_spell": True,
+                        "hit": True,
+                        "narration": _buff_narration,
+                    },
+                    "combat_state_update": {},
+                    "character_state_update": {},
+                    "combat_over": False,
+                    "xp_gained": 0,
+                }
             else:
                 # Weapon attack (or buff spell played as weapon — falls through)
                 from services.weapon_service import resolve_player_weapon

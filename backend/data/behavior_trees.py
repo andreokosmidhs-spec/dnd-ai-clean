@@ -622,6 +622,63 @@ DEFAULT_TREES: Dict[str, Dict[str, Any]] = {
              "damage_die": "2d6+4", "damage_type": "slashing", "label": "Greataxe"},
         ),
     },
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # COMMONER — No training. Panic below 50% HP, flee or freeze, surrender.
+    # ─────────────────────────────────────────────────────────────────────────
+    "commoner": {
+        "id": "commoner",
+        "name": "Commoner",
+        "description": "No combat training. Panics below 50% HP. Flees if possible, freezes if cornered. Surrenders after 3 rounds cornered.",
+        "node": _sel(
+            # Round 1 early: mob courage if 3+ allies alive — fight briefly
+            _seq(
+                _cond("is_first_round"),
+                _cond("enemy_count_above", 2),
+                _seq(
+                    _cond("in_melee_range"),
+                    {"type": "action", "action": "attack_melee",
+                     "damage_die": "1d4", "damage_type": "bludgeoning",
+                     "label": "Improvised Strike",
+                     "narration_hint": "Emboldened by the crowd, {name} swings wildly!"},
+                ),
+            ),
+            # Panicked and can flee → flee
+            _seq(
+                _cond("is_panicked"),
+                _not(_cond("is_cornered")),
+                {"type": "action", "action": "flee", "label": "Panicked Flee"},
+            ),
+            # Panicked but cornered → freeze (defend, skip attack)
+            _seq(
+                _cond("is_panicked"),
+                _cond("is_cornered"),
+                {"type": "action", "action": "defend",
+                 "label": "Frozen in Fear",
+                 "narration_hint": "{name} is paralyzed with fear, unable to flee!"},
+            ),
+            # Surrender: cornered 3+ rounds or at 1 HP
+            _seq(
+                _cond("is_cornered"),
+                _cond("round_above", 2),
+                {"type": "action", "action": "surrender",
+                 "label": "Surrender",
+                 "narration_hint": "{name} throws down their weapon. 'Please — I yield!'"},
+            ),
+            # Default: attack if in range (desperate)
+            _seq(
+                _cond("in_melee_range"),
+                {"type": "action", "action": "attack_melee",
+                 "damage_die": "1d4", "damage_type": "bludgeoning",
+                 "disadvantage": True,
+                 "adv_reason": "Untrained fighter",
+                 "label": "Desperate Strike"},
+            ),
+            # Otherwise move away
+            {"type": "action", "action": "move_away_from_player",
+             "narration_hint": "{name} backs away nervously."},
+        ),
+    },
 }
 
 

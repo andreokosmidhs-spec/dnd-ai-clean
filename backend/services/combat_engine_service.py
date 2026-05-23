@@ -609,6 +609,51 @@ def process_enemy_turns(
     for enemy in alive_enemies:
         enemy_name = enemy.get('name', 'Unknown Enemy')
 
+        # ── Commoner panic check (tier 1) ──────────────────────────────────────
+        if enemy.get("tier") == "commoner":
+            enemy_hp = enemy.get("hp", 0)
+            enemy_max_hp = enemy.get("max_hp", 1) or 1
+            hp_pct = enemy_hp / enemy_max_hp
+            rounds_panicked = enemy.get("_rounds_panicked", 0)
+            was_panicked = enemy.get("panicked", False)
+
+            if hp_pct <= 0.5:
+                # WIS save DC 10
+                wis_score = enemy.get("abilities", {}).get("wis", 10)
+                wis_mod = calculate_ability_modifier(wis_score)
+                panic_roll = _roll_d20()
+                panic_total = panic_roll + wis_mod
+
+                # Mob courage: if 3+ commoner allies alive, +2 to save
+                commoner_allies = [e for e in alive_enemies if e.get("tier") == "commoner" and e.get("id") != enemy.get("id")]
+                if len(commoner_allies) >= 2:
+                    panic_total += 2
+
+                if panic_total < 10:
+                    enemy["panicked"] = True
+                    enemy["_rounds_panicked"] = rounds_panicked + 1
+                    # Cornered: if panicked for 3+ rounds with nowhere to flee
+                    if rounds_panicked >= 2 or hp_pct <= 0.2:
+                        enemy["cornered"] = True
+                else:
+                    enemy["panicked"] = False
+                    enemy["_rounds_panicked"] = 0
+                    # cornered is about exit paths, not fear state — don't reset on save pass
+
+                # Crowd scatter: if just became panicked, other nearby commoners check too
+                if not was_panicked and enemy.get("panicked"):
+                    for nearby in commoner_allies:
+                        if not nearby.get("panicked"):
+                            scatter_roll = _roll_d20()
+                            scatter_wis = nearby.get("abilities", {}).get("wis", 10)
+                            scatter_mod = calculate_ability_modifier(scatter_wis)
+                            if scatter_roll + scatter_mod < 8:
+                                nearby["panicked"] = True
+                                nearby["_rounds_panicked"] = 1
+            else:
+                # HP above 50% — not panicked
+                enemy["panicked"] = False
+
         # ── Faction context (per-enemy) ───────────────────────────────────────
         faction_ctx = faction_context_for(enemy, alive_enemies)
         combat_context = {**base_combat_context, **faction_ctx}
@@ -674,6 +719,26 @@ def process_enemy_turns(
         if grid_move:
             enemy["grid_x"] = enemy.get("grid_x", 2) + grid_move.get("dx", 0)
             enemy["grid_y"] = enemy.get("grid_y", 2) + grid_move.get("dy", 0)
+
+        # ── Surrender — enemy yields, out of combat ───────────────────────────
+        if action_type == "surrender":
+            enemy["hp"] = 0  # Out of combat — surrendered
+            enemy["_surrendered"] = True
+            enemy_actions.append({
+                "attacker": enemy_name,
+                "action_type": "surrender",
+                "attack_roll": 0,
+                "total_attack": 0,
+                "target_ac": player_target["ac"],
+                "hit": False,
+                "critical": False,
+                "critical_miss": False,
+                "damage": 0,
+                "narration_hint": action.get("narration_hint", f"{enemy_name} surrenders!"),
+                "abilities_used": action.get("abilities_used", []),
+                "surrender": True,
+            })
+            continue
 
         # ── Fled / Regenerated — no attack ───────────────────────────────────
         if action_type == "flee":

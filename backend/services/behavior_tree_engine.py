@@ -85,6 +85,10 @@ def build_context(
         "faction_leader_hp_pct": combat_context.get("faction_leader_hp_pct", 1.0),
         "faction_leader_id":    combat_context.get("faction_leader_id"),
         "faction_followers":    combat_context.get("faction_followers", []),
+        # Tier-based flags (used by commoner tree and tier conditions)
+        "is_panicked":  bool(enemy.get("panicked", False)),
+        "is_cornered":  bool(enemy.get("cornered", False)),
+        "enemy_tier":   enemy.get("tier", "gifted"),
     }
 
 
@@ -163,6 +167,20 @@ def _eval_condition(node: Dict[str, Any], ctx: Dict[str, Any]) -> bool:
 
     if check == "has_followers":
         return len(ctx.get("faction_followers", [])) > 0
+
+    if check == "is_panicked":
+        return bool(ctx.get("enemy", {}).get("panicked", False))
+
+    if check == "is_cornered":
+        return bool(ctx.get("enemy", {}).get("cornered", False))
+
+    if check == "has_tier":
+        return ctx.get("enemy", {}).get("tier", "gifted") == str(value or "")
+
+    if check == "tier_below":
+        tier_order = {"commoner": 1, "gifted": 2, "specialist": 3, "commander": 4, "mythic": 5}
+        enemy_tier = ctx.get("enemy", {}).get("tier", "gifted")
+        return tier_order.get(enemy_tier, 2) < int(value or 3)
 
     logger.warning("Unknown condition check: %s", check)
     return False
@@ -430,6 +448,16 @@ def _build_action(node: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
         result["narration_hint"] = (
             f"The {enemy.get('name', 'enemy')} flanks alongside their ally!"
         )
+
+    # ── SURRENDER ─────────────────────────────────────────────────────────────
+    elif action_id == "surrender":
+        result["action_type"] = "surrender"
+        result["special_effect"] = {"type": "surrender"}
+        result["narration_hint"] = node.get(
+            "narration_hint",
+            f"The {enemy.get('name', 'enemy')} throws down their weapon and begs for mercy!"
+        ).replace("{name}", enemy.get("name", "The enemy"))
+        result["abilities_used"].append("surrender")
 
     else:
         logger.warning("Unknown action type: %s", action_id)

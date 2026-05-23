@@ -66,6 +66,18 @@ _NO_WEAPON = {
     "young_dragon",                  # natural weapons; drops scales instead
 }
 
+# Commoner occupation personal effects (replaces weapon loot)
+_COMMONER_PERSONAL: Dict[str, List[Tuple[str, int, str]]] = {
+    "farmer":     [("Seed Pouch", 1, "common"), ("Farmer's Almanac", 2, "common"), ("Worn Boot", 0, "common")],
+    "merchant":   [("Merchant Ledger", 5, "common"), ("Small Coin Purse", 3, "common"), ("Trade Seal", 8, "common")],
+    "barkeep":    [("Tavern Key", 2, "common"), ("IOU Note", 1, "common"), ("Half-Full Flask", 1, "common")],
+    "fisherman":  [("Fish Hook Set", 2, "common"), ("Rope (10ft)", 1, "common"), ("Smoked Fish", 1, "common")],
+    "laborer":    [("Work Gloves", 1, "common"), ("Copper Coins", 2, "common"), ("Lunch Pail", 1, "common")],
+    "dockworker": [("Dock Token", 3, "common"), ("Rope (20ft)", 2, "common"), ("Sailor's Knife", 5, "common")],
+    "guard":      [("Guard Roster", 5, "common"), ("Whistle", 1, "common"), ("Sergeant's Orders", 8, "common")],
+    "default":    [("Tattered Cloth", 0, "common"), ("Copper Coin", 1, "common"), ("Lucky Stone", 0, "common")],
+}
+
 # Enemies that drop a special material instead of a weapon
 _MATERIALS: Dict[str, Tuple[str, int, str]] = {
     "rat":          ("Rat Tail",          1,   "An alchemist might pay a copper for this."),
@@ -157,6 +169,10 @@ def weapon_from_enemy(enemy: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     attack_bonus = int(enemy.get("attack_bonus", 2))
     etype        = enemy.get("type",  "humanoid").lower()
     behavior     = enemy.get("behavior_profile", "")
+
+    # Commoners use improvised weapons that break — they drop personal effects, not weapons
+    if enemy.get("tier") == "commoner":
+        return None
 
     if eid in _NO_WEAPON:
         return None
@@ -292,6 +308,16 @@ def generate_enemy_loot(
     mat = material_from_enemy(enemy)
     if mat:
         guaranteed.append(mat)
+
+    # Commoner personal effects (narrative loot, not combat items)
+    if enemy.get("tier") == "commoner":
+        occupation = enemy.get("occupation", "default")
+        effects_pool = _COMMONER_PERSONAL.get(occupation, _COMMONER_PERSONAL["default"])
+        # Pick 1-2 personal effects randomly
+        picks = random.sample(effects_pool, min(2, len(effects_pool)))
+        for name, gp, rarity in picks:
+            guaranteed.append(_item(name, "trinket", rarity=rarity, value=gp,
+                                    description=f"A personal item — something {enemy.get('name', 'they')} carried."))
 
     gold = gold_from_enemy(enemy)
 

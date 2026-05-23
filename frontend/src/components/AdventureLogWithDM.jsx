@@ -1028,6 +1028,22 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           }
         }
         
+        // Rest recovery — update HP and spell slots immediately
+        if (data.player_updates.rest_result) {
+          const rr = data.player_updates.rest_result;
+          const patch = { hp: rr.hp };
+          if (rr.spell_slots !== undefined) patch.spell_slots = rr.spell_slots;
+          if (rr.spell_slots_max !== undefined) patch.spell_slots_max = rr.spell_slots_max;
+          if (rr.conditions !== undefined) patch.conditions = rr.conditions;
+          updateCharContext(patch);
+          if (window.showToast) {
+            const msg = rr.rest_type === 'long'
+              ? `💤 Long Rest — fully restored! +${rr.hp_gained} HP`
+              : `⏸️ Short Rest — +${rr.hp_gained} HP`;
+            window.showToast(msg, 'success');
+          }
+        }
+
         // Defeat handled - show modal
         if (data.player_updates.defeat_handled) {
           setShowDefeatModal(true);

@@ -2072,7 +2072,47 @@ async def process_action(request: dict):
             raise HTTPException(status_code=404, detail=f"World state not found for campaign: {campaign_id}")
         
         is_combat_active = combat_doc and not combat_doc.get("combat_state", {}).get("combat_over", True)
-        
+
+        # ── REST DETECTION: short-circuit before DM pipeline ─────────────────────
+        # Rest is deterministic — don't route through the LLM, just compute and return.
+        if not is_combat_active:
+            from services.rest_service import detect_rest_intent, compute_short_rest, compute_long_rest, build_rest_narration
+            _rest_type = detect_rest_intent(player_action)
+            if _rest_type:
+                char_state = char_doc["character_state"]
+                _current_location = world_state["world_state"].get("current_location", "")
+                _result = compute_short_rest(char_state) if _rest_type == "short" else compute_long_rest(char_state)
+
+                # Build updated character state
+                _updated_char = {
+                    **char_state,
+                    "hp": _result["hp"],
+                    "spell_slots": _result["spell_slots"],
+                    "conditions": _result["conditions"],
+                }
+                if "spell_slots_max" in _result:
+                    _updated_char["spell_slots_max"] = _result["spell_slots_max"]
+
+                await update_character_state(campaign_id, character_id, _updated_char)
+                logger.info(
+                    "💤 %s rest: HP %d→%d, slots recovered: %s",
+                    _rest_type.title(),
+                    char_state.get("hp", 0), _result["hp"],
+                    _result.get("slots_recovered", {}),
+                )
+
+                _narration = build_rest_narration(_rest_type, _result, _current_location)
+                return api_success({
+                    "narration": _narration,
+                    "player_updates": {
+                        "rest_result": _result,
+                        "hp": _result["hp"],
+                        "spell_slots": _result["spell_slots"],
+                    },
+                    "world_state_update": {},
+                    "entity_mentions": [],
+                })
+
         # Ensure NPCs are activated for current location
         from services.npc_activation_service import populate_active_npcs_for_location, ensure_npcs_have_ids
         

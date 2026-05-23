@@ -454,7 +454,8 @@ async def run_dungeon_forge(
         session_mode=session_mode,
         improvisation_result=improvisation_result,
         npc_personalities=npc_personalities,
-        active_tailing_quest=active_tailing_quest
+        active_tailing_quest=active_tailing_quest,
+        scene_intelligence=world_state.get("scene_intelligence") if isinstance(world_state, dict) else None,
     )
     
     # A-Version prompt now built above - removed old prompt code
@@ -929,7 +930,8 @@ def build_a_version_dm_prompt(
     session_mode: Optional[Dict[str, Any]] = None,
     improvisation_result: Optional[Dict[str, Any]] = None,
     npc_personalities: Optional[List[Dict[str, Any]]] = None,
-    active_tailing_quest: Optional[Dict[str, Any]] = None
+    active_tailing_quest: Optional[Dict[str, Any]] = None,
+    scene_intelligence: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Build A-Version compliant DM system prompt.
@@ -1373,10 +1375,32 @@ Player Action
 {player_action}
 ```
 
+{_build_scene_intel_block(scene_intelligence)}
 ---
 
 Generate your response now.
 """
+
+
+def _build_scene_intel_block(scene_intel: Optional[Dict[str, Any]]) -> str:
+    """Build the scene intelligence embedding block for the DM prompt."""
+    if not scene_intel:
+        return ""
+    try:
+        from services.scene_intelligence_service import get_dm_embedding_instructions
+        instructions = get_dm_embedding_instructions(scene_intel)
+        if not instructions:
+            return ""
+        tension = scene_intel.get("tension_score", 0.0)
+        return f"""
+Scene Intelligence (Tension: {tension:.0%})
+```
+{instructions}
+```
+
+"""
+    except Exception:
+        return ""
 
 
 def generate_combat_narration_from_mechanical(
@@ -3079,6 +3103,18 @@ async def process_action(request: dict):
                 intent_flags["suggested_dc"] = suggested_dc
                 intent_flags["dc_band"] = "moderate"
         
+        # ── Scene intelligence: load existing + build embedding instructions ────
+        _world_inner = world_state.get("world_state", world_state) if isinstance(world_state, dict) else {}
+        _scene_intel = _world_inner.get("scene_intelligence") or {}
+        _active_quests = _world_inner.get("active_quests", {})
+        _first_quest = next(iter(_active_quests.values()), {}) if _active_quests else {}
+        _quest_context = {
+            "quest_type": _first_quest.get("quest_type", _first_quest.get("type", "default")),
+            "quest_id": _first_quest.get("quest_id", ""),
+            "quest_name": _first_quest.get("name", _first_quest.get("title", "")),
+            "objective_hint": "",
+        }
+
         logger.info("🎲 Running DUNGEON FORGE...")
         dm_response = await run_dungeon_forge(
             player_action=player_action,
@@ -3093,7 +3129,8 @@ async def process_action(request: dict):
             session_mode=session_mode,
             improvisation_result=improvisation_result,
             npc_personalities=npc_personalities_data,
-            active_tailing_quest=active_tailing_quest
+            active_tailing_quest=active_tailing_quest,
+            scene_intelligence=_scene_intel if _scene_intel else None,
         )
         logger.info(f"   DM Response: narration length={len(dm_response.get('narration', ''))}")
         
@@ -3389,15 +3426,44 @@ async def process_action(request: dict):
             from services.combat_engine_service import start_combat, generate_combat_options
             from services.enemy_sourcing_service import select_enemies_for_location
             from models.normalized_entities import normalize_character, normalize_enemy_list
-            
-            # Build enemy templates from world context (P2.5: world-aware enemy sourcing)
+
             character_level = char_doc["character_state"].get("level", 1)
-            enemy_templates = select_enemies_for_location(
-                world_blueprint=campaign["world_blueprint"],
-                world_state=world_state["world_state"],
-                character_level=character_level
-            )
-            
+
+            # ── Scene-aware enemy sourcing ──────────────────────────────────────
+            # If we have accumulated scene intelligence, compose the encounter
+            # from what the player already observed — battlefield matches narration.
+            _combat_scene_intel = world_state_update.get("scene_intelligence") or _scene_intel
+            if _combat_scene_intel and _combat_scene_intel.get("tension_score", 0) >= 0.2:
+                try:
+                    from services.scene_intelligence_service import build_encounter_from_scene
+                    _player_intel_level = min(3, int(_combat_scene_intel.get("narration_count", 0)))
+                    _composed = build_encounter_from_scene(
+                        scene_intel=_combat_scene_intel,
+                        player_level=character_level,
+                        player_intel_level=_player_intel_level,
+                    )
+                    enemy_templates = _composed.get("enemies", [])
+                    logger.info(
+                        "🎭 Scene-composed encounter: %d enemies, difficulty=%s, quest=%s",
+                        len(enemy_templates),
+                        _composed.get("difficulty", "?"),
+                        _quest_context.get("quest_type", "?"),
+                    )
+                except Exception as _ce:
+                    logger.warning("Scene encounter composition failed, falling back: %s", _ce)
+                    enemy_templates = select_enemies_for_location(
+                        world_blueprint=campaign["world_blueprint"],
+                        world_state=world_state["world_state"],
+                        character_level=character_level,
+                    )
+            else:
+                # No scene intel — fall back to location-based enemy sourcing
+                enemy_templates = select_enemies_for_location(
+                    world_blueprint=campaign["world_blueprint"],
+                    world_state=world_state["world_state"],
+                    character_level=character_level,
+                )
+
             # Normalize enemies before combat starts
             normalized_enemies = normalize_enemy_list(enemy_templates)
             logger.info(f"✅ Normalized {len(normalized_enemies)} enemies for combat initialization")
@@ -3568,6 +3634,26 @@ async def process_action(request: dict):
             # After prepending scene, re-apply final filter to combined narration
             narration_text = NarrationFilter.apply_filter(narration_text, max_sentences=mode_limits["max"], context=f"final_combined_{current_mode}")
         
+        # ── Update scene intelligence from this narration (sync fast path) ──────
+        try:
+            from services.scene_intelligence_service import update_scene_intelligence
+            _location_name = _world_inner.get("current_location") or _world_inner.get("location") or "Unknown"
+            _updated_intel = update_scene_intelligence(
+                narration=narration_text,
+                existing_intel=_scene_intel,
+                quest_context=_quest_context,
+                location_name=_location_name,
+            )
+            # Persist updated scene_intelligence back into world_state
+            world_state_update["scene_intelligence"] = _updated_intel
+            logger.info(
+                "🎭 Scene intel updated — tension: %.0f%%, people: %d",
+                _updated_intel.get("tension_score", 0) * 100,
+                len(_updated_intel.get("people", [])),
+            )
+        except Exception as _si_err:
+            logger.warning("Scene intelligence update failed (non-fatal): %s", _si_err)
+
         # v4.1 UNIFIED SPEC: No options field - narration ends with open prompts
         return api_success({
             "narration": narration_text,
@@ -3576,7 +3662,7 @@ async def process_action(request: dict):
             "world_state_update": world_state_update,
             "player_updates": player_updates
         })
-        
+
     except Exception as e:
         logger.error(f"❌ Action processing failed: {e}", exc_info=True)
         return api_error("internal_error", f"Action processing failed: {str(e)}", status_code=500)

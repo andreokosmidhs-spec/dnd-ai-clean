@@ -2716,13 +2716,13 @@ async def process_action(request: dict):
                 clarification = NarrationFilter.apply_filter(target_resolution['clarification_reason'], max_sentences=3, context="target_clarification")
                 
                 # v4.1 UNIFIED SPEC: No options field - narration ends with open prompts
-                return api_success({
+                return {
                     "narration": clarification + "\n\nWhat do you do?",
                     "entity_mentions": [],
                     "combat_active": True,
                     "world_state_update": {},
                     "player_updates": {}
-                })
+                }
             
             # ── Action Economy: check if action already used ──────────────────
             from services.dnd_rules import classify_action_cost
@@ -2741,19 +2741,19 @@ async def process_action(request: dict):
                 "reaction_used": False,
             })
             if action_cost == "action" and player_turn_state.get("action_used", False):
-                return api_success({
+                return {
                     "narration": "You've already used your action this turn. Use a bonus action, or end your turn.\n\nWhat do you do?",
                     "combat_active": True,
                     "world_state_update": {},
                     "player_updates": {},
-                })
+                }
             if action_cost == "bonus_action" and player_turn_state.get("bonus_action_used", False):
-                return api_success({
+                return {
                     "narration": "You've already used your bonus action this turn.\n\nWhat do you do?",
                     "combat_active": True,
                     "world_state_update": {},
                     "player_updates": {},
-                })
+                }
 
             # ── Spell component check ─────────────────────────────────────
             from services.component_service import (
@@ -2774,21 +2774,21 @@ async def process_action(request: dict):
                     char_doc["character_state"], deck_cards,
                 )
                 if not _som_ok:
-                    return api_success({
+                    return {
                         "narration": _som_err + "\n\nWhat do you do?",
                         "combat_active": True,
                         "world_state_update": {},
                         "player_updates": {},
-                    })
+                    }
                 # Check costly material component
                 _comp_ok, _comp_err, _component_idx = check_costly_component(_card_spell_name, _inventory)
                 if not _comp_ok:
-                    return api_success({
+                    return {
                         "narration": _comp_err + "\n\nWhat do you do?",
                         "combat_active": True,
                         "world_state_update": {},
                         "player_updates": {},
-                    })
+                    }
                 # Advisory warning for non-costly M (doesn't block)
                 _, _noncostly_warn = check_noncostly_component(
                     _card_spell_name, _card_comps, _inventory,
@@ -2838,12 +2838,12 @@ async def process_action(request: dict):
                     _slot_key = str(_spell_level)
                     _slots_available = int(_slots.get(_slot_key, 0))
                     if _slots_available <= 0:
-                        return api_success({
+                        return {
                             "narration": f"You have no {_slot_key}{'st' if _slot_key=='1' else 'nd' if _slot_key=='2' else 'rd' if _slot_key=='3' else 'th'}-level spell slots remaining. Rest to recover them.\n\nWhat do you do?",
                             "combat_active": True,
                             "world_state_update": {},
                             "player_updates": {},
-                        })
+                        }
 
             # ── Concentration warning ─────────────────────────────────────────
             _prev_conc_spell = char_doc["character_state"].get("concentration_spell")
@@ -2873,12 +2873,12 @@ async def process_action(request: dict):
                 # Save-based spell: find target, compute DC, resolve
                 _target_enemy = _get_target_enemy()
                 if not _target_enemy:
-                    return api_success({
+                    return {
                         "narration": "No valid target for that spell. Choose a different target.\n\nWhat do you do?",
                         "combat_active": True,
                         "world_state_update": {},
                         "player_updates": {},
-                    })
+                    }
                 _sc_ability = get_spellcasting_ability(_caster_cls_name()) or "int"
                 _dc = calc_spell_save_dc(char_doc["character_state"], _sc_ability)
                 attack_result = process_save_spell(
@@ -2894,12 +2894,12 @@ async def process_action(request: dict):
                 from services.combat_engine_service import process_spell_attack
                 _target_enemy = _get_target_enemy()
                 if not _target_enemy:
-                    return api_success({
+                    return {
                         "narration": "No valid target for that spell. Choose a different target.\n\nWhat do you do?",
                         "combat_active": True,
                         "world_state_update": {},
                         "player_updates": {},
-                    })
+                    }
                 attack_result = process_spell_attack(
                     spell_name=_card_spell_name,
                     spell_card=_card_for_attack,
@@ -2921,12 +2921,12 @@ async def process_action(request: dict):
                 from services.combat_engine_service import process_auto_hit_spell
                 _target_enemy = _get_target_enemy()
                 if not _target_enemy:
-                    return api_success({
+                    return {
                         "narration": "No valid target for that spell. Choose a different target.\n\nWhat do you do?",
                         "combat_active": True,
                         "world_state_update": {},
                         "player_updates": {},
-                    })
+                    }
                 attack_result = process_auto_hit_spell(
                     spell_name=_card_spell_name,
                     spell_card=_card_for_attack,

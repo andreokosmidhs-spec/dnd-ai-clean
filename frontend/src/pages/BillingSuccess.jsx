@@ -8,7 +8,7 @@ export default function BillingSuccess() {
 
   useEffect(() => {
     refreshUsage();
-    const t = setTimeout(() => navigate("/"), 4000);
+    const t = setTimeout(() => navigate("/menu"), 4000);
     return () => clearTimeout(t);
   }, [navigate, refreshUsage]);
 

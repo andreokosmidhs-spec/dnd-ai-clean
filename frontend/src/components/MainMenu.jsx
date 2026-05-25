@@ -22,6 +22,14 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
   const hasActiveSession = !!activeCharacterId && !!activeCampaignId;
   const showLegacySavedCampaign = hasSavedCampaign && !hasActiveSession;
 
+  // Auto-open tutorial on first-ever visit
+  useEffect(() => {
+    if (!hasSeenTutorial()) {
+      const t = setTimeout(() => openTutorial(0), 800);
+      return () => clearTimeout(t);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     // Check for existing campaign
     const savedChar = localStorage.getItem('rpg-campaign-character');

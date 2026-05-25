@@ -7,6 +7,9 @@ import Login from "./pages/Login";
 import Pricing from "./pages/Pricing";
 import BillingSuccess from "./pages/BillingSuccess";
 import NotFound from "./pages/NotFound";
+import Landing from "./pages/Landing";
+import TermsOfService from "./pages/TermsOfService";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 import { useEffect, useState } from "react";
 import "./App.css";
 import "./styles/chat-fixes.css";
@@ -114,12 +117,12 @@ const AdventureRoute = () => {
 
   useEffect(() => {
     if (!activeCharacterId || !activeCampaignId) {
-      navigate("/", { replace: true });
+      navigate("/menu", { replace: true });
       return;
     }
 
     if (campaignStatus !== "ready") {
-      navigate("/", { replace: true });
+      navigate("/menu", { replace: true });
     }
   }, [activeCampaignId, activeCharacterId, campaignStatus, navigate]);
 
@@ -191,8 +194,11 @@ function App() {
             <TurnLimitModal />
             <TutorialOverlay />
             <Routes>
-              {/* Root now lands on the legacy Main Menu (RPGGame entry) */}
-              <Route path="/" element={<MainMenuPage />} />
+              {/* Landing page for new visitors */}
+              <Route path="/" element={<Landing />} />
+
+              {/* Main game menu */}
+              <Route path="/menu" element={<MainMenuPage />} />
 
               {/* New Character Creation V2 Wizard */}
               <Route path="/character-v2" element={<CharacterCreationV2 />} />
@@ -224,6 +230,10 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/billing/success" element={<BillingSuccess />} />
+
+              {/* Legal */}
+              <Route path="/tos" element={<TermsOfService />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
 
               {/* Dev-only routes */}
               {process.env.NODE_ENV === "development" && (

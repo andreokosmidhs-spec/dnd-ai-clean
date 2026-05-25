@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
 export default function Login() {
-  const [mode, setMode] = useState("login"); // "login" | "register"
+  const [mode, setMode] = useState("login"); // "login" | "register" | "forgot"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -21,7 +21,7 @@ export default function Login() {
       } else {
         await register(email, password);
       }
-      navigate("/");
+      navigate("/menu");
     } catch (err) {
       setError(err.response?.data?.detail || "Something went wrong");
     } finally {
@@ -57,33 +57,57 @@ export default function Login() {
           </p>
         </div>
 
-        {/* Mode toggle */}
-        <div style={{
-          display: "flex",
-          background: "rgba(0,0,0,0.3)",
-          borderRadius: 8,
-          padding: 4,
-          marginBottom: 24,
-        }}>
-          {["login", "register"].map((m) => (
-            <button key={m} onClick={() => { setMode(m); setError(""); }} style={{
-              flex: 1,
-              padding: "8px 0",
-              borderRadius: 6,
-              border: "none",
-              cursor: "pointer",
-              fontSize: 14,
-              fontWeight: 500,
-              background: mode === m ? "rgba(139,92,246,0.6)" : "transparent",
-              color: mode === m ? "#fff" : "#94a3b8",
-              transition: "all 0.2s",
-            }}>
-              {m === "login" ? "Sign In" : "Register"}
-            </button>
-          ))}
-        </div>
+        {/* Mode toggle — only show for login/register, not forgot */}
+        {mode !== "forgot" && (
+          <div style={{
+            display: "flex",
+            background: "rgba(0,0,0,0.3)",
+            borderRadius: 8,
+            padding: 4,
+            marginBottom: 24,
+          }}>
+            {["login", "register"].map((m) => (
+              <button key={m} onClick={() => { setMode(m); setError(""); }} style={{
+                flex: 1,
+                padding: "8px 0",
+                borderRadius: 6,
+                border: "none",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 500,
+                background: mode === m ? "rgba(139,92,246,0.6)" : "transparent",
+                color: mode === m ? "#fff" : "#94a3b8",
+                transition: "all 0.2s",
+              }}>
+                {m === "login" ? "Sign In" : "Register"}
+              </button>
+            ))}
+          </div>
+        )}
 
-        <form onSubmit={submit}>
+        {/* Forgot password view */}
+        {mode === "forgot" && (
+          <div style={{ marginBottom: 24 }}>
+            <h2 style={{ color: "#e2d9f3", fontSize: 18, fontWeight: 600, margin: "0 0 8px" }}>
+              Reset Password
+            </h2>
+            <p style={{ color: "#94a3b8", fontSize: 14, lineHeight: 1.6, margin: 0 }}>
+              Email us at{" "}
+              <a href="mailto:support@rpgforge.app" style={{ color: "#c4b5fd" }}>
+                support@rpgforge.app
+              </a>{" "}
+              with your registered email address and we'll reset your password manually.
+            </p>
+            <button onClick={() => { setMode("login"); setError(""); }} style={{
+              marginTop: 20, background: "none", border: "none",
+              color: "#8b5cf6", fontSize: 13, cursor: "pointer",
+            }}>
+              ← Back to Sign In
+            </button>
+          </div>
+        )}
+
+        {mode !== "forgot" && <form onSubmit={submit}>
           <label style={{ display: "block", marginBottom: 16 }}>
             <span style={{ color: "#94a3b8", fontSize: 13, display: "block", marginBottom: 6 }}>
               Email
@@ -161,9 +185,19 @@ export default function Login() {
           }}>
             {loading ? "..." : mode === "login" ? "Sign In" : "Create Account"}
           </button>
-        </form>
 
-        <button onClick={() => navigate("/")} style={{
+          {mode === "login" && (
+            <button type="button" onClick={() => { setMode("forgot"); setError(""); }} style={{
+              display: "block", width: "100%", marginTop: 12,
+              background: "none", border: "none", color: "#64748b",
+              fontSize: 13, cursor: "pointer", textAlign: "center",
+            }}>
+              Forgot password?
+            </button>
+          )}
+        </form>}
+
+        <button onClick={() => navigate("/menu")} style={{
           display: "block",
           margin: "20px auto 0",
           background: "none",

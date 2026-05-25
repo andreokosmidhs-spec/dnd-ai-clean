@@ -68,7 +68,7 @@ export default function Pricing() {
 
   const handleSelect = async (plan) => {
     if (plan.id === "free") {
-      navigate("/");
+      navigate("/menu");
       return;
     }
     if (!token) {
@@ -100,7 +100,7 @@ export default function Pricing() {
       padding: "60px 20px",
       fontFamily: "'Segoe UI', sans-serif",
     }}>
-      <button onClick={() => navigate("/")} style={{
+      <button onClick={() => navigate("/menu")} style={{
         position: "absolute", top: 20, left: 20,
         background: "none", border: "none", color: "#94a3b8",
         cursor: "pointer", fontSize: 14,

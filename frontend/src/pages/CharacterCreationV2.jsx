@@ -19,7 +19,7 @@ const STEP_COMPONENTS = {
 };
 
 const CharacterCreationV2 = () => {
-  const { state, updateSection, currentStepIndex, steps, nextStep, prevStep, goToStep } = useWizardState();
+  const { state, updateSection, currentStepIndex, steps, nextStep, prevStep, goToStep, clearDraft } = useWizardState();
   const currentStepId = WIZARD_STEPS[currentStepIndex]?.id;
   const StepComponent = STEP_COMPONENTS[currentStepId];
 
@@ -45,6 +45,7 @@ const CharacterCreationV2 = () => {
             steps={steps}
             goToStep={goToStep}
             currentStepIndex={currentStepIndex}
+            onClearDraft={clearDraft}
           />
         ) : (
           <div>Unknown step</div>

@@ -316,6 +316,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   // sessions too. Idempotent — only runs when at least one chronicle/intro
   // entry is missing mentions.
   const entityBackfillRan = useRef(false);
+  const lastFailedPayloadRef = useRef(null);
   useEffect(() => {
     if (!campaignId) return;
     if (entityBackfillRan.current) return;
@@ -979,6 +980,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
     const startTime = performance.now();
     console.log('📤 Sending to DM API:', payload);
 
+    lastFailedPayloadRef.current = payload;
     setIsLoading(true);
 
     try {
@@ -1541,10 +1543,15 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   };
 
   const handleRetry = (messageIndex) => {
-    const allMsgs = messages.slice(0, messageIndex);
-    const lastPlayerMsg = allMsgs.reverse().find(m => m.type === 'player');
-    if (lastPlayerMsg) {
-      sendPlayerMessage(lastPlayerMsg.text);
+    // Remove the error message from the log, then re-send the last known payload
+    // directly (avoids duplicating the player message in the log).
+    setMessages(prev => prev.filter((_, i) => i !== messageIndex));
+    if (lastFailedPayloadRef.current) {
+      sendToAPI(lastFailedPayloadRef.current);
+    } else {
+      // Fallback: find and re-send the last player message
+      const lastPlayerMsg = [...messages.slice(0, messageIndex)].reverse().find(m => m.type === 'player');
+      if (lastPlayerMsg) sendPlayerMessage(lastPlayerMsg.text);
     }
   };
 

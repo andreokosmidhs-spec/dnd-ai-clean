@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+
+const DRAFT_KEY = "dnd_char_wizard_draft";
 import {
   validateAppearance,
   validateAbilityScores,
@@ -89,8 +91,19 @@ const maxCompletedIndex = (steps, validations) => {
 };
 
 const useWizardState = () => {
-  const [state, setState] = useState(initialWizardState);
+  const [state, setState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (saved) return { ...initialWizardState, ...JSON.parse(saved) };
+    } catch {}
+    return initialWizardState;
+  });
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+
+  // Persist draft on every change
+  useEffect(() => {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(state)); } catch {}
+  }, [state]);
 
   const validations = useMemo(() => {
     const result = {};
@@ -151,6 +164,10 @@ const useWizardState = () => {
     };
   });
 
+  const clearDraft = () => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+  };
+
   return {
     state,
     updateState,
@@ -162,6 +179,7 @@ const useWizardState = () => {
     nextStep,
     prevStep,
     goToStep,
+    clearDraft,
   };
 };
 

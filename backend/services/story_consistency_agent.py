@@ -662,6 +662,7 @@ async def validate_dm_output(
             system_prompt=STORY_CONSISTENCY_PROMPT,
             user_content=context_str,
             temperature=0.3,
+            cache=True,
         )
         
         # Parse JSON response

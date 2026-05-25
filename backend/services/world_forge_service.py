@@ -33,11 +33,12 @@ def generate_world_blueprint(world_name: str, tone: str, starting_region_hint: s
     logger.info(f"Generating world blueprint for: {world_name}")
     
     try:
-        from .claude_client import call_sonnet_sync
-        raw = call_sonnet_sync(
+        from .claude_client import call_haiku_sync
+        raw = call_haiku_sync(
             system_prompt=WORLD_FORGE_SYSTEM_PROMPT,
             user_content=json.dumps(user_content),
             temperature=0.7,
+            max_tokens=3000,
         )
         
         # Remove markdown code blocks if present

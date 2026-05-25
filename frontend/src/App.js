@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import "./App.css";
 import "./styles/chat-fixes.css";
 import "./styles/focus-first.css";
+import "./styles/responsive.css";
 import { HashRouter as BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import axios from "axios";
 import RPGGame from "./components/RPGGame";

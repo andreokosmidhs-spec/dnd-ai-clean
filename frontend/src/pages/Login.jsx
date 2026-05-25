@@ -30,20 +30,14 @@ export default function Login() {
   };
 
   return (
-    <div style={{
-      minHeight: "100vh",
+    <div className="auth-outer" style={{
       background: "linear-gradient(135deg, #0f0c29, #302b63, #24243e)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
       fontFamily: "'Segoe UI', sans-serif",
     }}>
-      <div style={{
+      <div className="auth-card" style={{
         background: "rgba(255,255,255,0.05)",
         border: "1px solid rgba(255,255,255,0.12)",
         borderRadius: 16,
-        padding: "40px 48px",
-        width: 380,
         backdropFilter: "blur(12px)",
       }}>
         {/* Header */}

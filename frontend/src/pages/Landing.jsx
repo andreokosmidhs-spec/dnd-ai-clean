@@ -48,9 +48,9 @@ export default function Landing() {
     }}>
 
       {/* Nav */}
-      <nav style={{
+      <nav className="landing-nav" style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "20px 40px", borderBottom: "1px solid rgba(255,255,255,0.06)",
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
         position: "sticky", top: 0, zIndex: 10,
         background: "rgba(10,8,24,0.85)", backdropFilter: "blur(12px)",
       }}>
@@ -59,14 +59,14 @@ export default function Landing() {
           <span style={{ fontSize: 20, fontWeight: 700, color: "#f59e0b" }}>RPG Forge</span>
         </div>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <button onClick={() => navigate("/pricing")} style={{
+          <button className="landing-nav-hide-mobile" onClick={() => navigate("/pricing")} style={{
             background: "none", border: "none", color: "#94a3b8",
             fontSize: 14, cursor: "pointer", padding: "6px 12px",
           }}>
             Pricing
           </button>
           {user ? (
-            <button onClick={() => navigate("/menu")} style={{
+            <button className="landing-nav-cta" onClick={() => navigate("/menu")} style={{
               background: "rgba(139,92,246,0.8)", border: "none",
               borderRadius: 8, color: "#fff", fontSize: 14,
               fontWeight: 600, padding: "8px 20px", cursor: "pointer",
@@ -75,14 +75,14 @@ export default function Landing() {
             </button>
           ) : (
             <>
-              <button onClick={() => navigate("/login")} style={{
+              <button className="landing-nav-hide-mobile" onClick={() => navigate("/login")} style={{
                 background: "none", border: "1px solid rgba(255,255,255,0.15)",
                 borderRadius: 8, color: "#94a3b8", fontSize: 14,
                 padding: "8px 20px", cursor: "pointer",
               }}>
                 Sign In
               </button>
-              <button onClick={() => navigate("/menu")} style={{
+              <button className="landing-nav-cta" onClick={() => navigate("/menu")} style={{
                 background: "rgba(139,92,246,0.8)", border: "none",
                 borderRadius: 8, color: "#fff", fontSize: 14,
                 fontWeight: 600, padding: "8px 20px", cursor: "pointer",
@@ -95,9 +95,9 @@ export default function Landing() {
       </nav>
 
       {/* Hero */}
-      <section style={{
+      <section className="landing-hero" style={{
         display: "flex", flexDirection: "column", alignItems: "center",
-        textAlign: "center", padding: "100px 24px 80px",
+        textAlign: "center",
       }}>
         <div style={{
           display: "inline-block", background: "rgba(139,92,246,0.15)",
@@ -125,7 +125,7 @@ export default function Landing() {
           your story, reacts to your choices, and never runs out of adventure.
         </p>
 
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center" }}>
+        <div className="landing-cta-row">
           <button onClick={() => navigate("/menu")} style={{
             padding: "16px 40px", background: "linear-gradient(135deg, #8b5cf6, #7c3aed)",
             border: "none", borderRadius: 12, color: "#fff",
@@ -160,7 +160,7 @@ export default function Landing() {
           No prep, no scheduling, no missing players — just adventure.
         </p>
 
-        <div style={{
+        <div className="landing-features-grid" style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
           gap: 24,
@@ -202,10 +202,9 @@ export default function Landing() {
       </section>
 
       {/* Footer */}
-      <footer style={{
-        padding: "32px 40px", display: "flex",
+      <footer className="landing-footer" style={{
+        display: "flex",
         justifyContent: "space-between", alignItems: "center",
-        flexWrap: "wrap", gap: 16,
         borderTop: "1px solid rgba(255,255,255,0.06)",
         color: "#475569", fontSize: 13,
       }}>
@@ -213,7 +212,7 @@ export default function Landing() {
           <span>⚔️</span>
           <span>RPG Forge &copy; {new Date().getFullYear()}</span>
         </div>
-        <div style={{ display: "flex", gap: 24 }}>
+        <div className="landing-footer-links" style={{ display: "flex", gap: 24 }}>
           <button onClick={() => navigate("/tos")} style={{
             background: "none", border: "none", color: "#475569",
             fontSize: 13, cursor: "pointer", textDecoration: "underline",

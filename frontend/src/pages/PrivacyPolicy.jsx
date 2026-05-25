@@ -12,11 +12,10 @@ export default function PrivacyPolicy() {
   const navigate = useNavigate();
 
   return (
-    <div style={{
+    <div className="legal-outer" style={{
       minHeight: "100vh",
       background: "linear-gradient(135deg, #0f0c29, #302b63, #24243e)",
       fontFamily: "'Segoe UI', sans-serif",
-      padding: "60px 24px",
     }}>
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
         <button onClick={() => navigate(-1)} style={{

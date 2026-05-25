@@ -91,22 +91,21 @@ export default function Pricing() {
   };
 
   return (
-    <div style={{
+    <div className="pricing-outer" style={{
       minHeight: "100vh",
       background: "linear-gradient(135deg, #0f0c29, #302b63, #24243e)",
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
-      padding: "60px 20px",
       fontFamily: "'Segoe UI', sans-serif",
     }}>
-      <button onClick={() => navigate("/menu")} style={{
+      <button className="pricing-back" onClick={() => navigate("/menu")} style={{
         position: "absolute", top: 20, left: 20,
         background: "none", border: "none", color: "#94a3b8",
         cursor: "pointer", fontSize: 14,
       }}>← Back</button>
 
-      <h1 style={{ color: "#e2d9f3", fontSize: 36, fontWeight: 700, margin: "0 0 8px" }}>
+      <h1 className="pricing-title" style={{ color: "#e2d9f3", fontWeight: 700, margin: "0 0 8px" }}>
         Choose Your Plan
       </h1>
       <p style={{ color: "#94a3b8", fontSize: 16, marginBottom: 48 }}>
@@ -126,8 +125,7 @@ export default function Pricing() {
         {PLANS.map((plan) => {
           const isCurrent = user?.plan === plan.id;
           return (
-            <div key={plan.id} style={{
-              width: 280,
+            <div key={plan.id} className="pricing-card" style={{
               background: plan.highlight
                 ? "rgba(139,92,246,0.12)"
                 : "rgba(255,255,255,0.04)",

@@ -13,7 +13,7 @@ import { useTutorial } from "../contexts/TutorialContext";
 const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => {
   const navigate = useNavigate();
   const { user, usage, logout } = useAuth();
-  const { openTutorial } = useTutorial();
+  const { openTutorial, hasSeenTutorial } = useTutorial();
   const [hasSavedCampaign, setHasSavedCampaign] = useState(false);
   const [savedCharacter, setSavedCharacter] = useState(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
@@ -161,7 +161,7 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
       <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-20"></div>
 
       {/* Account bar */}
-      <div style={{ position: "absolute", top: 16, right: 16, display: "flex", gap: 8, alignItems: "center", zIndex: 20 }}>
+      <div className="menu-account-bar" style={{ position: "absolute", top: 16, right: 16, display: "flex", gap: 8, alignItems: "center", zIndex: 20 }}>
         <button onClick={() => openTutorial(0)} style={{
           background: "none", border: "1px solid rgba(255,255,255,0.1)",
           borderRadius: 6, color: "#64748b", padding: "5px 12px", fontSize: 12, cursor: "pointer",

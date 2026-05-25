@@ -267,25 +267,18 @@ const CombatHUD = ({ characterState, combatState }) => {
           {aliveEnemies.length === 0 ? (
             <p style={{ color: '#6b7280', fontSize: 12, fontStyle: 'italic' }}>No enemies remaining</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {aliveEnemies.map((enemy, idx) => {
-                const pct = Math.max(0, Math.min(100, (enemy.hp / enemy.max_hp) * 100));
-                return (
-                  <div key={enemy.id || idx} style={{ background: 'rgba(31,41,55,0.6)', borderRadius: 6, padding: '6px 8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ color: '#fca5a5', fontSize: 12, fontWeight: 600 }}>{enemy.name}</span>
-                      <span style={{ color: '#6b7280', fontSize: 11 }}>{enemy.hp}/{enemy.max_hp}</span>
-                    </div>
-                    <div style={{ width: '100%', background: '#1f2937', borderRadius: 4, height: 5, overflow: 'hidden' }}>
-                      <div style={{
-                        height: '100%', width: `${pct}%`,
-                        background: getHPColor(pct),
-                        borderRadius: 4, transition: 'width 0.3s',
-                      }} />
-                    </div>
-                  </div>
-                );
-              })}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {aliveEnemies.map((enemy, idx) => (
+                <div key={enemy.id || idx} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '4px 8px',
+                  background: 'rgba(31,41,55,0.5)',
+                  borderRadius: 6,
+                  borderLeft: '2px solid rgba(239,68,68,0.5)',
+                }}>
+                  <span style={{ color: '#fca5a5', fontSize: 12, fontWeight: 600 }}>{enemy.name}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>

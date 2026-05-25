@@ -87,16 +87,18 @@ const ParticipantToken = ({ participant, isActive, isPlayer, isTarget, onClick }
         )}
       </div>
 
-      {/* HP bar */}
-      <div className="mb-1">
-        <div className="h-2 bg-slate-700/80 rounded-full overflow-hidden">
-          <div className={`h-full rounded-full transition-all duration-500 ${hpColor}`} style={{ width: `${pct}%` }} />
+      {/* HP bar — player only; enemies are narrated by the DM */}
+      {isPlayer && (
+        <div className="mb-1">
+          <div className="h-2 bg-slate-700/80 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all duration-500 ${hpColor}`} style={{ width: `${pct}%` }} />
+          </div>
+          <div className="flex justify-between text-[11px] text-slate-400 mt-0.5">
+            <span>{hp}</span>
+            <span>{maxHp} HP</span>
+          </div>
         </div>
-        <div className="flex justify-between text-[11px] text-slate-400 mt-0.5">
-          <span>{hp}</span>
-          <span>{maxHp} HP</span>
-        </div>
-      </div>
+      )}
 
       {/* conditions */}
       {conditions.length > 0 && (

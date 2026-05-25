@@ -29,7 +29,8 @@ import useCanonTerms, { findCanonMentions } from '../hooks/useCanonTerms';
 import { useTargetMode, pickWordFromClick } from '../contexts/TargetModeContext';
 import { SearchTargetModal } from './TargetModeBanner';
 import { getCheckOutcome, getAbilityModifier, isProficient } from '../utils/dndMechanics';
-import { useTTS } from '../hooks/useTTS';
+import { useTTS, useBrowserTTS } from '../hooks/useTTS';
+import SessionRecapModal from './SessionRecapModal';
 import sessionManager from '../state/SessionManager';
 import { toast } from 'sonner';
 import '../styles/adventurePapyrus.css';
@@ -39,7 +40,7 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   // Get the entire context object to ensure fresh reads
   const gameStateContext = useGameState();
-  const { patchUsage } = useAuth();
+  const { patchUsage, user: authUser, token: authToken } = useAuth();
   const { openTutorial, hasSeenTutorial } = useTutorial();
   const {
     sessionId,
@@ -54,6 +55,24 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   
   const [messages, setMessages] = useState([]);
   const [currentOptions, setCurrentOptions] = useState([]);
+
+  // Narrator tone — persisted in localStorage, sent with every action
+  const [narratorTone, setNarratorTone] = useState(() => {
+    try { return localStorage.getItem('dnd_narrator_tone') || 'balanced'; } catch { return 'balanced'; }
+  });
+  const setAndPersistTone = useCallback((t) => {
+    setNarratorTone(t);
+    try { localStorage.setItem('dnd_narrator_tone', t); } catch {}
+  }, []);
+
+  // Browser TTS — auto-speak DM narration when enabled
+  const { enabled: ttsEnabled, toggle: toggleTTS, speak: speakNarration } = useBrowserTTS();
+
+  // Session recap modal
+  const [showRecap, setShowRecap] = useState(false);
+
+  // Scene image state keyed by message id
+  const [sceneImages, setSceneImages] = useState({});
 
   // Canon term index — proper-noun terms harvested from every canon
   // scene's title/facts, mapped back to their originating scene. Used
@@ -231,11 +250,11 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   
   // TTS Hook
   const { 
-    audioRef, 
-    isLoading: isTTSLoading, 
-    isTTSEnabled, 
-    generateSpeech, 
-    toggleTTS 
+    audioRef,
+    isLoading: isTTSLoading,
+    isTTSEnabled,
+    generateSpeech,
+    toggleTTS: toggleAPITTS,
   } = useTTS();
   
   const scrollRef = useRef();
@@ -1192,18 +1211,26 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           }
         }
 
-        // Auto-generate TTS if enabled (non-blocking)
-        if (isTTSEnabled && !isCinematic) {
-          setTimeout(async () => {
-            try {
-              const audioUrl = await generateSpeech(data.narration, 'onyx', true);
-              setMessages(prev => prev.map(msg => 
-                msg.id === msgId ? { ...msg, audioUrl } : msg
-              ));
-            } catch (err) {
-              console.error('TTS auto-generation failed:', err);
-            }
-          }, 100);
+        // Browser TTS — speak narration aloud if enabled (free, no API key needed)
+        if (!isCinematic) {
+          speakNarration(data.narration);
+        }
+
+        // Scene image — request for paid users after narration lands
+        if (!isCinematic && campaignId && authUser?.plan && authUser.plan !== 'free') {
+          const location = gameStateContext.worldState?.current_location || '';
+          const charName = gameStateContext.characterState?.name || '';
+          fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/generate-scene-image`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+            },
+            body: JSON.stringify({ narration: data.narration, location, character_name: charName }),
+          })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d?.image_url) setSceneImages(prev => ({ ...prev, [msgId]: d.image_url })); })
+            .catch(() => {});
         }
 
         if (isCinematic) {
@@ -1312,7 +1339,8 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
 
     // DUNGEON FORGE: Use buildActionPayload from context
     const actionPayload = buildActionPayload(playerMessage, checkResult);
-    
+    if (actionPayload) actionPayload.narrator_tone = narratorTone;
+
     if (!actionPayload) {
       console.error('❌ Cannot send action: missing campaign_id or character_id');
       const errorMsg = {
@@ -2348,6 +2376,16 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                           campaignId={campaignId}
                           mentions={findCanonMentions(entry.text, canonTermsMap)}
                         />
+                        {/* Scene image — shown for paid users when image generation returns */}
+                        {sceneImages[entry.id] && (
+                          <div style={{ marginTop: 10, borderRadius: 8, overflow: 'hidden', maxHeight: 260 }}>
+                            <img
+                              src={sceneImages[entry.id]}
+                              alt="Scene"
+                              style={{ width: '100%', objectFit: 'cover', display: 'block', borderRadius: 8 }}
+                            />
+                          </div>
+                        )}
                         <div className="text-xs opacity-60 mt-2">
                           {new Date(entry.timestamp).toLocaleTimeString()}
                         </div>
@@ -2561,6 +2599,15 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
             }
             if (window.showToast) window.showToast(`🎉 Level ${pendingLevelUp.newLevel}! Welcome to the next chapter.`, 'success');
           }}
+        />
+      )}
+
+      {/* Session Recap Journal */}
+      {showRecap && (
+        <SessionRecapModal
+          campaignId={campaignId}
+          characterName={gameStateContext.characterState?.name}
+          onClose={() => setShowRecap(false)}
         />
       )}
 

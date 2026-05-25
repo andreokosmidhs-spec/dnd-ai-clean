@@ -64,6 +64,19 @@ def get_db():
     return _db
 
 
+_TONE_INSTRUCTIONS = {
+    "balanced": "Use a balanced, classic fantasy D&D tone — adventurous, immersive, and accessible.",
+    "heroic":   "Use an epic, uplifting tone. Deeds feel legendary. Descriptions soar. Stakes feel world-shaking.",
+    "gritty":   "Use dark realism. Wounds hurt. Consequences matter. Victory is hard-won and often costly.",
+    "dark":     "Use a gothic, foreboding tone. Shadows linger. Dread is palpable. Moral ambiguity abounds.",
+    "comedic":  "Use a light, witty tone. Absurdist moments are welcome. Keep it playful without breaking immersion.",
+}
+
+
+def _tone_instruction(tone: str) -> str:
+    return _TONE_INSTRUCTIONS.get(tone or "balanced", _TONE_INSTRUCTIONS["balanced"])
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # REQUEST/RESPONSE MODELS
 # ═══════════════════════════════════════════════════════════════════════
@@ -391,7 +404,8 @@ async def run_dungeon_forge(
     session_mode: Optional[Dict[str, Any]] = None,
     improvisation_result: Optional[Dict[str, Any]] = None,
     npc_personalities: Optional[List[Dict[str, Any]]] = None,
-    active_tailing_quest: Optional[Dict[str, Any]] = None
+    active_tailing_quest: Optional[Dict[str, Any]] = None,
+    narrator_tone: str = "balanced",
 ) -> Dict[str, Any]:
     """
     DUNGEON FORGE: Main action resolution agent.
@@ -457,8 +471,9 @@ async def run_dungeon_forge(
         npc_personalities=npc_personalities,
         active_tailing_quest=active_tailing_quest,
         scene_intelligence=world_state.get("scene_intelligence") if isinstance(world_state, dict) else None,
+        narrator_tone=narrator_tone,
     )
-    
+
     # A-Version prompt now built above - removed old prompt code
     # Old prompt content removed - now using A-Version prompt built above
     
@@ -933,12 +948,13 @@ def build_a_version_dm_prompt(
     npc_personalities: Optional[List[Dict[str, Any]]] = None,
     active_tailing_quest: Optional[Dict[str, Any]] = None,
     scene_intelligence: Optional[Dict[str, Any]] = None,
+    narrator_tone: Optional[str] = "balanced",
 ) -> str:
     """
     Build A-Version compliant DM system prompt.
-    
+
     Integrates all 10 A-Version requirements with Phase 1 & Phase 2 DMG systems.
-    
+
     PHASE 1: Pacing, Information, Consequences, Context Memory
     PHASE 2: NPC Personality, Improvisation, Session Flow
     """
@@ -1111,6 +1127,8 @@ Turn order (combat)
 You cannot invent or change mechanics.
 
 6. Tone & Style
+
+{_tone_instruction(narrator_tone)}
 
 Vivid but concise description
 
@@ -2062,6 +2080,7 @@ async def process_action(request: dict, authorization: _Opt[str] = Header(None))
         check_result = action_req.check_result
         client_target_id = action_req.client_target_id  # Phase 1: Explicit target from frontend
         card_used_id = action_req.card_used  # Card used for this action (weapon resolution)
+        narrator_tone = action_req.narrator_tone or "balanced"
 
         logger.info(f"🎮 Processing action for campaign: {campaign_id}, character: {character_id}")
         logger.info(f"   Action: {player_action[:100]}")
@@ -3306,6 +3325,7 @@ async def process_action(request: dict, authorization: _Opt[str] = Header(None))
             npc_personalities=npc_personalities_data,
             active_tailing_quest=active_tailing_quest,
             scene_intelligence=_scene_intel if _scene_intel else None,
+            narrator_tone=narrator_tone,
         )
         logger.info(f"   DM Response: narration length={len(dm_response.get('narration', ''))}")
         

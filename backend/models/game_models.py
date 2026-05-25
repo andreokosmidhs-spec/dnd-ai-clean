@@ -270,3 +270,4 @@ class ActionRequest(BaseModel):
     check_result: Optional[int] = None
     client_target_id: Optional[str] = None  # Phase 1: Explicit target selection from frontend
     card_used: Optional[str] = None  # card id used for this action
+    narrator_tone: Optional[str] = "balanced"  # balanced|heroic|gritty|dark|comedic

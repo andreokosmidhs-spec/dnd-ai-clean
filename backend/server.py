@@ -4252,6 +4252,82 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+@app.post("/api/campaigns/{campaign_id}/generate-scene-image")
+async def generate_scene_image_endpoint(
+    campaign_id: str,
+    body: dict,
+    authorization: str = Header(None),
+):
+    """Generate a Flux scene image for a narration snippet. Paid plans only."""
+    from services.image_service import generate_scene_image, build_scene_prompt
+    from routers.billing import can_use_images, get_user_plan, allowed_tones
+
+    # Tier check
+    plan = "free"
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            from middleware.auth_middleware import _decode
+            uid = _decode(authorization.split(" ", 1)[1])
+            if uid:
+                plan = await get_user_plan(uid)
+        except Exception:
+            pass
+
+    if not can_use_images(plan):
+        raise HTTPException(403, "Scene images are available on Adventurer and Legend plans.")
+
+    narration = body.get("narration", "")
+    location  = body.get("location", "")
+    char_name = body.get("character_name", "")
+
+    prompt = build_scene_prompt(narration, location, char_name)
+    url = await generate_scene_image(prompt)
+    return {"image_url": url, "prompt": prompt}
+
+
+@app.post("/api/campaigns/{campaign_id}/session-recap")
+async def session_recap_endpoint(campaign_id: str, body: dict):
+    """Generate an AI session recap from the campaign's recent scenes."""
+    from services.session_recap_service import generate_session_recap
+
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+
+    world_state = await db.world_states.find_one({"campaign_id": campaign_id})
+    campaign    = await db.campaigns.find_one({"campaign_id": campaign_id})
+
+    if not world_state:
+        raise HTTPException(404, "Campaign not found")
+
+    ws        = world_state.get("world_state", {})
+    scenes    = ws.get("recent_scenes", [])
+    location  = ws.get("current_location", "Unknown")
+    quests    = ws.get("quests", {})
+    char_name = body.get("character_name", "Adventurer")
+
+    recap = await generate_session_recap(scenes, char_name, location, quests)
+
+    # Persist to campaign
+    await db.campaigns.update_one(
+        {"campaign_id": campaign_id},
+        {"$push": {"session_recaps": {"recap": recap, "timestamp": __import__("datetime").datetime.utcnow().isoformat()}}},
+        upsert=False,
+    )
+
+    return {"recap": recap}
+
+
+@app.get("/api/campaigns/{campaign_id}/session-recaps")
+async def get_session_recaps(campaign_id: str):
+    """Return all stored session recaps for a campaign."""
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    campaign = await db.campaigns.find_one({"campaign_id": campaign_id})
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    return {"recaps": campaign.get("session_recaps", [])}
+
+
 @app.get("/health")
 async def health_check():
     """Lightweight liveness probe for uptime monitors."""

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useBrowserTTS } from '../hooks/useTTS';
+import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -16,6 +18,7 @@ import { generateWorldBlueprint, createCharacter, getLastCampaign } from '../api
 import sessionManager from '../state/SessionManager';
 import { toast } from 'sonner';
 import GameEscapeMenu from './GameEscapeMenu';
+import SessionRecapModal from './SessionRecapModal';
 import DMNotebookPanel from './DMNotebookPanel';
 import CanonTimelinePanel from './CanonTimelinePanel';
 import LootPanel from './LootPanel';
@@ -109,6 +112,20 @@ const RPGGame = () => {
   const [pendingLoot, setPendingLoot] = useState(null);
   // ESC pause menu — only meaningful in-game.
   const [escMenuOpen, setEscMenuOpen] = useState(false);
+  // Narrator tone — shared with GameEscapeMenu and AdventureLogWithDM via prop-drilling
+  const [narratorTone, setNarratorTone] = useState(() => {
+    try { return localStorage.getItem('dnd_narrator_tone') || 'balanced'; } catch { return 'balanced'; }
+  });
+  const handleToneChange = useCallback((t) => {
+    setNarratorTone(t);
+    try { localStorage.setItem('dnd_narrator_tone', t); } catch {}
+  }, []);
+  // Browser TTS toggle
+  const { enabled: ttsEnabled, toggle: toggleTTS } = useBrowserTTS();
+  // Auth — for plan-gating features
+  const { user: authUser } = useAuth();
+  // Session recap modal trigger
+  const [showRecap, setShowRecap] = useState(false);
   // DM Notebook — opened from the ESC pause menu, shows persistent lessons.
   const [dmNotebookOpen, setDmNotebookOpen] = useState(false);
   // Canon Timeline — locked-in scenes from passed checks.
@@ -1238,7 +1255,22 @@ const RPGGame = () => {
         }}
         onOpenDMNotebook={() => setDmNotebookOpen(true)}
         onOpenCanonTimeline={() => setCanonTimelineOpen(true)}
+        narratorTone={narratorTone}
+        onToneChange={handleToneChange}
+        ttsEnabled={ttsEnabled}
+        onTTSToggle={toggleTTS}
+        onOpenRecap={() => setShowRecap(true)}
+        userPlan={authUser?.plan || 'free'}
       />
+
+      {/* Session Recap / Adventure Journal */}
+      {showRecap && (
+        <SessionRecapModal
+          campaignId={campaignId}
+          characterName={character?.name}
+          onClose={() => setShowRecap(false)}
+        />
+      )}
 
       {/* DM Notebook — persistent learned lessons */}
       <DMNotebookPanel

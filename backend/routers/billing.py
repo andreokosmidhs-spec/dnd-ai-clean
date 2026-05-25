@@ -3,8 +3,8 @@ Billing endpoints: Stripe checkout, customer portal, webhook, usage.
 
 Plan limits (turns/month):
   free      → 100
-  basic     → 600   ($10/mo)
-  unlimited → 2400  ($35/mo)
+  basic     → 600   ($15/mo)  — includes images, all tones, TTS
+  unlimited → 2400  ($35/mo)  — everything + priority
 """
 import os
 import logging
@@ -33,13 +33,21 @@ PLANS = {
         "display": "Free",
         "price_display": "$0/mo",
         "description": "100 turns/month",
+        "images": False,
+        "tones": ["balanced", "heroic"],
+        "tts": True,
+        "session_recap": True,
     },
     "basic": {
         "turns": 600,
         "price_id": os.getenv("STRIPE_PRICE_BASIC", ""),
         "display": "Adventurer",
-        "price_display": "$10/mo",
+        "price_display": "$15/mo",
         "description": "600 turns/month",
+        "images": True,
+        "tones": ["balanced", "heroic", "gritty", "dark", "comedic"],
+        "tts": True,
+        "session_recap": True,
     },
     "unlimited": {
         "turns": 2400,
@@ -47,6 +55,10 @@ PLANS = {
         "display": "Legend",
         "price_display": "$35/mo",
         "description": "2,400 turns/month",
+        "images": True,
+        "tones": ["balanced", "heroic", "gritty", "dark", "comedic"],
+        "tts": True,
+        "session_recap": True,
     },
 }
 
@@ -103,11 +115,36 @@ async def check_and_increment_usage(user_id: str) -> dict:
     }
 
 
+NARRATOR_TONES = {
+    "balanced": "Balanced, classic D&D tone — adventurous and immersive.",
+    "heroic":   "Epic, uplifting tone — deeds of legend, soaring descriptions.",
+    "gritty":   "Dark realism — consequences matter, wounds hurt, danger is real.",
+    "dark":     "Gothic and foreboding — shadows, dread, moral ambiguity.",
+    "comedic":  "Light and witty — absurdist moments, playful banter, comic timing.",
+}
+
+
+async def get_user_plan(user_id: str) -> str:
+    """Return the plan string ('free'|'basic'|'unlimited') for a user."""
+    if not _db:
+        return "free"
+    user = await _db.users.find_one({"_id": ObjectId(user_id)})
+    return (user or {}).get("plan", "free")
+
+
+def can_use_images(plan: str) -> bool:
+    return PLANS.get(plan, PLANS["free"]).get("images", False)
+
+
+def allowed_tones(plan: str) -> list:
+    return PLANS.get(plan, PLANS["free"]).get("tones", ["balanced", "heroic"])
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.get("/plans")
 async def list_plans():
-    return {"plans": PLANS}
+    return {"plans": PLANS, "tones": NARRATOR_TONES}
 
 
 @router.get("/usage")

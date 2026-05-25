@@ -8,12 +8,19 @@
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { Button } from './ui/button';
-import { Play, Settings as SettingsIcon, Home, ChevronLeft, X, Type, BookOpen, Scroll, HelpCircle } from 'lucide-react';
+import { Play, Settings as SettingsIcon, Home, ChevronLeft, X, Type, BookOpen, Scroll, HelpCircle, Volume2, VolumeX } from 'lucide-react';
 import { useFontSize } from '../contexts/FontSizeContext';
 import { useTutorial } from '../contexts/TutorialContext';
+import ToneSelector from './ToneSelector';
 
-const GameEscapeMenu = ({ open, onClose, onMainMenu, onOpenDMNotebook, onOpenCanonTimeline }) => {
-  const [view, setView] = useState('root');  // 'root' | 'settings'
+const GameEscapeMenu = ({
+  open, onClose, onMainMenu, onOpenDMNotebook, onOpenCanonTimeline,
+  narratorTone, onToneChange,
+  ttsEnabled, onTTSToggle,
+  onOpenRecap,
+  userPlan = 'free',
+}) => {
+  const [view, setView] = useState('root');  // 'root' | 'settings' | 'tone'
   const { preset, setPreset, presets, order } = useFontSize();
   const { openTutorial } = useTutorial();
 
@@ -68,10 +75,10 @@ const GameEscapeMenu = ({ open, onClose, onMainMenu, onOpenDMNotebook, onOpenCan
             )}
             <div>
               <div className="text-[11px] uppercase tracking-[0.2em] text-amber-400 font-bold">
-                {view === 'settings' ? 'Settings' : 'Paused'}
+                {view === 'settings' ? 'Settings' : view === 'tone' ? 'Narration' : 'Paused'}
               </div>
               <div className="text-amber-50 font-bold text-lg">
-                {view === 'settings' ? 'Reading Comfort' : 'Game Menu'}
+                {view === 'settings' ? 'Reading Comfort' : view === 'tone' ? 'Narrator Tone' : 'Game Menu'}
               </div>
             </div>
           </div>
@@ -87,7 +94,18 @@ const GameEscapeMenu = ({ open, onClose, onMainMenu, onOpenDMNotebook, onOpenCan
 
         {/* Body */}
         <div className="p-5">
-          {view === 'root' ? (
+          {view === 'tone' ? (
+            <div className="flex flex-col gap-3">
+              <ToneSelector
+                value={narratorTone || 'balanced'}
+                onChange={(t) => { onToneChange && onToneChange(t); }}
+                plan={userPlan}
+              />
+              <div className="text-[11px] text-stone-400 italic mt-1">
+                Tone applies to all future DM narrations in this session.
+              </div>
+            </div>
+          ) : view === 'root' ? (
             <div className="flex flex-col gap-3" data-testid="escape-menu-root">
               <Button
                 onClick={handleContinue}
@@ -142,6 +160,52 @@ const GameEscapeMenu = ({ open, onClose, onMainMenu, onOpenDMNotebook, onOpenCan
                     <span>Canon Timeline</span>
                     <span className="text-[11px] font-normal text-emerald-200/80">
                       Scenes you've locked in as truth
+                    </span>
+                  </div>
+                </Button>
+              )}
+
+              {/* Narrator Tone */}
+              <Button
+                onClick={() => setView('tone')}
+                className="h-14 text-base font-bold bg-stone-800 hover:bg-stone-700 text-amber-50 border border-amber-500/40 justify-start gap-3"
+              >
+                <span className="text-xl w-5 text-center">🎭</span>
+                <div className="flex flex-col items-start leading-tight">
+                  <span>Narrator Tone</span>
+                  <span className="text-[11px] font-normal text-amber-200/80 capitalize">
+                    {narratorTone || 'balanced'} — click to change
+                  </span>
+                </div>
+              </Button>
+
+              {/* TTS toggle */}
+              <Button
+                onClick={() => { onTTSToggle && onTTSToggle(); }}
+                className="h-14 text-base font-bold bg-stone-800 hover:bg-stone-700 text-amber-50 border border-amber-500/40 justify-start gap-3"
+              >
+                {ttsEnabled
+                  ? <Volume2 className="h-5 w-5 text-emerald-400" />
+                  : <VolumeX className="h-5 w-5 text-stone-500" />}
+                <div className="flex flex-col items-start leading-tight">
+                  <span>Narration Voice</span>
+                  <span className="text-[11px] font-normal text-amber-200/80">
+                    {ttsEnabled ? 'On — DM narration spoken aloud' : 'Off — silent narration'}
+                  </span>
+                </div>
+              </Button>
+
+              {/* Session Recap / Adventure Journal */}
+              {onOpenRecap && (
+                <Button
+                  onClick={() => { onClose && onClose(); onOpenRecap(); }}
+                  className="h-14 text-base font-bold bg-stone-800 hover:bg-stone-700 text-amber-50 border border-amber-500/40 justify-start gap-3"
+                >
+                  <Scroll className="h-5 w-5 text-amber-300" />
+                  <div className="flex flex-col items-start leading-tight">
+                    <span>Adventure Journal</span>
+                    <span className="text-[11px] font-normal text-amber-200/80">
+                      Session recap — what happened this session
                     </span>
                   </div>
                 </Button>

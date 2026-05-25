@@ -80,10 +80,10 @@ async def extract_npc_deltas(
     narration: str,
     player_action: str,
     npc_names: List[str],
-    api_key: str,
+    api_key: str = "",  # kept for backwards compat, unused — uses ANTHROPIC_API_KEY
 ) -> List[Dict]:
     """Return a list of {npc, type, fact} dicts for this turn. May return []."""
-    if not narration or not npc_names or not api_key:
+    if not narration or not npc_names:
         return []
 
     # Only call the LLM if at least one NPC is actually mentioned in the narration
@@ -92,7 +92,7 @@ async def extract_npc_deltas(
         return []
 
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from services.claude_client import call_haiku_async
 
         prompt = (
             f"NPCs in scene: {', '.join(mentioned)}\n\n"
@@ -100,13 +100,7 @@ async def extract_npc_deltas(
             f"DM narration: {narration[:1200]}\n\n"
             "List ONLY state changes that occurred THIS turn. Ignore unchanged background facts."
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id="npc-delta-extract",
-            system_message=_SYSTEM,
-        )
-        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0, max_tokens=200)
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(_SYSTEM, prompt, max_tokens=200, temperature=0)
         s = raw.strip()
         if s.startswith("```"):
             s = re.sub(r"^```[a-z]*\n?", "", s).rstrip("`").strip()
@@ -209,6 +203,60 @@ async def apply_npc_deltas(
                     )
                 except Exception:
                     pass
+
+
+_TIER_DOWNGRADE = {
+    "grateful": "friendly",
+    "friendly": "neutral",
+    "neutral":  "wary",
+    "wary":     "hostile",
+    "hostile":  "hostile",
+}
+
+
+async def downgrade_npc_relationship(
+    cards_collection,
+    campaign_id: str,
+    npc_name: str,
+    reason: str,
+) -> None:
+    """
+    Drop an NPC one relationship tier on a failed social check.
+    Writes an attitude delta and updates live DCs — deterministic, no LLM needed.
+    """
+    if not cards_collection or not npc_name:
+        return
+    try:
+        card = await cards_collection.find_one(
+            {"campaign_id": campaign_id, "title": npc_name, "type": "character"},
+            {"status": 1, "secret_content": 1},
+        )
+        if not card:
+            return
+        current_tier = card.get("status", "neutral")
+        new_tier = _TIER_DOWNGRADE.get(current_tier, "wary")
+        if new_tier == current_tier:
+            return  # already at floor
+
+        fact = f"{npc_name} is now {new_tier} toward the player — {reason}"
+        delta = {
+            "type": "attitude",
+            "fact": fact,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await cards_collection.update_one(
+            {"campaign_id": campaign_id, "title": npc_name, "type": "character"},
+            {"$push": {"character_deltas": {"$each": [delta], "$slice": -20}}},
+        )
+        # Recalculate DCs for the new tier
+        await apply_npc_deltas(
+            cards_collection,
+            campaign_id,
+            [{"npc": npc_name, **delta}],
+        )
+        logger.info(f"📉 NPC relationship downgraded: {npc_name} {current_tier} → {new_tier}")
+    except Exception as exc:
+        logger.warning(f"NPC relationship downgrade failed (non-fatal): {exc}")
 
 
 def render_deltas_for_prompt(deltas: List[Dict], limit: int = 8) -> str:

@@ -2128,6 +2128,45 @@ YOU MUST:
             if newly_failed_quests:
                 player_updates["quests_failed"] = newly_failed_quests
 
+            # ── NPC relationship updates from check outcome ───────────────────
+            try:
+                from services.npc_delta import extract_npc_deltas, apply_npc_deltas, downgrade_npc_relationship
+
+                # Collect NPC names from knowledge cards for this campaign
+                npc_cards = await db.campaign_cards.find(
+                    {"campaign_id": campaign_id, "type": "character"},
+                    {"title": 1},
+                ).to_list(20)
+                npc_names = [c["title"] for c in npc_cards if c.get("title")]
+
+                if npc_names and narration_text:
+                    # LLM-based extraction from DM narration
+                    npc_deltas = await extract_npc_deltas(
+                        narration=narration_text,
+                        player_action=check_request.action_context,
+                        npc_names=npc_names,
+                    )
+                    if npc_deltas:
+                        await apply_npc_deltas(db.campaign_cards, campaign_id, npc_deltas)
+                        logger.info(f"🤝 NPC deltas applied from check resolution: {len(npc_deltas)}")
+
+                # Deterministic fallback for failed social checks — downgrade any
+                # mentioned NPC one tier regardless of LLM extraction result.
+                check_name = (check_request.skill or check_request.ability or "").lower()
+                is_social = any(s in check_name for s in ("persuasion", "deception", "intimidation", "performance", "cha"))
+                if not resolution.success and is_social:
+                    for npc_name in npc_names:
+                        if npc_name.lower() in check_request.action_context.lower() or npc_name.lower() in narration_text.lower():
+                            await downgrade_npc_relationship(
+                                db.campaign_cards,
+                                campaign_id,
+                                npc_name,
+                                reason=f"failed {check_request.skill or check_request.ability} check (margin {resolution.margin:+d})",
+                            )
+                            break  # downgrade first matched NPC only
+            except Exception as exc:
+                logger.warning(f"NPC delta tracking in check resolution failed (non-fatal): {exc}")
+
             response_data = {
                 "narration": narration_text,
                 "entity_mentions": entity_mentions,

@@ -1227,7 +1227,8 @@ Return ONLY this JSON:
       "progress_events": [
           {{"quest_id": "string", "objective_index": 0, "progress_delta": 1}}
       ],
-      "completed_quest_ids": []
+      "completed_quest_ids": [],
+      "failed_quest_ids": []
   }},
   "xp_reward": null | {{"amount": 0, "reason": "string"}}
 }}
@@ -1235,6 +1236,7 @@ Return ONLY this JSON:
 Quest update rules:
 - Emit progress_events when the player visibly advances a tracked quest objective (entered a location, talked to an NPC, found an item). Use the exact quest_id from the injected quest_state.
 - Emit completed_quest_ids when all objectives of a quest are satisfied by this action.
+- Emit failed_quest_ids when the player's action definitively closes off a quest with failure — a key NPC dies, the target escapes permanently, the window of opportunity closes. Only use for clear, irreversible failures.
 - Emit new_quests only when an NPC explicitly offers a new quest the player accepts.
 - Grant xp_reward (10–50 XP) for significant non-combat accomplishments: solving a puzzle, gathering key information, forging an alliance. Omit for trivial actions.
 
@@ -1886,6 +1888,32 @@ async def create_character_endpoint(request: CharacterCreateRequest):
         return api_error("internal_error", f"Character creation failed: {str(e)}", status_code=500)
 
 
+def _classify_check_failure(ability: str, skill) -> dict:
+    """Map ability/skill → consequence category for world_state persistence."""
+    check_name = (skill or ability or "").lower()
+    if any(s in check_name for s in ("stealth", "dex")):
+        return {"type": "exposure",         "key": "exposure_event"}
+    if any(s in check_name for s in ("persuasion", "deception", "intimidation", "performance", "cha")):
+        return {"type": "social_setback",   "key": "social_setback"}
+    if any(s in check_name for s in ("perception", "insight", "wis")):
+        return {"type": "information_gap",  "key": "missed_information"}
+    if any(s in check_name for s in ("investigation", "history", "arcana", "religion", "nature", "int")):
+        return {"type": "knowledge_gap",    "key": "missed_clue"}
+    if any(s in check_name for s in ("athletics", "acrobatics", "str")):
+        return {"type": "physical_setback", "key": "physical_setback"}
+    return {"type": "complication",         "key": "recent_complication"}
+
+
+def _critical_failure_condition(ability: str, skill) -> str | None:
+    """Return a D&D condition to apply on nat-1 / margin ≤ -10, or None."""
+    check_name = (skill or ability or "").lower()
+    if any(s in check_name for s in ("athletics", "acrobatics", "str", "dex")):
+        return "prone"
+    if any(s in check_name for s in ("con", "constitution")):
+        return "exhausted"
+    return None  # social / mental checks: narrated consequence only
+
+
 @router.post("/rpg_dm/resolve_check")
 async def resolve_check(request: dict):
     """
@@ -1941,11 +1969,31 @@ async def resolve_check(request: dict):
             world_state = {"world_state": {}}
         
         # Build a narration prompt for the DM with the resolution
+        active_quests = world_state["world_state"].get("quests", [])
+        active_quest_list = [q for q in active_quests if q.get("status") == "active"]
+        quest_context = ""
+        if active_quest_list:
+            lines = [f"  - {q['name']} (id: {q['quest_id']})" for q in active_quest_list[:5]]
+            quest_context = "\nACTIVE QUESTS:\n" + "\n".join(lines)
+
+        failure_guidance = ""
+        if not resolution.success:
+            fc = _classify_check_failure(check_request.ability, check_request.skill)
+            failure_guidance = f"""
+FAILURE CONSEQUENCE REQUIRED:
+Since this check failed ({resolution.outcome}), you MUST include in world_state_update:
+  "{fc['key']}": {{"active": true, "context": "<one sentence>", "severity": "{'severe' if resolution.outcome == 'critical_failure' else 'moderate' if resolution.outcome == 'clear_failure' else 'minor'}"}}
+
+This persists the consequence so future scenes remember it.
+{f'If this failure is directly tied to one of the active quests above, also set "failed_quest_ids": ["<quest_id>"] in your JSON response.' if active_quest_list else ''}
+Fail forward: even on failure, give the player a thread — a clue, a complication, a new problem to solve."""
+
         narration_prompt = f"""The player just completed an ability check. Here is the structured result:
 
 CHECK: {check_request.skill or check_request.ability} ({check_request.ability})
 ACTION: {check_request.action_context}
 DC: {check_request.dc} ({check_request.dc_band})
+{quest_context}
 
 ROLL RESULT:
 - D20 Roll: {player_roll.d20_roll}
@@ -1958,13 +2006,14 @@ OUTCOME: {resolution.outcome.upper()}
 - Tier: {resolution.outcome_tier}
 
 NARRATION GUIDANCE: {resolution.suggested_narration_style}
+{failure_guidance}
 
 YOU MUST:
-1. Narrate what happens based on this result
-2. DO NOT re-roll or change the outcome
-3. Show specific consequences (items found, information learned, complications, etc.)
-4. Update world_state_update if needed
-5. Update player_updates with any rewards/consequences"""
+1. Narrate what happens based on this exact result — DO NOT re-roll or change the outcome
+2. Show specific consequences (items found, information learned, complications triggered)
+3. On failure: narrate a "fail forward" — something still happens, just not what the player wanted
+4. Update world_state_update with the required consequence key (see above)
+5. Update player_updates with any mechanical effects"""
 
         # Call DUNGEON FORGE with the resolution context
         try:
@@ -2000,31 +2049,85 @@ YOU MUST:
             )
             entity_mentions = extract_entity_mentions(narration_text, entity_index)
             
-            # Apply world state updates
+            # ── World state updates ───────────────────────────────────────────
             world_state_update = dm_response.get("world_state_update", {})
-            if world_state_update:
-                current_world = world_state["world_state"]
-                current_world.update(world_state_update)
-                await db.world_states.update_one(
-                    {"campaign_id": campaign_id, "character_id": character_id},
-                    {"$set": {"world_state": current_world}}
+            current_world = world_state["world_state"]
+
+            # Always persist a structured failure record — don't rely solely on DM
+            if not resolution.success:
+                fc = _classify_check_failure(check_request.ability, check_request.skill)
+                severity = (
+                    "severe" if resolution.outcome == "critical_failure" else
+                    "moderate" if resolution.outcome == "clear_failure" else
+                    "minor"
                 )
-            
-            # Apply player updates
+                failure_record = {
+                    "type": fc["type"],
+                    "severity": severity,
+                    "ability": check_request.ability,
+                    "skill": check_request.skill,
+                    "action": check_request.action_context[:100],
+                    "outcome": resolution.outcome,
+                    "margin": resolution.margin,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                current_world.setdefault("check_failures", []).append(failure_record)
+                current_world["check_failures"] = current_world["check_failures"][-10:]
+
+                # If DM didn't write the consequence key, write a baseline
+                if fc["key"] not in world_state_update:
+                    world_state_update[fc["key"]] = {
+                        "active": True,
+                        "context": check_request.action_context[:80],
+                        "severity": severity,
+                    }
+                    logger.info(f"⚠️ Injecting baseline failure consequence: {fc['key']} ({severity})")
+
+            # Apply DM world state on top
+            current_world.update(world_state_update)
+
+            # ── Quest failure from DM or critical check ───────────────────────
+            failed_quest_ids = dm_response.get("failed_quest_ids", [])
+            newly_failed_quests = []
+            for quest_id in failed_quest_ids:
+                for quest in current_world.get("quests", []):
+                    if quest["quest_id"] == quest_id and quest.get("status") == "active":
+                        quest["status"] = "failed"
+                        newly_failed_quests.append(quest.get("name", quest_id))
+                        logger.info(f"❌ Quest failed (DM flagged): {quest.get('name', quest_id)}")
+
+            await db.world_states.update_one(
+                {"campaign_id": campaign_id, "character_id": character_id},
+                {"$set": {"world_state": current_world}},
+                upsert=True,
+            )
+
+            # ── Player updates + critical failure condition ────────────────────
             player_updates = dm_response.get("player_updates", {})
-            if player_updates:
-                # Update character state
-                current_char = char_doc["character_state"]
+            current_char = char_doc["character_state"]
+
+            if resolution.outcome == "critical_failure":
+                crit_cond = _critical_failure_condition(check_request.ability, check_request.skill)
+                if crit_cond:
+                    conditions = current_char.get("conditions", [])
+                    if crit_cond not in conditions:
+                        conditions.append(crit_cond)
+                        current_char["conditions"] = conditions
+                        player_updates["condition_added"] = crit_cond
+                        logger.info(f"💥 Critical failure condition applied: {crit_cond}")
+
+            if player_updates or resolution.outcome == "critical_failure":
                 if "gold_gained" in player_updates:
                     current_char["gold"] = current_char.get("gold", 0) + player_updates["gold_gained"]
                 if "items_gained" in player_updates:
                     current_char["inventory"] = current_char.get("inventory", []) + player_updates["items_gained"]
                 if "hp" in player_updates:
                     current_char["hp"] = player_updates["hp"]
-                
                 await update_character_state(campaign_id, character_id, current_char)
-            
-            # v4.1 UNIFIED SPEC: No options field - narration ends with open prompts
+
+            if newly_failed_quests:
+                player_updates["quests_failed"] = newly_failed_quests
+
             response_data = {
                 "narration": narration_text,
                 "entity_mentions": entity_mentions,
@@ -2033,8 +2136,8 @@ YOU MUST:
                 "resolution": {
                     "success": resolution.success,
                     "outcome": resolution.outcome,
-                    "margin": resolution.margin
-                }
+                    "margin": resolution.margin,
+                },
             }
             
             logger.info(f"✅ Check resolution complete - returning response")
@@ -3503,7 +3606,8 @@ async def process_action(request: dict, authorization: _Opt[str] = Header(None))
         if quest_updates and any([
             quest_updates.get("new_quests"),
             quest_updates.get("progress_events"),
-            quest_updates.get("completed_quest_ids")
+            quest_updates.get("completed_quest_ids"),
+            quest_updates.get("failed_quest_ids"),
         ]):
             logger.info("📜 Processing quest updates from DUNGEON FORGE...")
             from services.quest_service import (
@@ -3547,6 +3651,14 @@ async def process_action(request: dict, authorization: _Opt[str] = Header(None))
                 _qxp = complete_quest(current_world, quest_id)
                 _quest_completion_xp += _qxp
                 logger.info(f"🎊 Quest completed, awarding {_qxp} XP")
+
+            # Handle failed quests — mark status, no XP
+            for quest_id in quest_updates.get("failed_quest_ids", []):
+                for quest in current_world.get("quests", []):
+                    if quest["quest_id"] == quest_id and quest.get("status") == "active":
+                        quest["status"] = "failed"
+                        player_updates.setdefault("quests_failed", []).append(quest.get("name", quest_id))
+                        logger.info(f"❌ Quest failed (DM flagged): {quest.get('name', quest_id)}")
 
             # Save updated world state with quests
             await update_world_state(campaign_id, current_world)

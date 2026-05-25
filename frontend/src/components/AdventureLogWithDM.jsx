@@ -1117,6 +1117,21 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           if (data.player_updates.xp_penalty > 0 && window.showToast) {
             window.showToast(`-${data.player_updates.xp_penalty} XP`, 'error');
           }
+
+          // Quest failure toasts
+          if (data.player_updates.quests_failed?.length > 0) {
+            data.player_updates.quests_failed.forEach(name => {
+              window.showToast && window.showToast(`❌ Quest failed: ${name}`, 'error');
+            });
+          }
+          if (data.player_updates.quest_failed) {
+            window.showToast && window.showToast(`❌ Quest failed: ${data.player_updates.quest_failed}`, 'error');
+          }
+
+          // Critical failure condition toast
+          if (data.player_updates.condition_added) {
+            window.showToast && window.showToast(`⚠️ Condition: ${data.player_updates.condition_added}`, 'error');
+          }
         }
       }
 

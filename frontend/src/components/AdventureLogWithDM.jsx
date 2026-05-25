@@ -5,6 +5,8 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Dice6, MessageSquare, Loader2, User, Sparkles, Volume2, X, BookOpen, Bookmark, BookmarkCheck, Scroll, Flag, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useGameState } from '../contexts/GameStateContext';
+import { useAuth } from '../contexts/AuthContext';
+import UsageBanner from './UsageBanner';
 // CheckRequestCard and RollResultCard removed - CheckRollPanel handles all rolls now
 import NarrationAudioPlayer from './NarrationAudioPlayer';
 import NPCMentionHighlighter from './NPCMentionHighlighter';
@@ -35,6 +37,7 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   // Get the entire context object to ensure fresh reads
   const gameStateContext = useGameState();
+  const { patchUsage } = useAuth();
   const {
     sessionId,
     setSessionId,
@@ -964,7 +967,10 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
 
       // Extract data from standard envelope {success, data, error}
       const data = response_envelope.data || response_envelope;
-      
+
+      // Sync turn usage into AuthContext so UsageBanner updates without extra fetch
+      if (data.usage) patchUsage(data.usage);
+
       // DUNGEON FORGE: Handle world_state_update
       if (data.world_state_update && Object.keys(data.world_state_update).length > 0) {
         console.log('🗺️ WORLD STATE UPDATE:', data.world_state_update);
@@ -1735,6 +1741,11 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
             <CombatHUD characterState={gameStateContext.characterState} combatState={combatState} />
           </div>
         )}
+
+        {/* Turn usage indicator */}
+        <div style={{ padding: "4px 8px" }}>
+          <UsageBanner />
+        </div>
 
         {/* Compact top bar — Realm + Quests open as right-side slide-overs.
             Replaces the chunky inline collapsible cards so the chat owns

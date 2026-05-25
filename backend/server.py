@@ -113,6 +113,8 @@ tts_client = OpenAI(api_key=OPENAI_TTS_KEY) if OPENAI_TTS_KEY else None
 
 # Import DUNGEON FORGE router, quest router, and debug router
 from routers import dungeon_forge
+from routers import auth as auth_router
+from routers import billing as billing_router
 from routers import quests as quests_router
 from routers import debug as debug_router
 from routers import knowledge as knowledge_router
@@ -4143,6 +4145,8 @@ async def forge_world(request: WorldForgeRequest):
 
 # Mount routers
 app.include_router(api_router)  # Legacy endpoints
+app.include_router(auth_router.router)      # Auth: register / login / me
+app.include_router(billing_router.router)   # Billing: plans / usage / Stripe
 app.include_router(dungeon_forge.router)  # DUNGEON FORGE multi-agent endpoints
 app.include_router(quests_router.router)  # Quest System endpoints
 app.include_router(debug_router.router)  # Debug endpoints
@@ -4171,6 +4175,8 @@ app.include_router(pressure_engine_router.router)  # Living Campaign Pressure En
 
 # Inject database into routers
 dungeon_forge.set_database(db)
+auth_router.set_database(db)
+billing_router.set_database(db)
 quests_router.set_database(db)
 debug_router.set_database(db)
 knowledge_router.set_database(db)

@@ -7,9 +7,11 @@ import { Sword, Play, PlusCircle, Trash2, User, Crown, Database, Users } from "l
 import apiClient, { isSuccess, getErrorMessage } from "../lib/apiClient";
 import { useSessionCore } from "../store/useSessionCore";
 import { canCreateCharacter } from "../utils/characterPool";
+import { useAuth } from "../contexts/AuthContext";
 
 const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => {
   const navigate = useNavigate();
+  const { user, usage, logout } = useAuth();
   const [hasSavedCampaign, setHasSavedCampaign] = useState(false);
   const [savedCharacter, setSavedCharacter] = useState(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
@@ -147,7 +149,39 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-gray-900 to-black flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-20"></div>
-      
+
+      {/* Account bar */}
+      <div style={{ position: "absolute", top: 16, right: 16, display: "flex", gap: 8, alignItems: "center", zIndex: 20 }}>
+        {user ? (
+          <>
+            {usage && (
+              <span style={{ color: "#94a3b8", fontSize: 12 }}>
+                {usage.turns_remaining} turns left
+              </span>
+            )}
+            <button onClick={() => navigate("/pricing")} style={{
+              background: "rgba(139,92,246,0.2)", border: "1px solid rgba(139,92,246,0.4)",
+              borderRadius: 6, color: "#c4b5fd", padding: "5px 12px", fontSize: 12, cursor: "pointer",
+            }}>
+              {user.plan === "free" ? "Upgrade" : user.plan}
+            </button>
+            <button onClick={logout} style={{
+              background: "none", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 6, color: "#64748b", padding: "5px 12px", fontSize: 12, cursor: "pointer",
+            }}>
+              Sign out
+            </button>
+          </>
+        ) : (
+          <button onClick={() => navigate("/login")} style={{
+            background: "rgba(139,92,246,0.2)", border: "1px solid rgba(139,92,246,0.4)",
+            borderRadius: 6, color: "#c4b5fd", padding: "5px 14px", fontSize: 13, cursor: "pointer",
+          }}>
+            Sign In
+          </button>
+        )}
+      </div>
+
       <Card className="max-w-2xl w-full bg-black/90 border-amber-600/30 backdrop-blur-sm relative z-10 shadow-2xl">
         <CardHeader className="text-center pb-8 pt-12">
           <div className="flex justify-center mb-6">

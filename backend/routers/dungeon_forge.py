@@ -8,7 +8,8 @@ import logging
 import uuid
 import asyncio
 from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
+from typing import Optional as _Opt
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import sys
@@ -2034,7 +2035,7 @@ YOU MUST:
 
 
 @router.post("/rpg_dm/action")
-async def process_action(request: dict):
+async def process_action(request: dict, authorization: _Opt[str] = Header(None)):
     """
     Main gameplay action endpoint for DUNGEON FORGE.
     
@@ -2088,6 +2089,20 @@ async def process_action(request: dict):
             raise HTTPException(status_code=404, detail=f"World state not found for campaign: {campaign_id}")
         
         is_combat_active = combat_doc and not combat_doc.get("combat_state", {}).get("combat_over", True)
+
+        # ── USAGE ENFORCEMENT ─────────────────────────────────────────────────────
+        _usage_info = None
+        if authorization and authorization.startswith("Bearer "):
+            try:
+                from middleware.auth_middleware import _decode
+                from routers.billing import check_and_increment_usage
+                _user_id = _decode(authorization.split(" ", 1)[1])
+                if _user_id:
+                    _usage_info = await check_and_increment_usage(_user_id)
+            except HTTPException:
+                raise
+            except Exception as _ue:
+                logger.warning(f"Usage check failed (non-fatal): {_ue}")
 
         # ── REST DETECTION: short-circuit before DM pipeline ─────────────────────
         # Rest is deterministic — don't route through the LLM, just compute and return.
@@ -3824,7 +3839,8 @@ async def process_action(request: dict):
             "entity_mentions": entity_mentions,
             "check_request": check_request,
             "world_state_update": world_state_update,
-            "player_updates": player_updates
+            "player_updates": player_updates,
+            "usage": _usage_info,
         })
 
     except Exception as e:

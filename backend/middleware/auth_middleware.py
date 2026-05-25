@@ -9,6 +9,9 @@ from fastapi import Header, HTTPException
 from jose import jwt, JWTError
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production")
+if JWT_SECRET == "change-me-in-production" and os.getenv("ENV", "development") == "production":
+    raise RuntimeError("JWT_SECRET must be set to a secure random value in production. "
+                       "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\"")
 JWT_ALGORITHM = "HS256"
 
 

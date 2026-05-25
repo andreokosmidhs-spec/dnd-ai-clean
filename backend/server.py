@@ -4231,10 +4231,16 @@ async def general_exception_handler(request, exc):
     )
 
 
+_frontend_url = os.getenv("FRONTEND_URL", "")
+_cors_origins = (
+    [o.strip() for o in _frontend_url.split(",") if o.strip()]
+    if _frontend_url
+    else ["http://localhost:3000", "http://localhost:3001"]
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=False,
-    allow_origins=["*"],
+    allow_credentials=True,
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -4245,6 +4251,34 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+@app.get("/health")
+async def health_check():
+    """Lightweight liveness probe for uptime monitors."""
+    db_ok = False
+    if db is not None:
+        try:
+            await db.command("ping")
+            db_ok = True
+        except Exception:
+            pass
+    return {"status": "ok", "db": "connected" if db_ok else "unavailable"}
+
+
+@app.on_event("startup")
+async def _ensure_indexes():
+    """Create MongoDB indexes needed for correctness and performance."""
+    if not db:
+        return
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.usage.create_index([("user_id", 1), ("period", 1)], unique=True)
+        await db.subscriptions.create_index("user_id", unique=True)
+        await db.subscriptions.create_index("stripe_subscription_id")
+        logger.info("MongoDB indexes ensured")
+    except Exception as exc:
+        logger.warning(f"Index creation failed (non-fatal): {exc}")
+
 
 @app.on_event("startup")
 async def _seed_collections():

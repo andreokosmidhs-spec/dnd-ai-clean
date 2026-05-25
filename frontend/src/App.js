@@ -6,6 +6,7 @@ import MainMenu from "./components/MainMenu";
 import Login from "./pages/Login";
 import Pricing from "./pages/Pricing";
 import BillingSuccess from "./pages/BillingSuccess";
+import NotFound from "./pages/NotFound";
 import { useEffect, useState } from "react";
 import "./App.css";
 import "./styles/chat-fixes.css";
@@ -20,6 +21,7 @@ import { FontSizeProvider } from "./contexts/FontSizeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { TutorialProvider } from "./contexts/TutorialContext";
 import TutorialOverlay from "./components/TutorialOverlay";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { useDungeonStore } from "./store/useDungeonStore";
 import { useSessionCore } from "./store/useSessionCore";
 import CampaignSetup from "./pages/CampaignSetup";
@@ -180,6 +182,7 @@ function App() {
 
   return (
     <div className="App">
+      <ErrorBoundary>
       <FontSizeProvider>
         <AuthProvider>
           <TutorialProvider>
@@ -210,8 +213,6 @@ function App() {
               <Route path="/game" element={<AdventureRoute />} />
 
               {/* DEV ONLY: Preview CampaignLogPanel without adventure flow */}
-              {/* TODO: Remove before production release */}
-              <Route path="/dev/campaign-log" element={<DevCampaignLogPreview />} />
 
               {/* DM Tool: Living Campaign Pressure Engine dashboard */}
               <Route path="/pressure-dashboard" element={<PressureRoute />} />
@@ -223,6 +224,14 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/billing/success" element={<BillingSuccess />} />
+
+              {/* Dev-only routes */}
+              {process.env.NODE_ENV === "development" && (
+                <Route path="/dev/campaign-log" element={<DevCampaignLogPreview />} />
+              )}
+
+              {/* 404 catch-all */}
+              <Route path="*" element={<NotFound />} />
             </Routes>
             <FeedbackButton />
           </BrowserRouter>
@@ -231,6 +240,7 @@ function App() {
           </TutorialProvider>
         </AuthProvider>
       </FontSizeProvider>
+      </ErrorBoundary>
     </div>
   );
 }

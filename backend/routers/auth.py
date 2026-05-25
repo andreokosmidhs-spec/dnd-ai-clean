@@ -51,8 +51,13 @@ def _safe_user(user: dict) -> dict:
 
 @router.post("/register")
 async def register(req: RegisterRequest):
-    if not req.email or "@" not in req.email or len(req.password) < 6:
-        raise HTTPException(400, "Valid email and password (6+ chars) required")
+    try:
+        from email_validator import validate_email, EmailNotValidError
+        validate_email(req.email, check_deliverability=False)
+    except Exception:
+        raise HTTPException(400, "Invalid email address")
+    if len(req.password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters")
 
     existing = await _db.users.find_one({"email": req.email.lower()})
     if existing:

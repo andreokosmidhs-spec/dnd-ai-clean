@@ -8,10 +8,12 @@ import apiClient, { isSuccess, getErrorMessage } from "../lib/apiClient";
 import { useSessionCore } from "../store/useSessionCore";
 import { canCreateCharacter } from "../utils/characterPool";
 import { useAuth } from "../contexts/AuthContext";
+import { useTutorial } from "../contexts/TutorialContext";
 
 const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => {
   const navigate = useNavigate();
   const { user, usage, logout } = useAuth();
+  const { openTutorial } = useTutorial();
   const [hasSavedCampaign, setHasSavedCampaign] = useState(false);
   const [savedCharacter, setSavedCharacter] = useState(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
@@ -152,6 +154,12 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
 
       {/* Account bar */}
       <div style={{ position: "absolute", top: 16, right: 16, display: "flex", gap: 8, alignItems: "center", zIndex: 20 }}>
+        <button onClick={() => openTutorial(0)} style={{
+          background: "none", border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 6, color: "#64748b", padding: "5px 12px", fontSize: 12, cursor: "pointer",
+        }}>
+          How to Play
+        </button>
         {user ? (
           <>
             {usage && (

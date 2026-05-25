@@ -18,6 +18,8 @@ import FeedbackButton from "./components/FeedbackButton";
 import { GameStateProvider } from "./contexts/GameStateContext";
 import { FontSizeProvider } from "./contexts/FontSizeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { TutorialProvider } from "./contexts/TutorialContext";
+import TutorialOverlay from "./components/TutorialOverlay";
 import { useDungeonStore } from "./store/useDungeonStore";
 import { useSessionCore } from "./store/useSessionCore";
 import CampaignSetup from "./pages/CampaignSetup";
@@ -180,9 +182,11 @@ function App() {
     <div className="App">
       <FontSizeProvider>
         <AuthProvider>
+          <TutorialProvider>
           <GameStateProvider>
           <BrowserRouter>
             <TurnLimitModal />
+            <TutorialOverlay />
             <Routes>
               {/* Root now lands on the legacy Main Menu (RPGGame entry) */}
               <Route path="/" element={<MainMenuPage />} />
@@ -224,6 +228,7 @@ function App() {
           </BrowserRouter>
           <Toast />
           </GameStateProvider>
+          </TutorialProvider>
         </AuthProvider>
       </FontSizeProvider>
     </div>

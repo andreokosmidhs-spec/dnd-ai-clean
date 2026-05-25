@@ -7,6 +7,7 @@ import { Dice6, MessageSquare, Loader2, User, Sparkles, Volume2, X, BookOpen, Bo
 import { useGameState } from '../contexts/GameStateContext';
 import { useAuth } from '../contexts/AuthContext';
 import UsageBanner from './UsageBanner';
+import { useTutorial } from '../contexts/TutorialContext';
 // CheckRequestCard and RollResultCard removed - CheckRollPanel handles all rolls now
 import NarrationAudioPlayer from './NarrationAudioPlayer';
 import NPCMentionHighlighter from './NPCMentionHighlighter';
@@ -38,6 +39,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   // Get the entire context object to ensure fresh reads
   const gameStateContext = useGameState();
   const { patchUsage } = useAuth();
+  const { openTutorial, hasSeenTutorial } = useTutorial();
   const {
     sessionId,
     setSessionId,
@@ -124,6 +126,15 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   useEffect(() => {
     if (!targetMode && hoverHighlight) setHoverHighlight(null);
   }, [targetMode, hoverHighlight]);
+
+  // Auto-show tutorial on first visit to the game screen
+  // eslint-disable-next-line
+  useEffect(() => {
+    if (!hasSeenTutorial()) {
+      const t = setTimeout(() => openTutorial(0), 800);
+      return () => clearTimeout(t);
+    }
+  }, []); // intentionally empty — run once on mount
 
   const handleNarrationClick = (e) => {
     if (!targetMode) return;

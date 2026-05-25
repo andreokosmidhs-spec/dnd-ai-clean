@@ -8,12 +8,14 @@
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { Button } from './ui/button';
-import { Play, Settings as SettingsIcon, Home, ChevronLeft, X, Type, BookOpen, Scroll } from 'lucide-react';
+import { Play, Settings as SettingsIcon, Home, ChevronLeft, X, Type, BookOpen, Scroll, HelpCircle } from 'lucide-react';
 import { useFontSize } from '../contexts/FontSizeContext';
+import { useTutorial } from '../contexts/TutorialContext';
 
 const GameEscapeMenu = ({ open, onClose, onMainMenu, onOpenDMNotebook, onOpenCanonTimeline }) => {
   const [view, setView] = useState('root');  // 'root' | 'settings'
   const { preset, setPreset, presets, order } = useFontSize();
+  const { openTutorial } = useTutorial();
 
   // Reset to root view whenever the menu re-opens.
   useEffect(() => {
@@ -144,6 +146,20 @@ const GameEscapeMenu = ({ open, onClose, onMainMenu, onOpenDMNotebook, onOpenCan
                   </div>
                 </Button>
               )}
+
+              <Button
+                onClick={() => { onClose && onClose(); openTutorial(0); }}
+                className="h-14 text-base font-bold bg-stone-800 hover:bg-stone-700 text-amber-50 border border-amber-500/40 justify-start gap-3"
+                data-testid="escape-menu-tutorial-btn"
+              >
+                <HelpCircle className="h-5 w-5 text-amber-300" />
+                <div className="flex flex-col items-start leading-tight">
+                  <span>How to Play</span>
+                  <span className="text-[11px] font-normal text-amber-200/80">
+                    7-step tutorial — checks, combat, rest
+                  </span>
+                </div>
+              </Button>
 
               <Button
                 onClick={handleMainMenu}

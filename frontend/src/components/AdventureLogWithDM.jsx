@@ -20,6 +20,7 @@ import ActiveInvestigationPanel, { StorylineRewardModal } from './ActiveInvestig
 import RememberCardDialog from './RememberCardDialog';
 import SceneReportDialog from './SceneReportDialog';
 import DefeatModal from './DefeatModal';
+import LevelUpScreen from './LevelUpScreen';
 import CanonBar from './CanonBar';
 import CanonReferences from './CanonReferences';
 import AutoSaveIndicator from './AutoSaveIndicator';
@@ -171,6 +172,8 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   const [quests, setQuests] = useState([]);
   const [showDefeatModal, setShowDefeatModal] = useState(false);
   const [defeatInfo, setDefeatInfo] = useState(null);
+  const [showLevelUp, setShowLevelUp] = useState(false);
+  const [pendingLevelUp, setPendingLevelUp] = useState(null); // { newLevel, character }
   const [selectedNpc, setSelectedNpc] = useState(null);
   const [showIntro, setShowIntro] = useState(false);
   
@@ -1034,14 +1037,15 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           }
         }
         
-        // Level up notifications
+        // Level up — show LevelUpScreen for the highest new level
         if (data.player_updates.level_up_events && data.player_updates.level_up_events.length > 0) {
-          for (const event of data.player_updates.level_up_events) {
-            const level = event.split(':')[1];
-            const levelMsg = `🎉 LEVEL UP! You are now level ${level}!`;
-            if (window.showToast) {
-              window.showToast(levelMsg, 'info');
-            }
+          const levels = data.player_updates.level_up_events
+            .map(e => parseInt((e || '').split(':')[1], 10))
+            .filter(Boolean);
+          if (levels.length > 0) {
+            const newLevel = Math.max(...levels);
+            setPendingLevelUp({ newLevel, character: gameStateContext.characterState });
+            setShowLevelUp(true);
           }
         }
         
@@ -1054,6 +1058,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           if (rr.conditions !== undefined) patch.conditions = rr.conditions;
           if (rr.hit_dice_remaining !== undefined) patch.hit_dice_remaining = rr.hit_dice_remaining;
           if (rr.hit_dice_max !== undefined) patch.hit_dice_max = rr.hit_dice_max;
+          if (rr.short_rests_taken !== undefined) patch.short_rests_taken = rr.short_rests_taken;
           updateCharContext(patch);
           if (window.showToast) {
             const diceInfo = rr.hit_dice_remaining !== undefined
@@ -1061,9 +1066,11 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
               : '';
             const msg = rr.rest_type === 'long'
               ? `💤 Long Rest — fully restored! +${rr.hp_gained} HP`
-              : rr.no_hit_dice
-                ? `⏸️ Short Rest — no hit dice remaining`
-                : `⏸️ Short Rest — +${rr.hp_gained} HP${diceInfo}`;
+              : rr.no_short_rests
+                ? `⏸️ Short Rest — no short rests remaining until long rest`
+                : rr.no_hit_dice
+                  ? `⏸️ Short Rest — no hit dice remaining`
+                  : `⏸️ Short Rest — +${rr.hp_gained} HP${diceInfo}`;
             window.showToast(msg, 'success');
           }
         }
@@ -2530,6 +2537,27 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           maxHP={defeatInfo.maxHP}
           injuryCount={defeatInfo.injuryCount}
           xpPenalty={defeatInfo.xpPenalty || 0}
+        />
+      )}
+
+      {/* Level Up Screen */}
+      {showLevelUp && pendingLevelUp && (
+        <LevelUpScreen
+          character={pendingLevelUp.character}
+          newLevel={pendingLevelUp.newLevel}
+          onComplete={(levelUpResult) => {
+            setShowLevelUp(false);
+            setPendingLevelUp(null);
+            if (levelUpResult && gameStateContext.updateCharacterState) {
+              gameStateContext.updateCharacterState({
+                level: pendingLevelUp.newLevel,
+                max_hp: (gameStateContext.characterState?.max_hp || 0) + (levelUpResult.hpGained || 0),
+                hp: (gameStateContext.characterState?.hp || 0) + (levelUpResult.hpGained || 0),
+                ...( levelUpResult.asiChoices ? { ability_score_improvements: levelUpResult.asiChoices } : {} ),
+              });
+            }
+            if (window.showToast) window.showToast(`🎉 Level ${pendingLevelUp.newLevel}! Welcome to the next chapter.`, 'success');
+          }}
         />
       )}
 

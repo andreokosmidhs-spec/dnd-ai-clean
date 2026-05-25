@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
 const RARITY_STYLES = {
   common:    { border: '#9d9d9d', glow: 'rgba(157,157,157,0.3)', label: '#c6c6c6' },

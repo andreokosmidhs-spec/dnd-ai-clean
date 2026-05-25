@@ -73,9 +73,13 @@ def _get_hit_dice_remaining(char_state: Dict[str, Any]) -> int:
     return int(char_state.get("level", 1))
 
 
+MAX_SHORT_RESTS = 2  # D&D 5e: 2 short rests per long rest
+
+
 def compute_short_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Short rest mechanics:
+    - Enforces D&D 5e limit: 2 short rests per long rest
     - Requires at least 1 hit die remaining; returns no_hit_dice=True if none left
     - Roll 1 hit die + CON mod, minimum 1, capped at max_hp
     - Decrement hit_dice_remaining by 1
@@ -83,6 +87,29 @@ def compute_short_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
     Returns a result dict (not the full char_state patch — caller merges).
     """
     cls = _class_key(char_state)
+
+    # Enforce short rest limit
+    short_rests_taken = int(char_state.get("short_rests_taken", 0))
+    if short_rests_taken >= MAX_SHORT_RESTS:
+        current_hp = int(char_state.get("hp", 1))
+        return {
+            "rest_type": "short",
+            "no_short_rests": True,
+            "no_hit_dice": False,
+            "hp": current_hp,
+            "hp_gained": 0,
+            "hit_die_roll": 0,
+            "hit_die_type": _HIT_DICE.get(cls, 8),
+            "con_mod": _con_mod(char_state),
+            "hit_dice_remaining": _get_hit_dice_remaining(char_state),
+            "hit_dice_max": int(char_state.get("hit_dice_max", char_state.get("level", 1))),
+            "short_rests_taken": short_rests_taken,
+            "short_rests_remaining": 0,
+            "spell_slots": dict(char_state.get("spell_slots") or {}),
+            "slots_recovered": {},
+            "conditions": list(char_state.get("conditions") or []),
+            "conditions_cleared": [],
+        }
     hit_die = _HIT_DICE.get(cls, 8)
     con = _con_mod(char_state)
     level = int(char_state.get("level", 1))
@@ -90,6 +117,8 @@ def compute_short_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
     # Check hit dice availability
     hit_dice_remaining = _get_hit_dice_remaining(char_state)
     hit_dice_max = int(char_state.get("hit_dice_max", level))
+
+    short_rests_taken += 1  # consume one short rest charge
 
     if hit_dice_remaining <= 0:
         # No hit dice left — can still short rest but no HP recovery
@@ -109,6 +138,7 @@ def compute_short_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "rest_type": "short",
             "no_hit_dice": True,
+            "no_short_rests": False,
             "hp": current_hp,
             "hp_gained": 0,
             "hit_die_roll": 0,
@@ -116,6 +146,8 @@ def compute_short_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
             "con_mod": con,
             "hit_dice_remaining": 0,
             "hit_dice_max": hit_dice_max,
+            "short_rests_taken": short_rests_taken,
+            "short_rests_remaining": max(0, MAX_SHORT_RESTS - short_rests_taken),
             "spell_slots": current_slots,
             "slots_recovered": recovered_slots,
             "conditions": conditions,
@@ -152,6 +184,7 @@ def compute_short_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "rest_type": "short",
         "no_hit_dice": False,
+        "no_short_rests": False,
         "hp": new_hp,
         "hp_gained": actual_gain,
         "hit_die_roll": roll,
@@ -159,6 +192,8 @@ def compute_short_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
         "con_mod": con,
         "hit_dice_remaining": hit_dice_remaining,
         "hit_dice_max": hit_dice_max,
+        "short_rests_taken": short_rests_taken,
+        "short_rests_remaining": max(0, MAX_SHORT_RESTS - short_rests_taken),
         "spell_slots": current_slots_2,
         "slots_recovered": recovered_slots_2,
         "conditions": conditions_2,
@@ -213,6 +248,8 @@ def compute_long_rest(char_state: Dict[str, Any]) -> Dict[str, Any]:
         "hit_dice_remaining": hit_dice_after,
         "hit_dice_max": hit_dice_max,
         "hit_dice_recovered": actual_dice_recovered,
+        "short_rests_taken": 0,          # reset on long rest
+        "short_rests_remaining": MAX_SHORT_RESTS,
         "conditions": conditions,
         "conditions_cleared": cleared,
     }

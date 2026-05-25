@@ -355,3 +355,45 @@ class TestHitDiceTracking:
         result = compute_long_rest(char)
         narration = build_rest_narration("long", result)
         assert "hit di" in narration.lower()  # "hit die" or "hit dice"
+
+
+# ── short rest limit (D&D 5e: 2 per long rest) ───────────────────────────────
+
+class TestShortRestLimit:
+    def test_first_short_rest_allowed(self):
+        char = make_char()
+        result = compute_short_rest(char)
+        assert result.get("no_short_rests") is False
+        assert result["short_rests_taken"] == 1
+        assert result["short_rests_remaining"] == 1
+
+    def test_second_short_rest_allowed(self):
+        char = make_char()
+        char["short_rests_taken"] = 1
+        result = compute_short_rest(char)
+        assert result.get("no_short_rests") is False
+        assert result["short_rests_taken"] == 2
+        assert result["short_rests_remaining"] == 0
+
+    def test_third_short_rest_blocked(self):
+        char = make_char()
+        char["short_rests_taken"] = 2
+        result = compute_short_rest(char)
+        assert result["no_short_rests"] is True
+        assert result["hp_gained"] == 0
+        assert result["short_rests_remaining"] == 0
+
+    def test_long_rest_resets_counter(self):
+        char = make_char()
+        char["short_rests_taken"] = 2
+        result = compute_long_rest(char)
+        assert result["short_rests_taken"] == 0
+        assert result["short_rests_remaining"] == 2
+
+    def test_no_short_rests_result_includes_all_fields(self):
+        char = make_char()
+        char["short_rests_taken"] = 2
+        result = compute_short_rest(char)
+        for key in ("rest_type", "no_short_rests", "hp", "hp_gained", "hit_die_type",
+                    "con_mod", "hit_dice_remaining", "short_rests_taken", "spell_slots"):
+            assert key in result, f"missing key: {key}"

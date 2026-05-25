@@ -1753,10 +1753,13 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           </div>
         )}
 
-        {/* Combat HUD - only show inline when parent has no full-screen CombatScreen handler */}
-        {isCombatActive && combatState && !props.onCombatStart && (
+        {/* Character HUD — always visible; shows combat section only when in combat */}
+        {!props.onCombatStart && gameStateContext.characterState && (
           <div className="px-3 pt-3">
-            <CombatHUD characterState={gameStateContext.characterState} combatState={combatState} />
+            <CombatHUD
+              characterState={gameStateContext.characterState}
+              combatState={isCombatActive ? combatState : null}
+            />
           </div>
         )}
 

@@ -30,9 +30,9 @@ from __future__ import annotations
 
 import json as _json
 import logging
-import os
 from typing import Dict, List, Optional
-from uuid import uuid4
+
+from services.claude_client import call_haiku_async
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +74,6 @@ async def classify_action_for_spawn(
     action = (player_action or "").strip()
     if not action:
         return {"is_off_hook": False, "mission_type_slug": "", "hook_text": "", "hook_topic": "", "reasoning": "empty action"}
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
     palette = _render_mission_palette(mission_types or [])
     valid_slugs = ",".join((mt.get("slug") or "") for mt in (mission_types or []) if mt.get("slug"))
 
@@ -134,14 +131,7 @@ async def classify_action_for_spawn(
         "}"
     )
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"spawn-classify-{uuid4()}",
-            system_message=sys_msg,
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=user_msg))) or ""
+        raw = await call_haiku_async(sys_msg, user_msg, max_tokens=300, temperature=0) or ""
         s = _strip_json_fence(raw)
         try:
             data = _json.loads(s)

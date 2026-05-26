@@ -30,7 +30,6 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
@@ -40,6 +39,7 @@ from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
 from models.campaign_models import KnowledgeCard
+from services.claude_client import call_haiku_async
 from services.storyline_service import (
     advance_storyline,
     draft_initial_scene,
@@ -938,11 +938,7 @@ async def _extract_targets_from_description_llm(
     text = (description or "").strip()
     if not text:
         return []
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return []
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
         prompt = (
             "Extract up to "
             f"{max_targets} NAMED ENTITIES from the D&D scene below — proper nouns "
@@ -960,16 +956,13 @@ async def _extract_targets_from_description_llm(
             "]}\n"
             "Return {\"entities\": []} if there are no proper-name entities."
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"target-extract-{uuid4()}",
-            system_message=(
-                "You are a precise scene parser. You return only proper-noun "
-                "entities verbatim. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a precise scene parser. You return only proper-noun "
+            "entities verbatim. Output strict JSON only.",
+            prompt,
+            max_tokens=200,
+            temperature=0,
+        ) or ""
         s = raw.strip()
         if s.startswith("```"):
             s = s.strip("`")
@@ -1020,15 +1013,13 @@ async def _generate_npc_identity_sheet(
       allegiances: [factions/people they answer to]
       current_motivation: what they want from the player THIS scene
     """
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key or not name:
+    if not name:
         return {}
     realm = ((campaign or {}).get("world") or {}).get("world_core", {}).get("name", "the realm")
     starting = ((campaign or {}).get("world") or {}).get("startingLocation", {}).get("name", "the town")
     tone = ((campaign or {}).get("intent") or {}).get("tone", "balanced")
     danger = ((campaign or {}).get("intent") or {}).get("danger", "medium")
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
         prompt = (
             f"Generate a HIDDEN NPC identity sheet for **{name}** based on the in-fiction "
             f"context below. The player has just learned this NPC's name; you are filling in "
@@ -1063,17 +1054,14 @@ async def _generate_npc_identity_sheet(
             "Make the numbers playable (DCs 9-19). Make the personality and secrets "
             "specific and useful as roleplay anchors — never generic 'wants gold'."
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"npc-sheet-{uuid4()}",
-            system_message=(
-                "You are a senior D&D Dungeon Master statting a brand-new NPC. "
-                "You produce concrete, playable, roleplay-ready sheets. Output "
-                "strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D Dungeon Master statting a brand-new NPC. "
+            "You produce concrete, playable, roleplay-ready sheets. Output "
+            "strict JSON only.",
+            prompt,
+            max_tokens=500,
+            temperature=0,
+        ) or ""
         s = raw.strip()
         if s.startswith("```"):
             s = s.strip("`")
@@ -2120,16 +2108,6 @@ async def _judge_dm_feedback(
         "dc_reasoning": str,       # one-line "why this DC"
       }
     """
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return {
-            "agrees_with_player": False,
-            "explanation": "(DM judge unavailable — please retry shortly.)",
-            "should_correct": False,
-            "check_type": None,
-            "dc": None,
-            "dc_reasoning": "",
-        }
     intent = campaign.get("intent") or {}
     realm = (campaign.get("world") or {}).get("world_core", {}).get("name", "the realm")
     sl_title = storyline.get("title") or "the scene"
@@ -2137,7 +2115,6 @@ async def _judge_dm_feedback(
     beat_desc = beat.get("description") or ""
     beat_outcome = beat.get("outcome_text") or ""
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
         prompt = (
             "You are an experienced D&D rules judge reviewing a DM ruling. The player "
             "is contesting a moment in the scene. Your job: decide if the player has a "
@@ -2181,16 +2158,13 @@ async def _judge_dm_feedback(
             "  \"dc_reasoning\": \"one-line: why this DC (e.g. 'moderate cover, distracted target')\"\n"
             "}"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"dm-feedback-{uuid4()}",
-            system_message=(
-                "You are a fair, experienced D&D rules judge. You side with the player "
-                "when the rules support them and explain clearly. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a fair, experienced D&D rules judge. You side with the player "
+            "when the rules support them and explain clearly. Output strict JSON only.",
+            prompt,
+            max_tokens=400,
+            temperature=0,
+        ) or ""
         s = raw.strip()
         if s.startswith("```"):
             s = s.strip("`")
@@ -2581,18 +2555,8 @@ async def _judge_pitch_quality(
     Smart, in-character, well-targeted offers REDUCE the DC; insulting,
     blunt, or off-target attempts RAISE it.
     """
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
     base_dc = int(beat.get("dc") or 12)
     check_type = beat.get("check_type") or "Persuasion"
-
-    if not api_key:
-        return {
-            "modifier": 0,
-            "adjusted_dc": base_dc,
-            "rationale": "Judge offline — DC unchanged.",
-            "quality": "neutral",
-        }
-
     intent = campaign.get("intent") or {}
     realm = (campaign.get("world") or {}).get("world_core", {}).get("name", "the realm")
 
@@ -2633,7 +2597,6 @@ async def _judge_pitch_quality(
         npc_block = "NPC TARGET: an NPC the player is trying to influence (no detailed sheet on file).\n"
 
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
         prompt = (
             f"You are an experienced D&D Dungeon Master sizing up the player's PITCH "
             f"before they roll a {check_type} check. Your job: rate the quality of what "
@@ -2669,17 +2632,14 @@ async def _judge_pitch_quality(
             "  \"quality\": \"brilliant|smart|neutral|weak|foolish\"\n"
             "}"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"dc-adjust-{uuid4()}",
-            system_message=(
-                "You are a fair, experienced D&D Dungeon Master. You reward smart play "
-                "with lower DCs and punish dumb play with higher DCs — never zero, never "
-                "auto-success. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a fair, experienced D&D Dungeon Master. You reward smart play "
+            "with lower DCs and punish dumb play with higher DCs — never zero, never "
+            "auto-success. Output strict JSON only.",
+            prompt,
+            max_tokens=200,
+            temperature=0,
+        ) or ""
         s = raw.strip()
         if s.startswith("```"):
             s = s.strip("`")

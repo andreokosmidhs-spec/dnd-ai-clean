@@ -10,9 +10,10 @@ the tavern bar — tailored to the NPC type, urgency, and mission kind.
 from __future__ import annotations
 
 import logging
-import os
 import random
 from typing import Dict, List, Optional
+
+from services.claude_client import call_haiku_async
 
 logger = logging.getLogger(__name__)
 
@@ -109,14 +110,7 @@ async def generate_obligation_reminder(
 
     hero_name = ((character.get("identity") or {}).get("name") or "the adventurer")
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        from uuid import uuid4
-
         npc_line = f"NPC: {npc_name}." if npc_name else "Anonymous contact — no named NPC."
         urgency_label = {
             "critical": "life-or-death urgent — the window is closing fast",
@@ -144,14 +138,7 @@ async def generate_obligation_reminder(
             "Write the delivery beat now."
         )
 
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"obligation-reminder-{uuid4().hex[:8]}",
-            system_message=system,
-        )
-        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.85, max_tokens=120)
-
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(system, prompt, max_tokens=120, temperature=0) or ""
         narration = raw.strip()
         if not narration:
             return None

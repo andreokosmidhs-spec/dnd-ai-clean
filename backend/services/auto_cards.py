@@ -145,10 +145,6 @@ async def _classify_candidates(
     if not candidates:
         return {}
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return {}
-
     # Build the prompt — keep it short and strictly structured
     candidates_json = json.dumps(candidates)
     snippet = narration[:1200]  # context is enough — no need to send the whole scene
@@ -177,16 +173,13 @@ async def _classify_candidates(
     )
 
     try:
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"auto-cards-{uuid.uuid4().hex[:8]}",
-            system_message=(
-                "You classify fantasy proper nouns. "
-                "Output STRICT JSON only — no prose, no code fence."
-            ),
+        response = await call_haiku_async(
+            "You classify fantasy proper nouns. "
+            "Output STRICT JSON only — no prose, no code fence.",
+            prompt,
+            max_tokens=300,
+            temperature=0,
         )
-        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.0)
-        response = await chat.send_message(UserMessage(text=prompt))
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[auto-cards] classifier call failed: {exc}")
         return {}
@@ -250,10 +243,6 @@ async def _detect_narrative_events(narration: str) -> List[Dict]:
     if not narration:
         return []
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return []
-
     snippet = narration[:1500]
     prompt = (
         "You are reviewing a fantasy RPG scene to extract MEMORABLE EVENTS "
@@ -287,16 +276,13 @@ async def _detect_narrative_events(narration: str) -> List[Dict]:
     )
 
     try:
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"auto-events-{uuid.uuid4().hex[:8]}",
-            system_message=(
-                "You extract memorable RPG events. "
-                "Output STRICT JSON only — no prose, no code fence."
-            ),
+        response = await call_haiku_async(
+            "You extract memorable RPG events. "
+            "Output STRICT JSON only — no prose, no code fence.",
+            prompt,
+            max_tokens=400,
+            temperature=0,
         )
-        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.0, max_tokens=400)
-        response = await chat.send_message(UserMessage(text=prompt))
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[auto-cards/events] call failed: {exc}")
         return []
@@ -374,10 +360,6 @@ async def _detect_info_clues(narration: str) -> List[Dict]:
     if not narration:
         return []
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return []
-
     snippet = narration[:1400]
     prompt = (
         "You are scanning a fantasy RPG scene for HIDDEN INFORMATION — clues, "
@@ -414,16 +396,13 @@ async def _detect_info_clues(narration: str) -> List[Dict]:
     )
 
     try:
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"auto-info-{uuid.uuid4().hex[:8]}",
-            system_message=(
-                "You detect hidden information in RPG scenes. "
-                "Output STRICT JSON only — no prose, no code fence."
-            ),
+        response = await call_haiku_async(
+            "You detect hidden information in RPG scenes. "
+            "Output STRICT JSON only — no prose, no code fence.",
+            prompt,
+            max_tokens=500,
+            temperature=0,
         )
-        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.0, max_tokens=500)
-        response = await chat.send_message(UserMessage(text=prompt))
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[auto-cards/info] call failed: {exc}")
         return []
@@ -484,10 +463,6 @@ async def _classify_biome(name: str, content: str) -> str:
     """One-shot LLM call: pick the closest biome key for a location card.
     Returns a biome key from `data.biomes.BIOMES`. Falls back to 'forest'
     on any failure."""
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return "forest"
-
     keys = list_biome_keys()
     keys_str = ", ".join(keys)
     prompt = (
@@ -503,13 +478,12 @@ async def _classify_biome(name: str, content: str) -> str:
     )
 
     try:
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"biome-{uuid.uuid4().hex[:8]}",
-            system_message="You classify locations. Output STRICT JSON only.",
+        response = await call_haiku_async(
+            "You classify locations. Output STRICT JSON only.",
+            prompt,
+            max_tokens=100,
+            temperature=0,
         )
-        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.0)
-        response = await chat.send_message(UserMessage(text=prompt))
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[biome] classifier failed for {name!r}: {exc}")
         return "forest"
@@ -546,10 +520,6 @@ async def _enrich_faction_identity(name: str, narration: str) -> dict:
     if not name or not narration:
         return {}
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return {}
-
     snippet = narration[:1200]
     prompt = (
         f"You are generating faction identity details for a fantasy RPG campaign.\n\n"
@@ -581,16 +551,13 @@ async def _enrich_faction_identity(name: str, narration: str) -> dict:
     )
 
     try:
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"faction-identity-{uuid.uuid4().hex[:8]}",
-            system_message=(
-                "You generate fantasy RPG faction identity data. "
-                "Output STRICT JSON only — no prose, no code fence."
-            ),
+        response = await call_haiku_async(
+            "You generate fantasy RPG faction identity data. "
+            "Output STRICT JSON only — no prose, no code fence.",
+            prompt,
+            max_tokens=600,
+            temperature=0,
         )
-        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.3, max_tokens=600)
-        response = await chat.send_message(UserMessage(text=prompt))
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[faction-identity] LLM call failed for {name!r}: {exc}")
         return {}

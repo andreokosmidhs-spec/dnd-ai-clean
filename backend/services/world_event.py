@@ -9,12 +9,14 @@ consistently using the character card that gets seeded here with a full identity
 
 from __future__ import annotations
 
+import json as _json
 import logging
-import os
 import random
 from datetime import datetime, timezone
 from typing import Dict, Optional
 from uuid import uuid4
+
+from services.claude_client import call_haiku_async
 
 logger = logging.getLogger(__name__)
 
@@ -208,14 +210,7 @@ async def generate_world_event(
     location_name = starting.get("name") or "the street"
     tone = (campaign.get("intent") or {}).get("tone", "heroic")
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        import json as _json
-
         system = (
             "You are a D&D Dungeon Master writing a spontaneous ambient NPC encounter. "
             "The NPC physically approaches the player and delivers their opening lines IN CHARACTER.\n\n"
@@ -249,14 +244,7 @@ async def generate_world_event(
             "Generate the NPC and their opening encounter now."
         )
 
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"world-event-{uuid4().hex[:8]}",
-            system_message=system,
-        )
-        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.95, max_tokens=300)
-
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(system, prompt, max_tokens=300, temperature=0) or ""
         s = raw.strip()
         if s.startswith("```"):
             s = s.strip("`")

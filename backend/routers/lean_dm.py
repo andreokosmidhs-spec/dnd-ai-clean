@@ -8,7 +8,6 @@ pipeline. Uses emergentintegrations + gpt-4o-mini for narration.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
@@ -1172,19 +1171,8 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     )
 
     # Call the LLM
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="LLM key not configured")
-
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=session_id,
-            system_message=system_prompt,
-        )
-        chat.with_model("openai", "gpt-4o-mini")
+        from services.claude_client import call_haiku_async
 
         # Fold previous history into a single context prefix to keep latency low
         history_block = ""
@@ -1218,7 +1206,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             f"Narrate the next beat."
         )
 
-        narration = (await chat.send_message(UserMessage(text=user_msg))).strip()
+        narration = (await call_haiku_async(system_prompt, user_msg, max_tokens=800, temperature=0)).strip()
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Lean DM LLM call failed: {exc}")
         raise HTTPException(status_code=502, detail=f"DM generation failed: {exc}") from exc
@@ -1270,16 +1258,13 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             )
         ][:6]
         if _present_npc_names:
-            _npc_api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-            if _npc_api_key:
-                npc_deltas = await extract_npc_deltas(
-                    narration=narration,
-                    player_action=req.player_action,
-                    npc_names=_present_npc_names,
-                    api_key=_npc_api_key,
-                )
-                if npc_deltas:
-                    await apply_npc_deltas(db.campaign_cards, campaign_id, npc_deltas)
+            npc_deltas = await extract_npc_deltas(
+                narration=narration,
+                player_action=req.player_action,
+                npc_names=_present_npc_names,
+            )
+            if npc_deltas:
+                await apply_npc_deltas(db.campaign_cards, campaign_id, npc_deltas)
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"NPC delta tracking failed (non-fatal): {exc}")
 

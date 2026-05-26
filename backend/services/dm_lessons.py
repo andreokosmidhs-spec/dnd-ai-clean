@@ -34,11 +34,12 @@ from __future__ import annotations
 
 import json as _json
 import logging
-import os
 import re
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
+
+from services.claude_client import call_haiku_async
 
 logger = logging.getLogger(__name__)
 
@@ -81,18 +82,8 @@ def _strip_json_fence(s: str) -> str:
 
 async def _llm_distill(prompt: str, system: str) -> Optional[Dict]:
     """Generic single-call distiller. Returns parsed JSON or None."""
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"lesson-distill-{uuid4()}",
-            system_message=system,
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(system, prompt, max_tokens=500, temperature=0) or ""
         s = _strip_json_fence(raw)
         try:
             return _json.loads(s)
@@ -549,9 +540,6 @@ async def distill_session_review(
     Returns the list of stored lessons (each as a dict). Empty list when
     nothing actionable was found or the LLM is unavailable.
     """
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return []
     corpus = await _gather_session_corpus(
         db, campaign_id=campaign_id, character_id=character_id,
     )

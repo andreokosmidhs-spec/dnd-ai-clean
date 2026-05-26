@@ -219,12 +219,7 @@ async def generate_world_setting_with_ai(
     fallback = _template_world_setting(intent, world)
     try:
         import json as _json
-        import os
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-        api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            return fallback
+        from services.claude_client import call_haiku_async
 
         starting = world.get("startingLocation", {})
         realm_name = world.get("world_core", {}).get("name", "the realm")
@@ -276,16 +271,13 @@ async def generate_world_setting_with_ai(
             "}\n"
         )
 
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"campaign-setting-{uuid4()}",
-            system_message=(
-                "You are a senior D&D worldbuilder. You produce specific, grounded setting bibles "
-                "with factions in real conflict and recent events that shape the day. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D worldbuilder. You produce specific, grounded setting bibles "
+            "with factions in real conflict and recent events that shape the day. Output strict JSON only.",
+            prompt,
+            max_tokens=500,
+            temperature=0,
+        ) or ""
 
         text = raw.strip()
         if text.startswith("```"):
@@ -423,12 +415,7 @@ async def generate_world_brief_with_ai(
     )
 
     try:
-        import os
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-        api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            return fallback
+        from services.claude_client import call_haiku_async
 
         faction_lines = "\n".join(
             f"- {f.get('name','')}: {f.get('domain','')}; {f.get('stance','')}"
@@ -475,18 +462,14 @@ async def generate_world_brief_with_ai(
             "- No headings, no quotes around the passage, no OOC. Output ONLY the chronicle paragraph."
         )
 
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"world-brief-{uuid4()}",
-            system_message=(
-                "You are a chronicler of fantasy realms in the tradition of Tolkien's prologues "
-                "and Critical Role's opening world primers — concise, grounded, specific. "
-                "You compress history, geography, politics, and culture into a single tight paragraph."
-            ),
+        response = await call_haiku_async(
+            "You are a chronicler of fantasy realms in the tradition of Tolkien's prologues "
+            "and Critical Role's opening world primers — concise, grounded, specific. "
+            "You compress history, geography, politics, and culture into a single tight paragraph.",
+            prompt,
+            max_tokens=400,
+            temperature=0.3,
         )
-        chat.with_model("openai", "gpt-4o-mini")
-
-        response = await chat.send_message(UserMessage(text=prompt))
         text = (response or "").strip()
         if text.startswith('"') and text.endswith('"') and len(text) > 2:
             text = text[1:-1].strip()
@@ -515,13 +498,7 @@ async def build_starting_scene_with_ai(
     """
     fallback = build_starting_scene(campaign_id, world)
     try:
-        import os
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-        api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            logger.warning("No LLM key for intro generation; using fallback")
-            return fallback
+        from services.claude_client import call_haiku_async
 
         starting_location = world.get("startingLocation", {})
         location_name = starting_location.get("name", "the starting point")
@@ -720,14 +697,12 @@ async def build_starting_scene_with_ai(
             "Output ONLY the narration paragraph."
         )
 
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"campaign-intro-{campaign_id}",
-            system_message=system_message,
+        response = await call_haiku_async(
+            system_message,
+            prompt,
+            max_tokens=500,
+            temperature=0.7,
         )
-        chat.with_model("openai", "gpt-4o-mini")
-
-        response = await chat.send_message(UserMessage(text=prompt))
         text = (response or "").strip()
         # Strip accidental wrapping quotes if the model added them
         if text.startswith('"') and text.endswith('"') and len(text) > 2:
@@ -813,12 +788,7 @@ async def generate_opening_quest_card_with_ai(
     fallback = _template_opening_quest(intent, world, character)
     try:
         import json as _json
-        import os
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-        api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            return fallback
+        from services.claude_client import call_haiku_async
 
         starting = world.get("startingLocation", {})
         location_name = starting.get("name", "the starting area")
@@ -860,16 +830,13 @@ async def generate_opening_quest_card_with_ai(
             "}\n"
         )
 
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"campaign-opening-quest-{uuid4()}",
-            system_message=(
-                "You are a senior D&D campaign designer. You generate specific, grounded, player-ready "
-                "quest hooks tailored to the campaign's tone, focus, and hero. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D campaign designer. You generate specific, grounded, player-ready "
+            "quest hooks tailored to the campaign's tone, focus, and hero. Output strict JSON only.",
+            prompt,
+            max_tokens=300,
+            temperature=0.5,
+        ) or ""
 
         # Best-effort JSON extraction (strip code fences if the model ignored the instruction)
         text = raw.strip()

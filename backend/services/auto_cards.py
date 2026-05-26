@@ -22,14 +22,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage
-
+from services.claude_client import call_haiku_async
 from data.biomes import BIOMES, get_biome, list_biome_keys
 
 logger = logging.getLogger(__name__)

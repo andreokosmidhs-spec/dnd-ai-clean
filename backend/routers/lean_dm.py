@@ -193,7 +193,7 @@ def _build_pinned_block(pinned_cards: List[dict]) -> str:
     return "\n".join(lines)
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None) -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None, pressure_context: str = "") -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -515,7 +515,8 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{lessons_block}\n\n"
         f"{canon_block}\n\n"
         f"{obligations_block}\n"
-        "=== MERCER STYLE — STRICT ===\n"
+        + (f"{pressure_context}\n\n" if pressure_context else "")
+        + "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "
         "intent. You may say \"the door yields\" or \"the latch clicks open\" but NEVER "
@@ -1161,6 +1162,14 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         logger.warning(f"canon scenes load failed (non-fatal): {exc}")
         recent_canon = []
 
+    # Pressure context — living campaign state (non-blocking)
+    _lean_pressure_ctx = ""
+    try:
+        from services.pressure_context_service import build_pressure_context_block
+        _lean_pressure_ctx = await build_pressure_context_block(campaign_id, db)
+    except Exception as _lpce:
+        logger.warning(f"Lean DM pressure context failed (non-fatal): {_lpce}")
+
     system_prompt = _build_system_prompt(
         campaign, character, cards, clock_hour,
         deck=deck_cards, chaos=chaos_value,
@@ -1168,6 +1177,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         dm_lessons=active_lessons,
         canon_scenes=recent_canon,
         current_location=current_location,
+        pressure_context=_lean_pressure_ctx,
     )
 
     # Call the LLM

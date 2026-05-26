@@ -406,6 +406,8 @@ async def run_dungeon_forge(
     npc_personalities: Optional[List[Dict[str, Any]]] = None,
     active_tailing_quest: Optional[Dict[str, Any]] = None,
     narrator_tone: str = "balanced",
+    pressure_context: str = "",
+    scene_intelligence: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     DUNGEON FORGE: Main action resolution agent.
@@ -470,8 +472,9 @@ async def run_dungeon_forge(
         improvisation_result=improvisation_result,
         npc_personalities=npc_personalities,
         active_tailing_quest=active_tailing_quest,
-        scene_intelligence=world_state.get("scene_intelligence") if isinstance(world_state, dict) else None,
+        scene_intelligence=scene_intelligence or (world_state.get("scene_intelligence") if isinstance(world_state, dict) else None),
         narrator_tone=narrator_tone,
+        pressure_context=pressure_context,
     )
 
     # A-Version prompt now built above - removed old prompt code
@@ -949,6 +952,7 @@ def build_a_version_dm_prompt(
     active_tailing_quest: Optional[Dict[str, Any]] = None,
     scene_intelligence: Optional[Dict[str, Any]] = None,
     narrator_tone: Optional[str] = "balanced",
+    pressure_context: str = "",
 ) -> str:
     """
     Build A-Version compliant DM system prompt.
@@ -1351,7 +1355,7 @@ Player Action
 ```
 
 {_build_scene_intel_block(scene_intelligence)}
----
+{f"{pressure_context}" + chr(10) if pressure_context else ""}---
 
 Generate your response now.
 """
@@ -2240,6 +2244,14 @@ async def process_action(request: dict, authorization: _Opt[str] = Header(None))
             db.combats.find_one({"campaign_id": campaign_id, "character_id": character_id}),
             db.character_decks.find_one({"character_id": character_id}),
         )
+
+        # Fetch pressure context (non-blocking — graceful if missing)
+        _pressure_context = ""
+        try:
+            from services.pressure_context_service import build_pressure_context_block
+            _pressure_context = await build_pressure_context_block(campaign_id, db)
+        except Exception as _pce:
+            logger.warning(f"Pressure context fetch failed (non-fatal): {_pce}")
         
         # Validate all required data exists
         if not campaign:
@@ -3468,6 +3480,7 @@ async def process_action(request: dict, authorization: _Opt[str] = Header(None))
             active_tailing_quest=active_tailing_quest,
             scene_intelligence=_scene_intel if _scene_intel else None,
             narrator_tone=narrator_tone,
+            pressure_context=_pressure_context,
         )
         logger.info(f"   DM Response: narration length={len(dm_response.get('narration', ''))}")
         

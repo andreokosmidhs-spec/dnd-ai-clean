@@ -193,7 +193,7 @@ def _build_pinned_block(pinned_cards: List[dict]) -> str:
     return "\n".join(lines)
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None, pressure_context: str = "", scene_thread: str = "", downtime_block: str = "") -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None, pressure_context: str = "", scene_thread: str = "", downtime_block: str = "", exhaustion_block: str = "") -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -516,6 +516,7 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{canon_block}\n\n"
         f"{obligations_block}\n"
         + (f"{pressure_context}\n\n" if pressure_context else "")
+        + (f"{exhaustion_block}\n\n" if exhaustion_block else "")
         + (f"{downtime_block}\n\n" if downtime_block else "")
         + (f"{scene_thread}\n\n" if scene_thread else "")
         + "=== SCENE THREADING — NON-NEGOTIABLE ===\n"
@@ -1222,6 +1223,22 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     except Exception as _lpce:
         logger.warning(f"Lean DM pressure context failed (non-fatal): {_lpce}")
 
+    # Load game-state character (inventory, conditions, HP) — separate from V2 char.
+    # Used for ration consumption and exhaustion-adjusted HP max. Non-blocking.
+    _game_char_state: Dict = {}
+    try:
+        _game_char_doc = await db.characters.find_one({"character_id": req.character_id})
+        if _game_char_doc:
+            _game_char_state = _game_char_doc.get("character_state") or {}
+    except Exception as _gce:
+        logger.warning(f"Game char state load failed (non-fatal): {_gce}")
+
+    # CON modifier from V2 character (for starvation grace period calculation)
+    def _con_mod_v2(char: dict) -> int:
+        ab = (char.get("abilityScores") or {})
+        con = ab.get("con", 10)
+        return (int(con) - 10) // 2
+
     # Downtime / breathing room — pacing state, needs, victory feast (non-blocking)
     _downtime_block = ""
     _pacing_mutated = False
@@ -1232,11 +1249,40 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         )
         _pacing_before = str((campaign.get("world_state") or {}).get("narrative_pacing"))
         check_player_action_for_needs(req.player_action, campaign, clock_hour)
+
+        # Ration consumption — if meal detected and character has rations, deduct one
+        if _game_char_state:
+            _pacing_now = (campaign.get("world_state") or {}).get("narrative_pacing") or {}
+            _meal_just_recorded = (
+                str(_pacing_now.get("hunger_hours")) == "0"
+                and str(_pacing_before) != str((campaign.get("world_state") or {}).get("narrative_pacing"))
+            )
+            if _meal_just_recorded:
+                try:
+                    from services.ration_service import consume_ration_from_state
+                    _new_inv, _consumed = consume_ration_from_state(_game_char_state)
+                    if _consumed:
+                        _game_char_state["inventory"] = _new_inv
+                        await db.characters.update_one(
+                            {"character_id": req.character_id},
+                            {"$set": {"character_state.inventory": _new_inv}},
+                        )
+                except Exception as _re:
+                    logger.warning(f"Ration consumption failed (non-fatal): {_re}")
+
         _pacing_after = str((campaign.get("world_state") or {}).get("narrative_pacing"))
         _pacing_mutated = _pacing_before != _pacing_after
         _downtime_block = build_downtime_block(campaign, clock_hour, character, current_location)
     except Exception as _dte:
         logger.warning(f"Downtime block build failed (non-fatal): {_dte}")
+
+    # Exhaustion block — injected after downtime block so DM sees both
+    _exhaustion_block = ""
+    try:
+        from services.exhaustion_service import build_exhaustion_block
+        _exhaustion_block = build_exhaustion_block(campaign)
+    except Exception as _exe:
+        logger.warning(f"Exhaustion block build failed (non-fatal): {_exe}")
 
     # Scene thread — close/open loops, wound reveal, continuity (non-blocking)
     _scene_thread = ""
@@ -1272,6 +1318,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         pressure_context=_lean_pressure_ctx,
         scene_thread=_scene_thread,
         downtime_block=_downtime_block,
+        exhaustion_block=_exhaustion_block,
     )
 
     # Call the LLM
@@ -1401,7 +1448,23 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"Failed to persist clock_hour: {exc}")
 
-    # Persist narrative_pacing if check_player_action_for_needs mutated it
+    # Advance survival timers by however many in-game hours passed this turn.
+    # This is done AFTER time advance so hunger/thirst accumulates correctly.
+    # Also triggers exhaustion if starvation/dehydration thresholds are crossed.
+    if advance_h > 0:
+        try:
+            from services.downtime_service import advance_survival_timers
+            _survival_warnings = advance_survival_timers(
+                campaign, advance_h, con_mod=_con_mod_v2(character)
+            )
+            if _survival_warnings:
+                for w in _survival_warnings:
+                    logger.info(f"Survival warning: {w}")
+            _pacing_mutated = True  # ensure we persist
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Survival timer advance failed (non-fatal): {exc}")
+
+    # Persist narrative_pacing if anything mutated it
     if _pacing_mutated:
         try:
             await db.campaigns.update_one(
@@ -1410,6 +1473,18 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"Failed to persist narrative_pacing: {exc}")
+
+        # Sync exhaustion_level onto the game character state so combat/saves pick it up
+        _ex_level = (((campaign.get("world_state") or {}).get("narrative_pacing")) or {}).get("exhaustion_level", 0)
+        if _ex_level != _game_char_state.get("exhaustion_level"):
+            try:
+                await db.characters.update_one(
+                    {"character_id": req.character_id},
+                    {"$set": {"character_state.exhaustion_level": _ex_level}},
+                    upsert=False,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"Failed to sync exhaustion_level to characters: {exc}")
     time_bucket = bucket_for_hour(new_clock_hour)
     # Update in-memory campaign so any downstream code (storyline draft) sees it.
     campaign.setdefault("world_state", {})["clock_hour"] = new_clock_hour
@@ -1686,6 +1761,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
                 "chaos": chaos_payload,                # {value, delta, tier, alignment, drafted_curse}
                 "current_location": current_location,  # {name, card_id} or None
                 "narrative_pacing": (campaign.get("world_state") or {}).get("narrative_pacing") or {},
+                "exhaustion_level": (((campaign.get("world_state") or {}).get("narrative_pacing")) or {}).get("exhaustion_level", 0),
             },
             "player_updates": {},
             "options": [],

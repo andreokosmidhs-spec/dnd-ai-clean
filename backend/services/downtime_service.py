@@ -57,6 +57,11 @@ def get_pacing_state(campaign: dict) -> dict:
         "victory_pending": bool(pacing.get("victory_pending", False)),
         "victory_title": str(pacing.get("victory_title", "")),
         "downtime_hours_remaining": int(pacing.get("downtime_hours_remaining", 0)),
+        # Running totals — reset on meal/rest, incremented by advance_survival_timers()
+        "hunger_hours": int(pacing.get("hunger_hours", 0)),
+        "thirst_hours": int(pacing.get("thirst_hours", 0)),
+        # D&D 5e exhaustion level 0–6
+        "exhaustion_level": int(pacing.get("exhaustion_level", 0)),
     }
 
 
@@ -83,16 +88,85 @@ def increment_hook_resolutions(campaign: dict) -> None:
 def record_meal(campaign: dict, clock_hour: int) -> None:
     pacing = get_pacing_state(campaign)
     pacing["last_meal_hour"] = clock_hour
+    pacing["hunger_hours"] = 0  # reset starvation timer
     _save_pacing(campaign, pacing)
 
 
-def record_rest(campaign: dict, clock_hour: int) -> None:
-    """Long rest: resets hook counter and returns to active phase."""
+def record_drink(campaign: dict) -> None:
+    """Record that the character drank water — resets dehydration timer."""
+    pacing = get_pacing_state(campaign)
+    pacing["thirst_hours"] = 0
+    _save_pacing(campaign, pacing)
+
+
+def record_rest(campaign: dict, clock_hour: int, has_eaten: bool = True, has_drunk: bool = True) -> None:
+    """Long rest: resets hook counter, returns to active phase, reduces exhaustion by 1
+    if the character was nourished during the rest period (PHB rule).
+    """
     pacing = get_pacing_state(campaign)
     pacing["last_rest_hour"] = clock_hour
     pacing["hook_resolutions"] = 0
     pacing["phase"] = "active"
+    # Long rest reduces exhaustion by 1 only if the character ate AND drank
+    if has_eaten and has_drunk:
+        current_ex = int(pacing.get("exhaustion_level", 0))
+        pacing["exhaustion_level"] = max(0, current_ex - 1)
     _save_pacing(campaign, pacing)
+
+
+def advance_survival_timers(campaign: dict, hours: int, con_mod: int = 0) -> List[str]:
+    """Advance hunger/thirst timers by `hours` and trigger exhaustion if PHB
+    thresholds are crossed.
+
+    PHB food rule: characters can go (3 + CON mod) days without food before
+    gaining exhaustion; after that, 1 level per day.
+    PHB water rule: 1 day without water → exhaustion (CON DC 15 save in
+    extreme heat, simplified here to a flat 24h threshold).
+
+    Returns a list of warning strings for any exhaustion triggered this call.
+    """
+    if hours <= 0:
+        return []
+
+    pacing = get_pacing_state(campaign)
+    warnings: List[str] = []
+
+    # --- hunger ---
+    pacing["hunger_hours"] = int(pacing.get("hunger_hours", 0)) + hours
+    food_grace_hours = max(24, (3 + con_mod) * 24)  # floor at 1 day grace
+    if pacing["hunger_hours"] > food_grace_hours:
+        # How many full 24h blocks past the grace period?
+        over = pacing["hunger_hours"] - food_grace_hours
+        # We track whole-day exhaustion ticks via a separate counter
+        days_over = int(over // 24)
+        prev_days = int(pacing.get("starvation_exhaustion_days", 0))
+        if days_over > prev_days:
+            new_levels = days_over - prev_days
+            pacing["starvation_exhaustion_days"] = days_over
+            pacing["exhaustion_level"] = min(6, int(pacing.get("exhaustion_level", 0)) + new_levels)
+            warnings.append(
+                f"STARVATION: {pacing['hunger_hours']}h without food — "
+                f"+{new_levels} exhaustion level(s) (now {pacing['exhaustion_level']}/6)"
+            )
+
+    # --- thirst ---
+    pacing["thirst_hours"] = int(pacing.get("thirst_hours", 0)) + hours
+    water_grace_hours = 24
+    if pacing["thirst_hours"] > water_grace_hours:
+        over_w = pacing["thirst_hours"] - water_grace_hours
+        days_over_w = int(over_w // 24)
+        prev_days_w = int(pacing.get("dehydration_exhaustion_days", 0))
+        if days_over_w > prev_days_w:
+            new_levels_w = days_over_w - prev_days_w
+            pacing["dehydration_exhaustion_days"] = days_over_w
+            pacing["exhaustion_level"] = min(6, int(pacing.get("exhaustion_level", 0)) + new_levels_w)
+            warnings.append(
+                f"DEHYDRATION: {pacing['thirst_hours']}h without water — "
+                f"+{new_levels_w} exhaustion level(s) (now {pacing['exhaustion_level']}/6)"
+            )
+
+    _save_pacing(campaign, pacing)
+    return warnings
 
 
 def open_preparation_window(campaign: dict, hours_available: int = 48) -> None:
@@ -119,12 +193,23 @@ def clear_victory_feast(campaign: dict) -> None:
     _save_pacing(campaign, pacing)
 
 
+_DRINK_KEYWORDS = re.compile(
+    r"\b(drink|drinking|drank|water|ale|wine|mead|beer|juice|broth|soup|tea|"
+    r"waterskin|flask|cup|goblet|quench|thirst)\b",
+    re.IGNORECASE,
+)
+
 def check_player_action_for_needs(player_action: str, campaign: dict, clock_hour: int) -> None:
-    """Detect if the player's action satisfies a meal or rest need and record it."""
+    """Detect if the player's action satisfies a meal, drink, or rest need and record it."""
     if _MEAL_KEYWORDS.search(player_action):
         record_meal(campaign, clock_hour)
+    if _DRINK_KEYWORDS.search(player_action):
+        record_drink(campaign)
     if _REST_KEYWORDS.search(player_action):
-        record_rest(campaign, clock_hour)
+        pacing = get_pacing_state(campaign)
+        has_eaten = pacing["hunger_hours"] == 0
+        has_drunk = pacing["thirst_hours"] == 0
+        record_rest(campaign, clock_hour, has_eaten=has_eaten, has_drunk=has_drunk)
 
 
 # ---------------------------------------------------------------------------

@@ -71,21 +71,24 @@ const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
               </TooltipContent>
             </Tooltip>
 
-            {character.spellSlots && character.spellSlots.length > 0 && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="p-2 bg-blue-600/20 rounded-lg text-center">
-                    <Zap className="h-4 w-4 text-blue-400 mx-auto mb-1" />
-                    <div className="text-xs text-white font-medium">
-                      {character.spellSlots.length}
+            {(() => {
+              const slots = character.spell_slots || (character.spellSlots ? { 1: character.spellSlots.length } : null);
+              const total = slots ? Object.values(slots).reduce((a, b) => a + b, 0) : 0;
+              if (!slots || total === 0) return null;
+              return (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="p-2 bg-blue-600/20 rounded-lg text-center">
+                      <Zap className="h-4 w-4 text-blue-400 mx-auto mb-1" />
+                      <div className="text-xs text-white font-medium">{total}</div>
                     </div>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  <p>Spell Slots: {character.spellSlots.length} available</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Spell Slots: {total} total</p>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })()}
 
             <Tooltip>
               <TooltipTrigger asChild>
@@ -207,17 +210,26 @@ const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
           </div>
 
           {/* Spell Slots */}
-          {character.spellSlots && character.spellSlots.length > 0 && (
-            <div className="bg-gray-900/50 rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Zap className="h-4 w-4 text-cyan-400" />
-                <span className="text-cyan-400 text-sm font-medium">Spell Slots</span>
+          {(() => {
+            const slots = character.spell_slots || (character.spellSlots ? { 1: character.spellSlots.length } : null);
+            if (!slots || Object.keys(slots).length === 0) return null;
+            return (
+              <div className="bg-gray-900/50 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Zap className="h-4 w-4 text-cyan-400" />
+                  <span className="text-cyan-400 text-sm font-medium">Spell Slots</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  {Object.entries(slots).map(([lvl, count]) => (
+                    <div key={lvl} className="bg-blue-900/40 rounded p-1 text-center">
+                      <div className="text-gray-400 text-[10px]">Lv {lvl}</div>
+                      <div className="text-cyan-300 font-semibold text-sm">{count}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="text-white text-sm">
-                Level 1: {character.spellSlots.length} available
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Ability Scores */}
           <div className="bg-gray-900/50 rounded-lg p-3">

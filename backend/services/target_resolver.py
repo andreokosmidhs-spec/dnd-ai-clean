@@ -266,21 +266,27 @@ def is_hostile_action(player_action: str) -> bool:
         'attack', 'strike', 'hit', 'slash', 'stab', 'punch', 'kick',
         'shoot', 'fire at', 'throw at', 'swing at', 'charge',
         'grapple', 'shove', 'tackle', 'headbutt', 'smash', 'crush',
-        'beat', 'assault', 'fight', 'kill', 'murder', 'execute'
+        'beat', 'assault', 'fight', 'kill', 'murder', 'execute',
+        # Formal combat challenges
+        'duel', 'challenge', 'spar', 'draw swords', 'draw blades',
+        'accept the challenge', 'accept the duel', 'fight me', 'face me',
+        'combat', 'battle', 'engage', 'square off', 'step into the ring',
+        'draw my sword', 'draw my weapon', 'draw my blade', 'draw my dagger',
+        'unsheathe my', 'ready my weapon', 'ready my sword',
     ]
-    
+
     # Weapon-related actions
     weapon_keywords = [
         'sword', 'dagger', 'axe', 'mace', 'spear', 'bow', 'arrow',
         'blade', 'weapon', 'club', 'hammer', 'knife'
     ]
-    
+
     # Aggressive action verbs
     aggressive_verbs = [
         'draw weapon', 'unsheathe', 'aim at', 'point weapon',
         'threaten', 'menace', 'lunge', 'rush', 'leap at'
     ]
-    
+
     # Repeated violence patterns (attacking "again", "once more")
     repeat_patterns = ['again', 'once more', 'another', 'keep attacking', 'continue']
     

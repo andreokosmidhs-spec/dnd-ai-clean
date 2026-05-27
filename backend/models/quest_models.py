@@ -40,6 +40,10 @@ class QuestRewards(BaseModel):
     items: List[str] = Field(default_factory=list)
     reputation: Dict[str, int] = Field(default_factory=dict)
     unlocks: List[str] = Field(default_factory=list)  # Unlocked locations, quests, etc.
+    # Deck cards drawn to the player's character_decks on quest completion.
+    # Each entry: {source, title, description, rarity?, mechanical?, per_day?,
+    #              consumable?, uses_max?, tags?}
+    card_rewards: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class QuestLifecycleState(BaseModel):

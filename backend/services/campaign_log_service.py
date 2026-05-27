@@ -237,6 +237,34 @@ class CampaignLogService:
                 )
                 lead.narrative_importance = score_lead(lead)
                 log.leads[lead_delta.id] = lead
+
+                # Mirror write → campaign_cards (unified lead feed)
+                try:
+                    from services.lead_card_service import make_lead_card
+                    card = make_lead_card(
+                        campaign_id,
+                        title=lead_delta.short_text[:80] or lead_delta.id,
+                        summary=lead_delta.short_text or "",
+                        source="campaign_log",
+                        source_type=lead_delta.source_type or "observation",
+                        status="active" if lead_delta.status in {"active", "unexplored"} else lead_delta.status,
+                        tags=["lead", "log-extracted"],
+                        source_scene_id=lead_delta.source_scene_id,
+                        location_id=lead_delta.location_id,
+                        linked_quest_id=lead_delta.linked_quest_id,
+                        related_npc_ids=list(lead_delta.related_npc_ids or []),
+                        related_faction_ids=list(lead_delta.related_faction_ids or []),
+                        related_location_ids=list(lead_delta.related_location_ids or []),
+                        narrative_importance=lead.narrative_importance,
+                    )
+                    card["log_lead_id"] = lead_delta.id  # back-link to the log model
+                    existing = await self.db.campaign_cards.find_one(
+                        {"campaign_id": campaign_id, "log_lead_id": lead_delta.id}
+                    )
+                    if not existing:
+                        await self.db.campaign_cards.insert_one(card)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(f"[log-service] lead mirror write failed (non-fatal): {exc}")
         
         # Save updated log
         await self.save_log(log)

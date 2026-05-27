@@ -34,10 +34,10 @@ from __future__ import annotations
 
 import json as _json
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
-from uuid import uuid4
+
+from services.claude_client import call_haiku_async
 
 logger = logging.getLogger(__name__)
 
@@ -84,10 +84,6 @@ async def rule_on_resume_attempt(
             "new_lead": None,
             "reasoning": "empty player_action",
         }
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-
     hours = _hours_since((pending_obligation or {}).get("paused_at"))
     urgency = (pending_obligation or {}).get("urgency") or "medium"
     deadline_hours = (pending_obligation or {}).get("deadline_hours") or 96
@@ -160,14 +156,7 @@ async def rule_on_resume_attempt(
         "}"
     )
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"resume-rule-{uuid4()}",
-            system_message=sys_msg,
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=user_msg))) or ""
+        raw = await call_haiku_async(sys_msg, user_msg, max_tokens=400, temperature=0) or ""
         s = _strip_json_fence(raw)
         try:
             data = _json.loads(s)

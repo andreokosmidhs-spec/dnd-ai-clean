@@ -27,10 +27,11 @@ from __future__ import annotations
 
 import json as _json
 import logging
-import os
 import re
 from typing import Dict, List, Optional
 from uuid import uuid4
+
+from services.claude_client import call_haiku_async
 
 logger = logging.getLogger(__name__)
 
@@ -135,12 +136,7 @@ async def extract_hooks_llm(narration: str, max_hooks: int = 3) -> List[Dict]:
     """
     if not narration or not narration.strip():
         return []
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return []
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
         prompt = (
             "Extract up to "
             f"{max_hooks} POINTS OF INTEREST from the D&D scene below — short literal "
@@ -158,16 +154,13 @@ async def extract_hooks_llm(narration: str, max_hooks: int = 3) -> List[Dict]:
             "If the scene has no clear hooks (pure dialogue, transition), return {\"hooks\": []}."
         )
 
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"hook-extract-{uuid4()}",
-            system_message=(
-                "You are an expert D&D scene parser. You return verbatim substrings "
-                "the player could investigate. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are an expert D&D scene parser. You return verbatim substrings "
+            "the player could investigate. Output strict JSON only.",
+            prompt,
+            max_tokens=300,
+            temperature=0,
+        ) or ""
         text = raw.strip()
         if text.startswith("```"):
             text = text.strip("`")
@@ -330,12 +323,7 @@ async def detect_engaged_hook(
     if len(candidates) == 1 and has_action_verb:
         return candidates[0]
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return candidates[0] if candidates else None
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
         # If we have substring candidates, only ask the LLM to disambiguate
         # among those; otherwise ask against the full set.
         pool = candidates if candidates else active_hooks
@@ -359,13 +347,12 @@ async def detect_engaged_hook(
             "=== OUTPUT (strict JSON) ===\n"
             "{\"engaged_id\": \"<hook id from list, or null>\"}"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"hook-engage-{uuid4()}",
-            system_message="You are a precise classifier. Output strict JSON only.",
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a precise classifier. Output strict JSON only.",
+            prompt,
+            max_tokens=150,
+            temperature=0,
+        ) or ""
         text_out = raw.strip()
         if text_out.startswith("```"):
             text_out = text_out.strip("`")

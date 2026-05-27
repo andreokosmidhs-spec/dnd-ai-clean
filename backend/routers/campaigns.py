@@ -338,6 +338,21 @@ async def generate_world(campaignId: str):
     initial_cards.append(opening_quest)
     await _replace_cards(campaignId, initial_cards)
 
+    # Seed opening lead cards (planted, not yet revealed) flavored from the
+    # character's background/bonds and the campaign's tone/focus/scope/danger.
+    if _db is not None:
+        try:
+            from services.lead_card_service import seed_opening_leads
+            await seed_opening_leads(
+                _db,
+                campaignId,
+                intent.model_dump(),
+                world,
+                character,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[campaign-gen] lead seeding failed (non-fatal): {exc}")
+
     return GenerateWorldResponse(
         campaignId=campaignId,
         status="ready",

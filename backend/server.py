@@ -1,5 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Header
 from uuid import uuid4
 from typing import List
 from pathlib import Path
@@ -113,6 +112,8 @@ tts_client = OpenAI(api_key=OPENAI_TTS_KEY) if OPENAI_TTS_KEY else None
 
 # Import DUNGEON FORGE router, quest router, and debug router
 from routers import dungeon_forge
+from routers import auth as auth_router
+from routers import billing as billing_router
 from routers import quests as quests_router
 from routers import debug as debug_router
 from routers import knowledge as knowledge_router
@@ -122,10 +123,15 @@ from routers import lean_dm as lean_dm_router
 from routers import feedback as feedback_router
 from routers import storylines as storylines_router
 from routers import character_deck as character_deck_router
+from routers import equipment as equipment_router
 from routers import dm_lessons as dm_lessons_router
+from routers import factions as factions_router
 from routers import canon_scenes as canon_scenes_router
 from routers import mission_types as mission_types_router
 from routers import pressure_engine as pressure_engine_router
+from routers import combat_conditions as combat_conditions_router
+from routers import enemy_library_router
+from routers import behavior_trees_router
 
 # Create the main app without a prefix
 app = FastAPI(title="Sentient RPG Engine", description="AI-Powered Text RPG Framework")
@@ -4138,6 +4144,8 @@ async def forge_world(request: WorldForgeRequest):
 
 # Mount routers
 app.include_router(api_router)  # Legacy endpoints
+app.include_router(auth_router.router)      # Auth: register / login / me
+app.include_router(billing_router.router)   # Billing: plans / usage / Stripe
 app.include_router(dungeon_forge.router)  # DUNGEON FORGE multi-agent endpoints
 app.include_router(quests_router.router)  # Quest System endpoints
 app.include_router(debug_router.router)  # Debug endpoints
@@ -4149,8 +4157,13 @@ app.include_router(feedback_router.router)  # Player feedback → email via Rese
 app.include_router(storylines_router.router)  # Hook → storyline → beat progression → reward
 app.include_router(character_deck_router.router)  # Character deck (race/class/bg/lang + DM context)
 app.include_router(dm_lessons_router.router)  # DM Notebook (persistent lessons from feedback + 👍/👎)
+app.include_router(factions_router.router)    # Faction mechanics (perks, reputation, hierarchy)
 app.include_router(canon_scenes_router.router)  # Canon scenes (auto-checkpoints on passed beats)
 app.include_router(mission_types_router.router)  # Mission Type blueprints
+app.include_router(combat_conditions_router.router)  # Battlefield condition cards + DM adjudication
+app.include_router(enemy_library_router.router)       # Enemy library + add-to-combat
+app.include_router(behavior_trees_router.router)  # Behavior tree editor API
+app.include_router(equipment_router.router)          # Equipment loadout (slots, free-hand, AC)
 app.include_router(character_v2_router)
 app.include_router(character_v2_router_alias)
 
@@ -4161,6 +4174,8 @@ app.include_router(pressure_engine_router.router)  # Living Campaign Pressure En
 
 # Inject database into routers
 dungeon_forge.set_database(db)
+auth_router.set_database(db)
+billing_router.set_database(db)
 quests_router.set_database(db)
 debug_router.set_database(db)
 knowledge_router.set_database(db)
@@ -4169,10 +4184,12 @@ campaigns_router.set_database(db)
 lean_dm_router.set_database(db)
 storylines_router.set_database(db)
 dm_lessons_router.set_database(db)
+factions_router.set_database(db)
 canon_scenes_router.set_database(db)
 mission_types_router.set_database(db)
 scene_refresh_router.set_database(db)
 pressure_engine_router.set_database(db)  # Living Campaign Pressure Engine
+equipment_router.set_db(db)
 set_character_v2_database(db)
 
 # Import API response utilities
@@ -4213,10 +4230,16 @@ async def general_exception_handler(request, exc):
     )
 
 
+_frontend_url = os.getenv("FRONTEND_URL", "")
+_cors_origins = (
+    [o.strip() for o in _frontend_url.split(",") if o.strip()]
+    if _frontend_url
+    else ["http://localhost:3000", "http://localhost:3001"]
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=False,
-    allow_origins=["*"],
+    allow_credentials=True,
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -4227,6 +4250,110 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+@app.post("/api/campaigns/{campaign_id}/generate-scene-image")
+async def generate_scene_image_endpoint(
+    campaign_id: str,
+    body: dict,
+    authorization: str = Header(None),
+):
+    """Generate a Flux scene image for a narration snippet. Paid plans only."""
+    from services.image_service import generate_scene_image, build_scene_prompt
+    from routers.billing import can_use_images, get_user_plan, allowed_tones
+
+    # Tier check
+    plan = "free"
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            from middleware.auth_middleware import _decode
+            uid = _decode(authorization.split(" ", 1)[1])
+            if uid:
+                plan = await get_user_plan(uid)
+        except Exception:
+            pass
+
+    if not can_use_images(plan):
+        raise HTTPException(403, "Scene images are available on Adventurer and Legend plans.")
+
+    narration = body.get("narration", "")
+    location  = body.get("location", "")
+    char_name = body.get("character_name", "")
+
+    prompt = build_scene_prompt(narration, location, char_name)
+    url = await generate_scene_image(prompt)
+    return {"image_url": url, "prompt": prompt}
+
+
+@app.post("/api/campaigns/{campaign_id}/session-recap")
+async def session_recap_endpoint(campaign_id: str, body: dict):
+    """Generate an AI session recap from the campaign's recent scenes."""
+    from services.session_recap_service import generate_session_recap
+
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+
+    world_state = await db.world_states.find_one({"campaign_id": campaign_id})
+    campaign    = await db.campaigns.find_one({"campaign_id": campaign_id})
+
+    if not world_state:
+        raise HTTPException(404, "Campaign not found")
+
+    ws        = world_state.get("world_state", {})
+    scenes    = ws.get("recent_scenes", [])
+    location  = ws.get("current_location", "Unknown")
+    quests    = ws.get("quests", {})
+    char_name = body.get("character_name", "Adventurer")
+
+    recap = await generate_session_recap(scenes, char_name, location, quests)
+
+    # Persist to campaign
+    await db.campaigns.update_one(
+        {"campaign_id": campaign_id},
+        {"$push": {"session_recaps": {"recap": recap, "timestamp": __import__("datetime").datetime.utcnow().isoformat()}}},
+        upsert=False,
+    )
+
+    return {"recap": recap}
+
+
+@app.get("/api/campaigns/{campaign_id}/session-recaps")
+async def get_session_recaps(campaign_id: str):
+    """Return all stored session recaps for a campaign."""
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    campaign = await db.campaigns.find_one({"campaign_id": campaign_id})
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    return {"recaps": campaign.get("session_recaps", [])}
+
+
+@app.get("/health")
+async def health_check():
+    """Lightweight liveness probe for uptime monitors."""
+    db_ok = False
+    if db is not None:
+        try:
+            await db.command("ping")
+            db_ok = True
+        except Exception:
+            pass
+    return {"status": "ok", "db": "connected" if db_ok else "unavailable"}
+
+
+@app.on_event("startup")
+async def _ensure_indexes():
+    """Create MongoDB indexes needed for correctness and performance."""
+    if not db:
+        return
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.usage.create_index([("user_id", 1), ("period", 1)], unique=True)
+        await db.subscriptions.create_index("user_id", unique=True)
+        await db.subscriptions.create_index("stripe_subscription_id")
+        logger.info("MongoDB indexes ensured")
+    except Exception as exc:
+        logger.warning(f"Index creation failed (non-fatal): {exc}")
+
 
 @app.on_event("startup")
 async def _seed_collections():

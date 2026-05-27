@@ -63,7 +63,7 @@ const applyAbilityBonuses = (baseAbilities, bonusByAbility) => {
   }, {});
 };
 
-const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
+const ReviewStep = ({ wizardState, onBack, steps, goToStep, onClearDraft }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(null);
@@ -257,6 +257,7 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep }) => {
       });
 
       setSubmitSuccess("Character created successfully!");
+      if (onClearDraft) onClearDraft();
       navigate("/campaign-setup");
     } catch (err) {
       setSubmitError(err.message || "Failed to create character");

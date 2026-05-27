@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import json as _json
 import logging
-import os
 import random
 from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
-from uuid import uuid4
+
+from services.claude_client import call_haiku_async
 
 logger = logging.getLogger(__name__)
 
@@ -118,12 +118,7 @@ async def evaluate_alignment(character: Dict, player_action: str) -> Dict:
     if not (ideal or bond or flaw) or not (player_action or "").strip():
         return fallback
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return fallback
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
         prompt = (
             "You are a roleplay alignment judge for a D&D campaign. The player has just "
             "declared an action. Evaluate whether it aligns with or violates the "
@@ -149,13 +144,12 @@ async def evaluate_alignment(character: Dict, player_action: str) -> Dict:
             "=== OUTPUT (strict JSON only, no code fence) ===\n"
             "{\"severity\": 0, \"axis\": null, \"reason\": \"\"}\n"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"alignment-{uuid4()}",
-            system_message="You judge roleplay alignment. Output strict JSON only. Be conservative — most actions are 0.",
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You judge roleplay alignment. Output strict JSON only. Be conservative — most actions are 0.",
+            prompt,
+            max_tokens=150,
+            temperature=0,
+        ) or ""
         text = raw.strip()
         if text.startswith("```"):
             text = text.strip("`")

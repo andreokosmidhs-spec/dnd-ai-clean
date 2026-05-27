@@ -1,6 +1,47 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+const BROWSER_TTS_KEY = 'dnd_browser_tts_enabled';
+
+// ── Browser Speech Synthesis (free, no backend needed) ────────────────────────
+export const useBrowserTTS = () => {
+  const [enabled, setEnabled] = useState(() => {
+    try { return localStorage.getItem(BROWSER_TTS_KEY) === 'true'; } catch { return false; }
+  });
+  const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+
+  const toggle = useCallback(() => {
+    setEnabled(prev => {
+      const next = !prev;
+      try { localStorage.setItem(BROWSER_TTS_KEY, String(next)); } catch {}
+      if (!next && supported) window.speechSynthesis.cancel();
+      return next;
+    });
+  }, [supported]);
+
+  const speak = useCallback((text) => {
+    if (!enabled || !supported || !text) return;
+    window.speechSynthesis.cancel();
+    const clean = text.replace(/[*_~`#>]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').trim();
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.rate = 0.9;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => /daniel|george|arthur|oliver|en-gb/i.test(v.name + v.lang))
+      || voices.find(v => /en/i.test(v.lang));
+    if (preferred) utterance.voice = preferred;
+    window.speechSynthesis.speak(utterance);
+  }, [enabled, supported]);
+
+  const stop = useCallback(() => {
+    if (supported) window.speechSynthesis.cancel();
+  }, [supported]);
+
+  useEffect(() => () => { if (supported) window.speechSynthesis.cancel(); }, [supported]);
+
+  return { enabled, toggle, speak, stop, supported };
+};
 
 export const useTTS = () => {
   const [isLoading, setIsLoading] = useState(false);

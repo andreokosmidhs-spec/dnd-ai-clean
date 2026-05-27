@@ -37,12 +37,12 @@ from __future__ import annotations
 
 import json as _json
 import logging
-import os
 import random
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
 
+from services.claude_client import call_haiku_async
 from services.mission_types import render_blueprint_for_prompt
 from services.time_service import bucket_for_hour
 
@@ -435,15 +435,7 @@ async def draft_initial_scene(
     fallback_title = f"The {(hook.get('topic') or 'matter').title()[:36]}".rstrip()
     fallback = {"title": fallback_title, "beats": [fallback_beat], "total_dc": fallback_beat["dc"]}
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        from services.time_service import bucket_for_hour
-        fallback["beats"][0]["time_of_day"] = bucket_for_hour(clock_hour)
-        _tag_phase(fallback["beats"][0], mission_type, None, default_index=0)
-        return fallback
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
         intent = campaign.get("intent") or {}
         world = campaign.get("world") or {}
         starting = world.get("startingLocation") or {}
@@ -520,22 +512,19 @@ async def draft_initial_scene(
             "  }\n"
             "}\n"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"storyline-scene1-{uuid4()}",
-            system_message=(
-                "You are a senior D&D Dungeon Master running a live session at the "
-                "table. You write tight, sensory opening scenes anchored on the literal "
-                "hook subject, FROM THE PLAYER'S POV. When the hook is a sign or notice, "
-                "you READ THE LITERAL POSTED TEXT ALOUD in the description. You always "
-                "tell the player exactly where to go, who to ask for, and when. Empty "
-                "atmospheric phrases ('a fragment of thought', 'a flash of memory', "
-                "'fate stirs') are forbidden — every fact must be sourced in-fiction. "
-                "Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D Dungeon Master running a live session at the "
+            "table. You write tight, sensory opening scenes anchored on the literal "
+            "hook subject, FROM THE PLAYER'S POV. When the hook is a sign or notice, "
+            "you READ THE LITERAL POSTED TEXT ALOUD in the description. You always "
+            "tell the player exactly where to go, who to ask for, and when. Empty "
+            "atmospheric phrases ('a fragment of thought', 'a flash of memory', "
+            "'fate stirs') are forbidden — every fact must be sourced in-fiction. "
+            "Output strict JSON only.",
+            prompt,
+            max_tokens=500,
+            temperature=0,
+        ) or ""
         text = raw.strip()
         if text.startswith("```"):
             text = text.strip("`")
@@ -602,10 +591,6 @@ async def infer_player_intent(
     Returns a short internal DM note (never shown to the player).
     Returns None on any failure so callers can degrade gracefully.
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-
     beats = storyline.get("beats") or []
     if not beats:
         return None
@@ -629,14 +614,12 @@ async def infer_player_intent(
         "meaningful as a reward. Be specific. This note is private to the DM."
     )
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"intent-{uuid4()}",
-            system_message="You are an expert narrative designer. Respond with 1-2 sentences only.",
+        result = await call_haiku_async(
+            "You are an expert narrative designer. Respond with 1-2 sentences only.",
+            prompt,
+            max_tokens=120,
+            temperature=0,
         )
-        chat.with_model("openai", "gpt-4o-mini").with_params(temperature=0.3, max_tokens=120)
-        result = await chat.send_message(UserMessage(text=prompt))
         return (result or "").strip() or None
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"Intent inference failed (non-fatal): {exc}")
@@ -719,16 +702,7 @@ async def generate_next_scene(
         "outcome_text": None,
     })
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        if too_long:
-            return {"is_final": True, "epilogue": "The trail goes quiet, and the matter resolves into something you can carry forward."}
-        fallback_beat["time_of_day"] = bucket_for_hour(clock_hour)
-        return {"is_final": False, "beat": fallback_beat}
-
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
         intent = campaign.get("intent") or {}
         world = campaign.get("world") or {}
         starting = world.get("startingLocation") or {}
@@ -838,22 +812,19 @@ async def generate_next_scene(
             "  }\n"
             "}\n"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"storyline-next-{uuid4()}",
-            system_message=(
-                "You are a senior D&D Dungeon Master running a live session at the "
-                "table. You write scene cards FROM THE PLAYER'S POV — second person, "
-                "what they see/hear/read RIGHT NOW. You source every fact in-fiction "
-                "(quoting posted text, citing the bystander who said it, naming the "
-                "maker's mark on the item). You tell the player exactly where to go, "
-                "who to find by name, and how to claim rewards. Empty phrases like "
-                "'a fragment of thought', 'a flash of memory', or 'fate stirs' are "
-                "forbidden — the character is not psychic. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D Dungeon Master running a live session at the "
+            "table. You write scene cards FROM THE PLAYER'S POV — second person, "
+            "what they see/hear/read RIGHT NOW. You source every fact in-fiction "
+            "(quoting posted text, citing the bystander who said it, naming the "
+            "maker's mark on the item). You tell the player exactly where to go, "
+            "who to find by name, and how to claim rewards. Empty phrases like "
+            "'a fragment of thought', 'a flash of memory', or 'fate stirs' are "
+            "forbidden — the character is not psychic. Output strict JSON only.",
+            prompt,
+            max_tokens=500,
+            temperature=0,
+        ) or ""
         text = raw.strip()
         if text.startswith("```"):
             text = text.strip("`")
@@ -1032,12 +1003,7 @@ async def draft_storyline(
     """
     fallback = _template_storyline(hook, (campaign.get("intent") or {}).get("focus", "Mystery"))
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return fallback
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
         intent = campaign.get("intent") or {}
         world = campaign.get("world") or {}
         starting = world.get("startingLocation") or {}
@@ -1107,16 +1073,13 @@ async def draft_storyline(
             "  ]\n"
             "}\n"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"storyline-draft-{uuid4()}",
-            system_message=(
-                "You are a senior D&D campaign designer. You draft tight, linked "
-                "investigation chains with concrete tasks and clear DCs. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D campaign designer. You draft tight, linked "
+            "investigation chains with concrete tasks and clear DCs. Output strict JSON only.",
+            prompt,
+            max_tokens=500,
+            temperature=0,
+        ) or ""
         text = raw.strip()
         if text.startswith("```"):
             text = text.strip("`")
@@ -1182,10 +1145,11 @@ def _xp_for_total_dc(total_dc: int) -> int:
     return min(1200, int(round(base / 25)) * 25)
 
 
-def _scaled_xp(storyline: Dict) -> int:
-    """Scale base XP by `passed_beats / total_beats` so failed beats reduce
-    the reward proportionally. A run of 3-of-4 passes nets 75% of base XP.
-    All-fail completion still nets 0 XP (item also gated below).
+def _scaled_xp(storyline: Dict, character: Optional[Dict] = None) -> int:
+    """Scale base XP by `passed_beats / total_beats` and character level.
+    A run of 3-of-4 passes nets 75% of base XP. Level adds +6% per level
+    above 1 so higher-level characters earn proportionally more for the same
+    investigation difficulty.
     """
     base = _xp_for_total_dc(int(storyline.get("total_dc") or 0))
     beats = storyline.get("beats") or []
@@ -1193,8 +1157,11 @@ def _scaled_xp(storyline: Dict) -> int:
         return base
     passed = sum(1 for b in beats if b.get("status") == "passed")
     ratio = passed / float(len(beats))
+    level = max(1, int((character or {}).get("level") or 1))
+    level_mult = 1.0 + (level - 1) * 0.06  # +6% per level; L1=1.0x, L5=1.24x, L10=1.54x
+    scaled = int(base * ratio * level_mult)
     # Round to nearest 25 for cleanliness; never below 0.
-    return max(0, int(round(base * ratio / 25)) * 25)
+    return max(0, int(round(scaled / 25)) * 25)
 
 
 async def generate_storyline_reward(
@@ -1208,13 +1175,24 @@ async def generate_storyline_reward(
     item is only awarded when at least half the beats passed.
     """
     total_dc = int(storyline.get("total_dc") or 0)
-    xp = _scaled_xp(storyline)
+    xp = _scaled_xp(storyline, character)
     beats = storyline.get("beats") or []
     passed = sum(1 for b in beats if b.get("status") == "passed")
     failed = sum(1 for b in beats if b.get("status") == "failed")
     pass_ratio = passed / float(len(beats)) if beats else 0
-    # Item is only awarded if at least half the beats passed.
-    award_item = pass_ratio >= 0.5
+    # Graduated item tiers by pass ratio:
+    #   < 30%: no reward — barely engaged
+    #   30–70%: info/favor/key only — partial success earns non-physical rewards
+    #   >= 70%: full item — dominant pass earns a tangible object
+    if pass_ratio >= 0.7:
+        award_item = True
+        item_tier = "full"
+    elif pass_ratio >= 0.3:
+        award_item = True
+        item_tier = "partial"  # non-physical rewards only
+    else:
+        award_item = False
+        item_tier = "none"
 
     fallback = {
         "xp": xp,
@@ -1229,12 +1207,7 @@ async def generate_storyline_reward(
         "tone": "satisfaction" if pass_ratio >= 0.5 else "bitter",
     }
 
-    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return fallback
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
         beat_summary = "\n".join(
             f"- [{b.get('status','?')}] {b.get('title','')}: {b.get('outcome_text') or b.get('description','')}"
             for b in (storyline.get("beats") or [])
@@ -1303,10 +1276,12 @@ async def generate_storyline_reward(
             "- key → NPC hands over a physical token, writ, or badge; explains what "
             "door it opens and any conditions."
         )
-        item_schema = (
-            '{"name": "...", "description": "...", "kind": "item|info|favor|key"}'
-            if award_item else 'null'
-        )
+        if item_tier == "full":
+            item_schema = '{"name": "...", "description": "...", "kind": "item|info|favor|key"}'
+        elif item_tier == "partial":
+            item_schema = '{"name": "...", "description": "...", "kind": "info|favor|key"}'
+        else:
+            item_schema = "null"
         intent_block = (
             f"=== WHAT THE PLAYER WAS REALLY AFTER ===\n{player_intent}\n"
             "The reward MUST serve this specific goal — if they sought protection, the "
@@ -1331,8 +1306,15 @@ async def generate_storyline_reward(
             "=== REWARD KIND DELIVERY GUIDE ===\n"
             f"{reward_kind_guide}\n\n"
             "=== RULES ===\n"
-            f"- {'Award' if award_item else 'DO NOT award'} an item (pass ratio {'≥' if award_item else '<'} 50%).\n"
-            "- Output strict JSON, no code fence.\n\n"
+            + (
+                f"- Award a PHYSICAL item (kind=item allowed): pass ratio {round(pass_ratio*100)}% ≥ 70%.\n"
+                if item_tier == "full" else
+                f"- Award info/favor/key ONLY — NO physical item: pass ratio {round(pass_ratio*100)}% is 30–70%. "
+                "Use kind='info' or 'favor' or 'key', never 'item'.\n"
+                if item_tier == "partial" else
+                f"- DO NOT award any item: pass ratio {round(pass_ratio*100)}% < 30%. Item must be null.\n"
+            )
+            + "- Output strict JSON, no code fence.\n\n"
             "=== OUTPUT ===\n"
             "{\n"
             f"  \"item\": {item_schema},\n"
@@ -1353,13 +1335,12 @@ async def generate_storyline_reward(
             "BANNED: fate, destiny, the gods, the wind whispers, 'the figure', 'someone approaches'.\"\n"
             "}\n"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"storyline-reward-{uuid4()}",
-            system_message="You are a senior D&D campaign designer. Output strict JSON only.",
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D campaign designer. Output strict JSON only.",
+            prompt,
+            max_tokens=500,
+            temperature=0,
+        ) or ""
         text = raw.strip()
         if text.startswith("```"):
             text = text.strip("`")
@@ -1373,10 +1354,14 @@ async def generate_storyline_reward(
 
         item = data.get("item") if isinstance(data.get("item"), dict) else None
         if item and award_item:
+            kind = str(item.get("kind") or "item").strip().lower()[:16]
+            # Enforce partial-tier constraint: downgrade physical "item" to "info"
+            if item_tier == "partial" and kind == "item":
+                kind = "info"
             item = {
                 "name": str(item.get("name") or "Token of the Investigation")[:60],
                 "description": str(item.get("description") or "")[:240],
-                "kind": str(item.get("kind") or "item")[:16],
+                "kind": kind,
             }
         else:
             item = None
@@ -1493,12 +1478,7 @@ async def generate_complication_beat(
         else (fallback_base + " You steel yourself for another try, but it costs you.")
     )
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return fallback
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
         hero_name = "the hero"
         if character:
             identity = character.get("identity") or {}
@@ -1526,16 +1506,13 @@ async def generate_complication_beat(
             "- NO clichés ('fate', 'the gods', 'a chill runs', 'destiny').\n"
             "- No quotation marks around the passage. Output only the beat."
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"complication-{uuid4()}",
-            system_message=(
-                "You are a senior D&D narrator (Matt-Mercer style): cinematic, grounded, "
-                "restrained. You narrate failure with weight, never with melodrama."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D narrator (Matt-Mercer style): cinematic, grounded, "
+            "restrained. You narrate failure with weight, never with melodrama.",
+            prompt,
+            max_tokens=200,
+            temperature=0,
+        ) or ""
         text = raw.strip()
         if text.startswith('"') and text.endswith('"') and len(text) > 2:
             text = text[1:-1].strip()
@@ -1581,12 +1558,7 @@ async def judge_creative_approach(
     if not (approach_text or "").strip():
         return fallback
 
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return fallback
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
         hero_bits = ""
         if character:
             identity = character.get("identity") or {}
@@ -1629,17 +1601,14 @@ async def judge_creative_approach(
             "  \"applied_check\": {\"type\": \"...\", \"dc\": 10} | null\n"
             "}"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"creative-judge-{uuid4()}",
-            system_message=(
-                "You are a senior D&D DM judging creative player solutions. You reward "
-                "inventive thinking and only call something a failure when the fiction "
-                "demands it. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D DM judging creative player solutions. You reward "
+            "inventive thinking and only call something a failure when the fiction "
+            "demands it. Output strict JSON only.",
+            prompt,
+            max_tokens=300,
+            temperature=0,
+        ) or ""
         text = raw.strip()
         if text.startswith("```"):
             text = text.strip("`")

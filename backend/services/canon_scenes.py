@@ -31,10 +31,11 @@ from __future__ import annotations
 
 import json as _json
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
+
+from services.claude_client import call_haiku_async
 
 logger = logging.getLogger(__name__)
 
@@ -66,11 +67,7 @@ async def _distill_canon(
         "summary": (narration_snippet or outcome_text or beat_description or "")[:240],
         "facts": [],
     }
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return fallback
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
         check_block = (
             f"Resolved via: {check_type} (DC {dc}, roll {roll_total})"
             if check_type and dc is not None
@@ -94,17 +91,14 @@ async def _distill_canon(
             "  \"facts\": [\"<bullet 1: a CONCRETE fact established here — NPC said X, location holds Y, item bears mark Z>\", \"<bullet 2>\", \"<bullet 3>\"]\n"
             "}"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"canon-{uuid4()}",
-            system_message=(
-                "You are a concise D&D scribe. You produce locked-in canon "
-                "records — never speculate, never invent, never reuse cliches. "
-                "Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a concise D&D scribe. You produce locked-in canon "
+            "records — never speculate, never invent, never reuse cliches. "
+            "Output strict JSON only.",
+            prompt,
+            max_tokens=300,
+            temperature=0,
+        ) or ""
         s = _strip_json_fence(raw)
         try:
             data = _json.loads(s)

@@ -285,7 +285,7 @@ export const getCardTags = (data, type) => {
 
 export const getCardFullDetails = (data, type) => {
   const details = [];
-  
+
   switch (type) {
     case 'locations':
       if (data.geography) details.push({ label: 'Geography', value: data.geography });
@@ -337,6 +337,197 @@ export const getCardFullDetails = (data, type) => {
     default:
       break;
   }
-  
+
   return details;
+};
+
+// ── Status display ─────────────────────────────────────────────────
+export const STATUS_STYLE = {
+  introduced:  'bg-gray-700/80 text-gray-300',
+  active:      'bg-amber-700/80 text-amber-200',
+  acquired:    'bg-emerald-700/80 text-emerald-200',
+  completed:   'bg-blue-700/80 text-blue-200',
+  failed:      'bg-red-900/80 text-red-300',
+  hostile:     'bg-red-700/80 text-red-100',
+  friendly:    'bg-green-700/80 text-green-100',
+  dead:        'bg-stone-800/80 text-stone-500',
+  cold:        'bg-slate-700/80 text-slate-300',
+  sealed:      'bg-indigo-800/80 text-indigo-200',
+  open:        'bg-cyan-700/80 text-cyan-200',
+  neutral:     'bg-gray-700/80 text-gray-300',
+  wary:        'bg-yellow-800/80 text-yellow-200',
+  suspicious:  'bg-yellow-800/80 text-yellow-200',
+  grateful:    'bg-green-700/80 text-green-100',
+  // Item lifecycle
+  equipped:    'bg-green-600/80 text-green-100',
+  unequipped:  'bg-gray-600/80 text-gray-300',
+  consumed:    'bg-stone-800/80 text-stone-400',
+  expended:    'bg-stone-800/80 text-stone-400',
+  // Faction reputation tiers
+  reviled:     'bg-red-900/80 text-red-200',
+  respected:   'bg-blue-700/80 text-blue-100',
+  honored:     'bg-indigo-600/80 text-indigo-100',
+  exalted:     'bg-yellow-600/80 text-yellow-100',
+};
+
+export const getStatusStyle = (status) =>
+  STATUS_STYLE[String(status || 'introduced').toLowerCase()] || STATUS_STYLE.introduced;
+
+// ── Rarity ─────────────────────────────────────────────────────────
+export const RARITY_CONFIG = {
+  common:    { label: 'Common',    gem: '◆', color: 'text-gray-500'   },
+  uncommon:  { label: 'Uncommon',  gem: '◆', color: 'text-green-400'  },
+  rare:      { label: 'Rare',      gem: '◆', color: 'text-blue-400'   },
+  legendary: { label: 'Legendary', gem: '◆', color: 'text-yellow-400' },
+};
+
+export const getRarity = (data, normalizedType) => {
+  if (normalizedType === 'curses') return 'legendary';
+  if (normalizedType === 'favors') return 'rare';
+  if (data?.secret_content && Object.keys(data.secret_content).length > 0) return 'rare';
+  // Items with active bonuses are rare; equipped items are at least uncommon
+  if (normalizedType === 'items') {
+    if ((data?.grants_bonus || []).length > 0) return 'rare';
+    if ((data?.status || '').toLowerCase() === 'equipped') return 'uncommon';
+  }
+  // Factions with perks or hierarchy are rare; enriched factions are uncommon
+  if (normalizedType === 'factions') {
+    if ((data?.tier_perks || []).length > 0) return 'rare';
+    if ((data?.hierarchy || []).length > 0) return 'uncommon';
+  }
+  if (data?.source === 'world_event') return 'uncommon';
+  if (data?.auto_seeded === false) return 'uncommon';
+  return 'common';
+};
+
+// ── Per-type mechanical rows shown on card face ─────────────────────
+// Returns array of { label, kind } where kind = 'status'|'info'|'warn'|'stat'|'delta'
+export const getMechanicalRows = (data, normalizedType) => {
+  const rows = [];
+  const status = (data?.status || 'introduced').toLowerCase();
+  const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+
+  switch (normalizedType) {
+    case 'npcs': {
+      rows.push({ label: statusLabel, kind: 'status' });
+      const loc = data?.at_location;
+      if (loc) rows.push({ label: `📍 ${loc}`, kind: 'info' });
+      const deltas = data?.character_deltas || [];
+      const lastAtt = [...deltas].reverse().find(d => d.type === 'attitude');
+      if (lastAtt?.fact) rows.push({ label: lastAtt.fact.slice(0, 38), kind: 'delta' });
+      const stats = data?.secret_content?.stats;
+      if (stats) rows.push({
+        label: `P${stats.persuasion_dc || 12} · I${stats.intimidation_dc || 10} · D${stats.deception_dc || 11}`,
+        kind: 'stat',
+      });
+      break;
+    }
+    case 'locations': {
+      rows.push({ label: statusLabel, kind: 'status' });
+      if (data?.biome_label) rows.push({ label: data.biome_label, kind: 'info' });
+      const survMod = data?.biome_survival_dc_mod;
+      if (survMod !== undefined && survMod !== null) rows.push({
+        label: `Survival DC ${survMod >= 0 ? '+' : ''}${survMod}`,
+        kind: 'info',
+      });
+      const threats = (data?.biome_monsters || []).slice(0, 2).join(', ');
+      if (threats) rows.push({ label: `⚠ ${threats}`, kind: 'warn' });
+      break;
+    }
+    case 'quests': {
+      rows.push({ label: statusLabel, kind: 'status' });
+      const dcMatch = (data?.content || data?.description || '').match(/DC\s*(\d+)/i);
+      if (dcMatch) rows.push({ label: `Check DC: ${dcMatch[1]}`, kind: 'stat' });
+      const tags = (data?.tags || []).slice(0, 2);
+      if (tags.length) rows.push({ label: tags.join(' · '), kind: 'info' });
+      break;
+    }
+    case 'leads': {
+      rows.push({ label: statusLabel, kind: 'status' });
+      const src = data?.source_type || data?.source;
+      if (src) rows.push({ label: src, kind: 'info' });
+      break;
+    }
+    case 'items': {
+      rows.push({ label: statusLabel, kind: 'status' });
+      const itemType = data?.item_type;
+      const slot = data?.equip_slot;
+      const bonuses = data?.grants_bonus || [];
+      const qty = data?.quantity;
+      // Type + slot line
+      if (itemType) {
+        const typeStr = slot ? `${itemType} · ${slot}` : itemType;
+        rows.push({ label: typeStr.charAt(0).toUpperCase() + typeStr.slice(1), kind: 'info' });
+      }
+      // Bonus line (equipment) or description (other)
+      if (bonuses.length > 0) {
+        rows.push({
+          label: bonuses.map(b => `+${b.modifier} ${b.check}`).join(' · '),
+          kind: 'stat',
+        });
+      } else if (!itemType) {
+        const props = data?.known_properties || data?.content;
+        if (props) rows.push({ label: props.slice(0, 40), kind: 'info' });
+      }
+      // Quantity for stackables
+      if (qty && qty > 1) {
+        rows.push({ label: `Qty ×${qty}`, kind: 'info' });
+      }
+      break;
+    }
+    case 'favors': {
+      rows.push({ label: statusLabel, kind: 'status' });
+      const txt = data?.content || '';
+      if (txt) rows.push({ label: txt.slice(0, 40), kind: 'info' });
+      break;
+    }
+    case 'curses': {
+      rows.push({ label: statusLabel, kind: 'status' });
+      const tags = (data?.tags || []).slice(0, 2);
+      if (tags.length) rows.push({ label: tags.join(' · '), kind: 'warn' });
+      const mech = data?.mechanical;
+      if (mech) rows.push({ label: mech.slice(0, 40), kind: 'warn' });
+      break;
+    }
+    case 'factions': {
+      // Reputation tier as the status pill
+      const rep = data?.reputation ?? null;
+      let repLabel = statusLabel;
+      if (rep !== null) {
+        if (rep <= -60) repLabel = 'Reviled';
+        else if (rep <= -20) repLabel = 'Hostile';
+        else if (rep < 20) repLabel = 'Neutral';
+        else if (rep < 50) repLabel = 'Respected';
+        else if (rep < 80) repLabel = 'Honored';
+        else repLabel = 'Exalted';
+      }
+      rows.push({ label: repLabel, kind: 'status' });
+      // Controlled areas
+      const areas = data?.controlled_areas || [];
+      if (areas.length) rows.push({ label: `⚑ ${areas.slice(0, 2).join(', ')}`, kind: 'info' });
+      // Active perk count
+      const perks = data?.tier_perks || [];
+      if (perks.length) {
+        rows.push({ label: `${perks.length} perk${perks.length !== 1 ? 's' : ''}`, kind: 'stat' });
+      } else {
+        const purpose = data?.purpose || data?.content;
+        if (purpose) rows.push({ label: purpose.slice(0, 38), kind: 'info' });
+      }
+      // Known member count
+      const members = data?.known_members || [];
+      if (members.length) rows.push({ label: `${members.length} known member${members.length !== 1 ? 's' : ''}`, kind: 'info' });
+      break;
+    }
+    case 'spells': {
+      rows.push({ label: statusLabel, kind: 'status' });
+      const tags = (data?.tags || []).slice(0, 2);
+      if (tags.length) rows.push({ label: tags.join(' · '), kind: 'info' });
+      break;
+    }
+    default: {
+      rows.push({ label: statusLabel, kind: 'status' });
+      break;
+    }
+  }
+  return rows;
 };

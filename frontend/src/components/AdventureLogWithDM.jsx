@@ -5,6 +5,9 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Dice6, MessageSquare, Loader2, User, Sparkles, Volume2, X, BookOpen, Bookmark, BookmarkCheck, Scroll, Flag, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useGameState } from '../contexts/GameStateContext';
+import { useAuth } from '../contexts/AuthContext';
+import UsageBanner from './UsageBanner';
+import { useTutorial } from '../contexts/TutorialContext';
 // CheckRequestCard and RollResultCard removed - CheckRollPanel handles all rolls now
 import NarrationAudioPlayer from './NarrationAudioPlayer';
 import NPCMentionHighlighter from './NPCMentionHighlighter';
@@ -17,6 +20,7 @@ import ActiveInvestigationPanel, { StorylineRewardModal } from './ActiveInvestig
 import RememberCardDialog from './RememberCardDialog';
 import SceneReportDialog from './SceneReportDialog';
 import DefeatModal from './DefeatModal';
+import LevelUpScreen from './LevelUpScreen';
 import CanonBar from './CanonBar';
 import CanonReferences from './CanonReferences';
 import AutoSaveIndicator from './AutoSaveIndicator';
@@ -25,7 +29,8 @@ import useCanonTerms, { findCanonMentions } from '../hooks/useCanonTerms';
 import { useTargetMode, pickWordFromClick } from '../contexts/TargetModeContext';
 import { SearchTargetModal } from './TargetModeBanner';
 import { getCheckOutcome, getAbilityModifier, isProficient } from '../utils/dndMechanics';
-import { useTTS } from '../hooks/useTTS';
+import { useTTS, useBrowserTTS } from '../hooks/useTTS';
+import SessionRecapModal from './SessionRecapModal';
 import sessionManager from '../state/SessionManager';
 import { toast } from 'sonner';
 import '../styles/adventurePapyrus.css';
@@ -35,6 +40,8 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   // Get the entire context object to ensure fresh reads
   const gameStateContext = useGameState();
+  const { patchUsage, user: authUser, token: authToken } = useAuth();
+  const { openTutorial, hasSeenTutorial } = useTutorial();
   const {
     sessionId,
     setSessionId,
@@ -48,6 +55,24 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   
   const [messages, setMessages] = useState([]);
   const [currentOptions, setCurrentOptions] = useState([]);
+
+  // Narrator tone — persisted in localStorage, sent with every action
+  const [narratorTone, setNarratorTone] = useState(() => {
+    try { return localStorage.getItem('dnd_narrator_tone') || 'balanced'; } catch { return 'balanced'; }
+  });
+  const setAndPersistTone = useCallback((t) => {
+    setNarratorTone(t);
+    try { localStorage.setItem('dnd_narrator_tone', t); } catch {}
+  }, []);
+
+  // Browser TTS — auto-speak DM narration when enabled
+  const { enabled: ttsEnabled, toggle: toggleTTS, speak: speakNarration } = useBrowserTTS();
+
+  // Session recap modal
+  const [showRecap, setShowRecap] = useState(false);
+
+  // Scene image state keyed by message id
+  const [sceneImages, setSceneImages] = useState({});
 
   // Canon term index — proper-noun terms harvested from every canon
   // scene's title/facts, mapped back to their originating scene. Used
@@ -122,6 +147,15 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
     if (!targetMode && hoverHighlight) setHoverHighlight(null);
   }, [targetMode, hoverHighlight]);
 
+  // Auto-show tutorial on first visit to the game screen
+  // eslint-disable-next-line
+  useEffect(() => {
+    if (!hasSeenTutorial()) {
+      const t = setTimeout(() => openTutorial(0), 800);
+      return () => clearTimeout(t);
+    }
+  }, []); // intentionally empty — run once on mount
+
   const handleNarrationClick = (e) => {
     if (!targetMode) return;
     const word = pickWordFromClick(e);
@@ -157,6 +191,8 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   const [quests, setQuests] = useState([]);
   const [showDefeatModal, setShowDefeatModal] = useState(false);
   const [defeatInfo, setDefeatInfo] = useState(null);
+  const [showLevelUp, setShowLevelUp] = useState(false);
+  const [pendingLevelUp, setPendingLevelUp] = useState(null); // { newLevel, character }
   const [selectedNpc, setSelectedNpc] = useState(null);
   const [showIntro, setShowIntro] = useState(false);
   
@@ -214,11 +250,11 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   
   // TTS Hook
   const { 
-    audioRef, 
-    isLoading: isTTSLoading, 
-    isTTSEnabled, 
-    generateSpeech, 
-    toggleTTS 
+    audioRef,
+    isLoading: isTTSLoading,
+    isTTSEnabled,
+    generateSpeech,
+    toggleTTS: toggleAPITTS,
   } = useTTS();
   
   const scrollRef = useRef();
@@ -280,6 +316,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   // sessions too. Idempotent — only runs when at least one chronicle/intro
   // entry is missing mentions.
   const entityBackfillRan = useRef(false);
+  const lastFailedPayloadRef = useRef(null);
   useEffect(() => {
     if (!campaignId) return;
     if (entityBackfillRan.current) return;
@@ -943,6 +980,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
     const startTime = performance.now();
     console.log('📤 Sending to DM API:', payload);
 
+    lastFailedPayloadRef.current = payload;
     setIsLoading(true);
 
     try {
@@ -964,7 +1002,10 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
 
       // Extract data from standard envelope {success, data, error}
       const data = response_envelope.data || response_envelope;
-      
+
+      // Sync turn usage into AuthContext so UsageBanner updates without extra fetch
+      if (data.usage) patchUsage(data.usage);
+
       // DUNGEON FORGE: Handle world_state_update
       if (data.world_state_update && Object.keys(data.world_state_update).length > 0) {
         console.log('🗺️ WORLD STATE UPDATE:', data.world_state_update);
@@ -1017,17 +1058,44 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           }
         }
         
-        // Level up notifications
+        // Level up — show LevelUpScreen for the highest new level
         if (data.player_updates.level_up_events && data.player_updates.level_up_events.length > 0) {
-          for (const event of data.player_updates.level_up_events) {
-            const level = event.split(':')[1];
-            const levelMsg = `🎉 LEVEL UP! You are now level ${level}!`;
-            if (window.showToast) {
-              window.showToast(levelMsg, 'info');
-            }
+          const levels = data.player_updates.level_up_events
+            .map(e => parseInt((e || '').split(':')[1], 10))
+            .filter(Boolean);
+          if (levels.length > 0) {
+            const newLevel = Math.max(...levels);
+            setPendingLevelUp({ newLevel, character: gameStateContext.characterState });
+            setShowLevelUp(true);
           }
         }
         
+        // Rest recovery — update HP and spell slots immediately
+        if (data.player_updates.rest_result) {
+          const rr = data.player_updates.rest_result;
+          const patch = { hp: rr.hp };
+          if (rr.spell_slots !== undefined) patch.spell_slots = rr.spell_slots;
+          if (rr.spell_slots_max !== undefined) patch.spell_slots_max = rr.spell_slots_max;
+          if (rr.conditions !== undefined) patch.conditions = rr.conditions;
+          if (rr.hit_dice_remaining !== undefined) patch.hit_dice_remaining = rr.hit_dice_remaining;
+          if (rr.hit_dice_max !== undefined) patch.hit_dice_max = rr.hit_dice_max;
+          if (rr.short_rests_taken !== undefined) patch.short_rests_taken = rr.short_rests_taken;
+          updateCharContext(patch);
+          if (window.showToast) {
+            const diceInfo = rr.hit_dice_remaining !== undefined
+              ? ` (${rr.hit_dice_remaining}/${rr.hit_dice_max} hit dice)`
+              : '';
+            const msg = rr.rest_type === 'long'
+              ? `💤 Long Rest — fully restored! +${rr.hp_gained} HP`
+              : rr.no_short_rests
+                ? `⏸️ Short Rest — no short rests remaining until long rest`
+                : rr.no_hit_dice
+                  ? `⏸️ Short Rest — no hit dice remaining`
+                  : `⏸️ Short Rest — +${rr.hp_gained} HP${diceInfo}`;
+            window.showToast(msg, 'success');
+          }
+        }
+
         // Defeat handled - show modal
         if (data.player_updates.defeat_handled) {
           setShowDefeatModal(true);
@@ -1048,6 +1116,21 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           // P3.5: Show XP penalty toast if any
           if (data.player_updates.xp_penalty > 0 && window.showToast) {
             window.showToast(`-${data.player_updates.xp_penalty} XP`, 'error');
+          }
+
+          // Quest failure toasts
+          if (data.player_updates.quests_failed?.length > 0) {
+            data.player_updates.quests_failed.forEach(name => {
+              window.showToast && window.showToast(`❌ Quest failed: ${name}`, 'error');
+            });
+          }
+          if (data.player_updates.quest_failed) {
+            window.showToast && window.showToast(`❌ Quest failed: ${data.player_updates.quest_failed}`, 'error');
+          }
+
+          // Critical failure condition toast
+          if (data.player_updates.condition_added) {
+            window.showToast && window.showToast(`⚠️ Condition: ${data.player_updates.condition_added}`, 'error');
           }
         }
       }
@@ -1070,25 +1153,31 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
       if (data.combat_started) {
         console.log('⚔️ Combat started!');
         setIsCombatActive(true);
-        setCombatState({ isActive: true, combatId: `combat-${Date.now()}` });
+        const cs = { isActive: true, combatId: `combat-${Date.now()}`, ...(data.combat_state || {}) };
+        setCombatState(cs);
+        // Bubble up to RPGGame → triggers full-screen CombatScreen
+        if (props.onCombatStart) props.onCombatStart(cs);
       }
-      
+
       if (data.combat_active && data.combat_state) {
         console.log('⚔️ Combat continues...');
         setIsCombatActive(true);
-        setCombatState({ isActive: true, ...data.combat_state });
+        const cs = { isActive: true, ...data.combat_state };
+        setCombatState(cs);
+        // If RPGGame doesn't have the screen up yet, open it
+        if (props.onCombatStart) props.onCombatStart(cs);
       }
-      
+
       if (data.combat_over) {
         console.log('⚔️ Combat ended:', data.outcome);
         setIsCombatActive(false);
-        setCombatState({ 
-          isActive: false, 
+        setCombatState({
+          isActive: false,
           outcome: data.outcome,
           combatId: null,
           participants: [],
           turnOrder: [],
-          currentTurnIndex: 0
+          currentTurnIndex: 0,
         });
       }
 
@@ -1139,18 +1228,26 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           }
         }
 
-        // Auto-generate TTS if enabled (non-blocking)
-        if (isTTSEnabled && !isCinematic) {
-          setTimeout(async () => {
-            try {
-              const audioUrl = await generateSpeech(data.narration, 'onyx', true);
-              setMessages(prev => prev.map(msg => 
-                msg.id === msgId ? { ...msg, audioUrl } : msg
-              ));
-            } catch (err) {
-              console.error('TTS auto-generation failed:', err);
-            }
-          }, 100);
+        // Browser TTS — speak narration aloud if enabled (free, no API key needed)
+        if (!isCinematic) {
+          speakNarration(data.narration);
+        }
+
+        // Scene image — request for paid users after narration lands
+        if (!isCinematic && campaignId && authUser?.plan && authUser.plan !== 'free') {
+          const location = gameStateContext.worldState?.current_location || '';
+          const charName = gameStateContext.characterState?.name || '';
+          fetch(`${BACKEND_URL}/api/campaigns/${campaignId}/generate-scene-image`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+            },
+            body: JSON.stringify({ narration: data.narration, location, character_name: charName }),
+          })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d?.image_url) setSceneImages(prev => ({ ...prev, [msgId]: d.image_url })); })
+            .catch(() => {});
         }
 
         if (isCinematic) {
@@ -1167,6 +1264,60 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
             detail: { reason: 'action' },
           }));
         } catch {}
+      }
+
+      // Paused-quest obligation reminder — injected as a separate world-event
+      // beat immediately after the main DM narration (if one fired this turn).
+      if (data.obligation_reminder && data.obligation_reminder.narration) {
+        const reminder = data.obligation_reminder;
+        const reminderMsg = {
+          id: `obligation-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          type: 'dm',
+          text: reminder.narration,
+          timestamp: Date.now() + 10,
+          isCinematic: true,
+          source: 'obligation-reminder',
+          meta: {
+            storylineTitle: reminder.storyline_title,
+            npcName: reminder.npc_name,
+            deliveryMethod: reminder.delivery_method,
+            urgency: reminder.urgency,
+            storylineId: reminder.storyline_id,
+          },
+        };
+        setMessages((prev) => {
+          const next = [...prev, reminderMsg].slice(-200);
+          if (sessionId) {
+            try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+          }
+          return next;
+        });
+      }
+
+      // Spontaneous world event — an NPC approaches the player in character.
+      // Injected as a distinct beat after obligation reminders.
+      if (data.world_event && data.world_event.narration) {
+        const evt = data.world_event;
+        const evtMsg = {
+          id: `world-event-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          type: 'dm',
+          text: evt.narration,
+          timestamp: Date.now() + 20,
+          isCinematic: true,
+          source: 'world-event',
+          meta: {
+            npcName: evt.npc_name,
+            eventType: evt.event_type,
+            category: evt.category,
+          },
+        };
+        setMessages((prev) => {
+          const next = [...prev, evtMsg].slice(-200);
+          if (sessionId) {
+            try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+          }
+          return next;
+        });
       }
 
     } catch (error) {
@@ -1205,7 +1356,8 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
 
     // DUNGEON FORGE: Use buildActionPayload from context
     const actionPayload = buildActionPayload(playerMessage, checkResult);
-    
+    if (actionPayload) actionPayload.narrator_tone = narratorTone;
+
     if (!actionPayload) {
       console.error('❌ Cannot send action: missing campaign_id or character_id');
       const errorMsg = {
@@ -1406,10 +1558,15 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
   };
 
   const handleRetry = (messageIndex) => {
-    const allMsgs = messages.slice(0, messageIndex);
-    const lastPlayerMsg = allMsgs.reverse().find(m => m.type === 'player');
-    if (lastPlayerMsg) {
-      sendPlayerMessage(lastPlayerMsg.text);
+    // Remove the error message from the log, then re-send the last known payload
+    // directly (avoids duplicating the player message in the log).
+    setMessages(prev => prev.filter((_, i) => i !== messageIndex));
+    if (lastFailedPayloadRef.current) {
+      sendToAPI(lastFailedPayloadRef.current);
+    } else {
+      // Fallback: find and re-send the last player message
+      const lastPlayerMsg = [...messages.slice(0, messageIndex)].reverse().find(m => m.type === 'player');
+      if (lastPlayerMsg) sendPlayerMessage(lastPlayerMsg.text);
     }
   };
 
@@ -1646,12 +1803,20 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
           </div>
         )}
 
-        {/* Combat HUD - Show when combat is active */}
-        {isCombatActive && combatState && (
+        {/* Character HUD — always visible; shows combat section only when in combat */}
+        {!props.onCombatStart && gameStateContext.characterState && (
           <div className="px-3 pt-3">
-            <CombatHUD characterState={gameStateContext.characterState} combatState={combatState} />
+            <CombatHUD
+              characterState={gameStateContext.characterState}
+              combatState={isCombatActive ? combatState : null}
+            />
           </div>
         )}
+
+        {/* Turn usage indicator */}
+        <div style={{ padding: "4px 8px" }}>
+          <UsageBanner />
+        </div>
 
         {/* Compact top bar — Realm + Quests open as right-side slide-overs.
             Replaces the chunky inline collapsible cards so the chat owns
@@ -1667,7 +1832,8 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
             characterId={gameStateContext.characterState?.id || gameStateContext.characterState?.character_id}
             characterName={gameStateContext.characterState?.identity?.name || gameStateContext.characterState?.name}
             onPausedThreadResumed={(payload) => {
-              const { storyline, ruling } = payload || {};
+              const { storyline, ruling, new_lead_card } = payload || {};
+              const isExpired = ruling?.ruling === 'expired';
               if (ruling?.narration) {
                 const dmBeat = {
                   type: 'dm',
@@ -1675,15 +1841,29 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                   message: ruling.narration,
                   timestamp: Date.now(),
                   isCinematic: true,
-                  source: 'storyline-resume',
+                  source: isExpired ? 'storyline-expired' : 'storyline-resume',
                   meta: {
                     ruling: ruling.ruling,
                     storylineTitle: storyline?.title,
                     consequence: ruling.consequence,
                   },
                 };
+                const beats = [dmBeat];
+                // If the thread expired AND the DM minted a new lead, surface
+                // it as a second beat immediately after the closure narration.
+                if (isExpired && new_lead_card?.description) {
+                  beats.push({
+                    type: 'dm',
+                    text: new_lead_card.description,
+                    message: new_lead_card.description,
+                    timestamp: Date.now() + 10,
+                    isCinematic: true,
+                    source: 'lead-revealed',
+                    meta: { leadTitle: new_lead_card.title },
+                  });
+                }
                 setMessages((prev) => {
-                  const next = [...prev, dmBeat].slice(-200);
+                  const next = [...prev, ...beats].slice(-200);
                   if (sessionId) {
                     try {
                       localStorage.setItem(
@@ -1695,8 +1875,7 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                   return next;
                 });
               }
-              // If the DM ruled it active, swap the active storyline so the
-              // ActiveInvestigationPanel + MissionPhaseBadge update.
+              // Reopen the investigation panel only if the DM ruled it alive.
               if (
                 storyline &&
                 storyline.status === 'active' &&
@@ -1969,21 +2148,31 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                   <div className={`p-4 rounded-lg ${
                     entry.isWorldBrief
                       ? 'bg-gradient-to-br from-amber-900/30 via-stone-800/40 to-amber-950/30 border-2 border-amber-600/50 shadow-inner shadow-amber-900/40'
-                      : entry.isCinematic
-                        ? 'bg-gradient-to-r from-violet-600/30 to-purple-600/30 border-2 border-violet-400/50'
-                        : 'bg-violet-600/20 border-l-4 border-violet-400'
+                      : entry.source === 'storyline-expired'
+                        ? 'bg-stone-900/60 border border-rose-900/50 border-l-4 border-l-rose-700'
+                        : entry.source === 'obligation-reminder'
+                          ? 'bg-gradient-to-r from-amber-900/20 to-stone-800/30 border border-amber-700/50 border-l-4 border-l-amber-500'
+                          : entry.source === 'world-event'
+                            ? 'bg-gradient-to-r from-stone-800/50 to-zinc-900/50 border border-stone-600/60 border-l-4 border-l-stone-400'
+                            : entry.isCinematic
+                            ? 'bg-gradient-to-r from-violet-600/30 to-purple-600/30 border-2 border-violet-400/50'
+                            : 'bg-violet-600/20 border-l-4 border-violet-400'
                   } animate-in slide-in-from-left-5 duration-300`}
                   data-testid={entry.isWorldBrief ? 'world-brief-message' : undefined}
                   >
                     <div className="flex items-start gap-3">
                       {entry.isWorldBrief ? (
                         <BookOpen className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                      ) : entry.source === 'obligation-reminder' ? (
+                        <span className="text-amber-400 flex-shrink-0 mt-0.5 text-base leading-none">🪶</span>
+                      ) : entry.source === 'world-event' ? (
+                        <span className="text-stone-300 flex-shrink-0 mt-0.5 text-base leading-none">⚡</span>
                       ) : (
                         <Dice6 className="h-5 w-5 text-violet-400 flex-shrink-0 mt-0.5" />
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className={`font-semibold text-sm ${entry.isWorldBrief ? 'text-amber-300 italic' : 'text-violet-400'}`}>
+                          <span className={`font-semibold text-sm ${entry.isWorldBrief ? 'text-amber-300 italic' : entry.source === 'storyline-expired' ? 'text-rose-400 italic' : entry.source === 'obligation-reminder' ? 'text-amber-400 italic' : entry.source === 'world-event' ? 'text-stone-300 italic' : 'text-violet-400'}`}>
                             {entry.isWorldBrief
                               ? `📜 ${entry.chronicleTitle || 'A Chronicle of the Realm'}`
                               : entry.source === 'map-event'
@@ -1996,8 +2185,10 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                                       ? `🎬 Investigation Closes${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
                                       : entry.source === 'storyline-paused'
                                         ? `⏸ Thread Set Aside${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
-                                        : entry.source === 'storyline-resume'
-                                          ? `🔁 Reconnect${entry.meta?.ruling ? ` (${entry.meta.ruling})` : ''}`
+                                        : entry.source === 'storyline-expired'
+                                          ? `⌛ Thread Lost${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
+                                          : entry.source === 'storyline-resume'
+                                            ? `🔁 Reconnect${entry.meta?.ruling ? ` (${entry.meta.ruling})` : ''}`
                                           : entry.source === 'spawn-clarify'
                                             ? '❓ DM asks…'
                                             : entry.source === 'spawn-transition'
@@ -2008,11 +2199,15 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                                                   ? `🪄 New Lead — ${entry.meta?.leadTitle || ''}`
                                                   : entry.source === 'lead-sealed'
                                                     ? `🔒 Sealed Lead — ${entry.meta?.leadTitle || ''}`
-                                                    : entry.isCinematic
-                                                      ? '🎭 The Adventure Begins'
-                                                      : 'Dungeon Master'}
+                                                    : entry.source === 'obligation-reminder'
+                                                      ? `🪶 A Word Reaches You${entry.meta?.storylineTitle ? ` — ${entry.meta.storylineTitle}` : ''}`
+                                                      : entry.source === 'world-event'
+                                                        ? `⚡ ${entry.meta?.npcName || 'Someone'} approaches`
+                                                        : entry.isCinematic
+                                                          ? '🎭 The Adventure Begins'
+                                                          : 'Dungeon Master'}
                           </span>
-                          {entry.isCinematic && !entry.isWorldBrief && (
+                          {entry.isCinematic && !entry.isWorldBrief && entry.source !== 'world-event' && (
                             <Sparkles className="h-3 w-3 text-violet-400 animate-pulse" />
                           )}
                           {/* TTS Audio Player - Available for ALL DM messages including cinematic */}
@@ -2203,6 +2398,16 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
                           campaignId={campaignId}
                           mentions={findCanonMentions(entry.text, canonTermsMap)}
                         />
+                        {/* Scene image — shown for paid users when image generation returns */}
+                        {sceneImages[entry.id] && (
+                          <div style={{ marginTop: 10, borderRadius: 8, overflow: 'hidden', maxHeight: 260 }}>
+                            <img
+                              src={sceneImages[entry.id]}
+                              alt="Scene"
+                              style={{ width: '100%', objectFit: 'cover', display: 'block', borderRadius: 8 }}
+                            />
+                          </div>
+                        )}
                         <div className="text-xs opacity-60 mt-2">
                           {new Date(entry.timestamp).toLocaleTimeString()}
                         </div>
@@ -2398,6 +2603,36 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
         />
       )}
 
+      {/* Level Up Screen */}
+      {showLevelUp && pendingLevelUp && (
+        <LevelUpScreen
+          character={pendingLevelUp.character}
+          newLevel={pendingLevelUp.newLevel}
+          onComplete={(levelUpResult) => {
+            setShowLevelUp(false);
+            setPendingLevelUp(null);
+            if (levelUpResult && gameStateContext.updateCharacterState) {
+              gameStateContext.updateCharacterState({
+                level: pendingLevelUp.newLevel,
+                max_hp: (gameStateContext.characterState?.max_hp || 0) + (levelUpResult.hpGained || 0),
+                hp: (gameStateContext.characterState?.hp || 0) + (levelUpResult.hpGained || 0),
+                ...( levelUpResult.asiChoices ? { ability_score_improvements: levelUpResult.asiChoices } : {} ),
+              });
+            }
+            if (window.showToast) window.showToast(`🎉 Level ${pendingLevelUp.newLevel}! Welcome to the next chapter.`, 'success');
+          }}
+        />
+      )}
+
+      {/* Session Recap Journal */}
+      {showRecap && (
+        <SessionRecapModal
+          campaignId={campaignId}
+          characterName={gameStateContext.characterState?.name}
+          onClose={() => setShowRecap(false)}
+        />
+      )}
+
       {/* Search Target — "what are you looking for?" prompt when the
           player picked a word while in Search mode */}
       <SearchTargetModal
@@ -2452,7 +2687,26 @@ const AdventureLogWithDM = forwardRef(({ onLoadingChange, ...props }, ref) => {
       <StorylineRewardModal
         open={!!showRewardModal}
         reward={showRewardModal}
-        onClose={() => setShowRewardModal(null)}
+        onClose={() => {
+          setShowRewardModal(null);
+          // Inject a brief "what's next" DM prompt so the player isn't left
+          // staring at a blank log after the reward modal closes.
+          const nextStepText = "The matter is settled. Pull a new card from your deck — another thread will find you, if you’re willing to pull it.";
+          const nextStep = {
+            type: 'dm',
+            text: nextStepText,
+            message: nextStepText,
+            timestamp: Date.now(),
+            source: 'storyline-next-step',
+          };
+          setMessages((prev) => {
+            const next = [...prev, nextStep].slice(-200);
+            if (sessionId) {
+              try { localStorage.setItem(`dm-log-messages-${sessionId}`, JSON.stringify(next)); } catch {}
+            }
+            return next;
+          });
+        }}
       />
 
       {/* Hook hint popover — small tip when player clicks an inline hook */}

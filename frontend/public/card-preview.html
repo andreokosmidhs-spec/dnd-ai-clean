@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Battlefield Condition Card — Preview</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0e1a;
+    font-family: 'Georgia', serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 80px;
+    gap: 48px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    color: #94a3b8;
+    font-size: 13px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-family: sans-serif;
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    justify-content: center;
+    align-items: flex-start;
+  }
+
+  .row-label {
+    color: #475569;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-family: sans-serif;
+    width: 100%;
+    text-align: center;
+    margin-bottom: -16px;
+  }
+
+  /* ── Card shell ── */
+  .card {
+    width: 224px;
+    border-radius: 16px;
+    border: 1.5px solid;
+    background: rgba(2, 6, 23, 0.97);
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    flex-shrink: 0;
+  }
+  .card:hover {
+    transform: translateY(-4px) scale(1.02);
+  }
+
+  /* ── Rarity accent bar (top) ── */
+  .accent-bar {
+    height: 3px;
+    width: 100%;
+  }
+
+  /* ── Art panel ── */
+  .art-panel {
+    width: 100%;
+    height: 176px;
+    position: relative;
+    overflow: hidden;
+  }
+  .art-panel img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .art-placeholder {
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .art-placeholder .ph-icon {
+    font-size: 24px;
+    opacity: 0.3;
+  }
+  .art-placeholder .ph-title {
+    color: rgba(100,116,139,0.6);
+    font-size: 10px;
+    text-align: center;
+    padding: 0 12px;
+    font-family: sans-serif;
+    line-height: 1.4;
+  }
+
+  /* glare overlay */
+  .art-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(160deg, rgba(255,255,255,0.06) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  /* ── Frame border (inner inset) ── */
+  .art-frame {
+    position: absolute;
+    inset: 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.08);
+    pointer-events: none;
+  }
+
+  /* ── DM badge ── */
+  .dm-badge {
+    position: absolute;
+    top: 8px; left: 8px;
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(120,53,15,0.85);
+    color: #fcd34d;
+    border: 1px solid rgba(217,119,6,0.5);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-family: sans-serif;
+    backdrop-filter: blur(4px);
+  }
+
+  /* ── Generate art button ── */
+  .gen-art-btn {
+    position: absolute;
+    bottom: 8px; right: 8px;
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.65);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.65);
+    font-size: 10px;
+    font-family: sans-serif;
+    backdrop-filter: blur(6px);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .gen-art-btn:hover { background: rgba(0,0,0,0.85); color: white; }
+
+  /* ── Title bar ── */
+  .title-bar {
+    padding: 8px 10px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .card-name {
+    color: #f1f5f9;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: 'Georgia', serif;
+  }
+  .rarity-label {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    flex-shrink: 0;
+    font-family: sans-serif;
+  }
+
+  /* ── Type line ── */
+  .type-line {
+    padding: 3px 10px 4px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    font-size: 9.5px;
+    color: #64748b;
+    letter-spacing: 0.05em;
+    font-style: italic;
+    font-family: 'Georgia', serif;
+  }
+
+  /* ── Text box ── */
+  .text-box {
+    padding: 8px 10px 6px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    background: rgba(0,0,0,0.15);
+  }
+  .card-desc {
+    font-size: 10.5px;
+    color: #94a3b8;
+    line-height: 1.55;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-family: 'Georgia', serif;
+  }
+
+  /* ── Tags ── */
+  .tags {
+    padding: 6px 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .tag {
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-family: sans-serif;
+    text-transform: capitalize;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Interact hint ── */
+  .hint {
+    padding: 4px 10px 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9px;
+    color: #334155;
+    font-family: sans-serif;
+  }
+
+  /* ══ Rarity themes ══════════════════════════════════════════════ */
+
+  /* Common */
+  .card.common {
+    border-color: rgba(100,116,139,0.65);
+    box-shadow: 0 0 8px 1px rgba(148,163,184,0.12), 0 4px 20px rgba(0,0,0,0.6);
+    animation: glow-common 2.5s ease-in-out infinite;
+  }
+  .card.common .accent-bar { background: #64748b; }
+  .card.common .title-bar  { background: rgba(15,23,42,0.9); }
+  .card.common .art-placeholder { background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #1e293b 100%); }
+  .card.common .rarity-label   { color: #94a3b8; }
+
+  /* Uncommon */
+  .card.uncommon {
+    border-color: rgba(16,185,129,0.65);
+    box-shadow: 0 0 10px 2px rgba(52,211,153,0.18), 0 4px 20px rgba(0,0,0,0.6);
+    animation: glow-uncommon 2.2s ease-in-out infinite;
+  }
+  .card.uncommon .accent-bar { background: linear-gradient(90deg, #059669, #34d399, #059669); }
+  .card.uncommon .title-bar  { background: rgba(2,44,34,0.92); }
+  .card.uncommon .art-placeholder { background: linear-gradient(135deg, #022c22 0%, #064e3b 50%, #022c22 100%); }
+  .card.uncommon .rarity-label   { color: #6ee7b7; }
+
+  /* Rare */
+  .card.rare {
+    border-color: rgba(59,130,246,0.65);
+    box-shadow: 0 0 12px 2px rgba(96,165,250,0.22), 0 4px 24px rgba(0,0,0,0.65);
+    animation: glow-rare 2s ease-in-out infinite;
+  }
+  .card.rare .accent-bar { background: linear-gradient(90deg, #1d4ed8, #60a5fa, #1d4ed8); }
+  .card.rare .title-bar  { background: rgba(23,37,84,0.93); }
+  .card.rare .art-placeholder { background: linear-gradient(135deg, #172554 0%, #1e3a8a 50%, #172554 100%); }
+  .card.rare .rarity-label   { color: #93c5fd; }
+
+  /* Epic */
+  .card.epic {
+    border-color: rgba(139,92,246,0.70);
+    box-shadow: 0 0 16px 3px rgba(167,139,250,0.28), 0 4px 28px rgba(0,0,0,0.7);
+    animation: glow-epic 1.8s ease-in-out infinite;
+  }
+  .card.epic .accent-bar { background: linear-gradient(90deg, #6d28d9, #a78bfa, #6d28d9); }
+  .card.epic .title-bar  { background: rgba(46,16,101,0.93); }
+  .card.epic .art-placeholder { background: linear-gradient(135deg, #2e1065 0%, #4c1d95 50%, #2e1065 100%); }
+  .card.epic .rarity-label   { color: #c4b5fd; }
+
+  /* ══ Glow animations ══ */
+  @keyframes glow-common   { 0%,100%{box-shadow:0 0 6px 1px rgba(148,163,184,0.12),0 4px 20px rgba(0,0,0,0.6)} 50%{box-shadow:0 0 16px 4px rgba(148,163,184,0.28),0 4px 20px rgba(0,0,0,0.6)} }
+  @keyframes glow-uncommon { 0%,100%{box-shadow:0 0 8px 2px rgba(52,211,153,0.18),0 4px 20px rgba(0,0,0,0.6)} 50%{box-shadow:0 0 20px 5px rgba(52,211,153,0.42),0 4px 20px rgba(0,0,0,0.6)} }
+  @keyframes glow-rare     { 0%,100%{box-shadow:0 0 10px 2px rgba(96,165,250,0.22),0 4px 24px rgba(0,0,0,0.65)} 50%{box-shadow:0 0 26px 6px rgba(96,165,250,0.52),0 4px 24px rgba(0,0,0,0.65)} }
+  @keyframes glow-epic     { 0%,100%{box-shadow:0 0 14px 3px rgba(167,139,250,0.28),0 4px 28px rgba(0,0,0,0.7)} 50%{box-shadow:0 0 32px 8px rgba(167,139,250,0.62),0 4px 28px rgba(0,0,0,0.7)} }
+
+  /* ══ Tag colors ══ */
+  .tag.terrain          { background: rgba(120,53,15,0.55);  color: #fcd34d; }
+  .tag.hazard           { background: rgba(127,29,29,0.55);  color: #fca5a5; }
+  .tag.cover            { background: rgba(30,58,138,0.55);  color: #93c5fd; }
+  .tag.stealth          { background: rgba(30,41,59,0.8);    color: #cbd5e1; }
+  .tag.movement         { background: rgba(124,45,18,0.55);  color: #fdba74; }
+  .tag.magical          { background: rgba(112,26,117,0.55); color: #f0abfc; }
+  .tag.visibility       { background: rgba(76,29,149,0.55);  color: #c4b5fd; }
+  .tag.water            { background: rgba(30,58,138,0.55);  color: #bfdbfe; }
+  .tag.high-ground      { background: rgba(8,47,73,0.55);    color: #67e8f9; }
+
+  /* compact size variant */
+  .card.compact {
+    width: 160px;
+  }
+  .card.compact .art-panel { height: 96px; }
+  .card.compact .card-name { font-size: 11px; }
+  .card.compact .text-box  { display: none; }
+  .card.compact .type-line { display: none; }
+
+  /* ── Section headers ── */
+  .section-title {
+    font-size: 11px;
+    color: #475569;
+    font-family: sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-align: center;
+    padding: 8px 0 0;
+  }
+
+  /* ── Compact row ── */
+  .compact-strip {
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px;
+    background: rgba(15,23,42,0.8);
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.06);
+    align-items: flex-start;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .strip-label {
+    font-size: 9px;
+    color: #334155;
+    text-transform: uppercase;
+    font-family: sans-serif;
+    letter-spacing: 0.12em;
+    width: 100%;
+    text-align: left;
+    padding-bottom: 4px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Battlefield Condition Card — Design Preview</h1>
+
+<!-- ══ Full-size cards ══════════════════════════════════════════════════════ -->
+<div class="row-label">Full-size cards (in modal / DM panel)</div>
+<div class="row">
+
+  <!-- COMMON -->
+  <div class="card common">
+    <div class="accent-bar"></div>
+    <div class="art-panel">
+      <div class="art-placeholder">
+        <span class="ph-icon">🖼</span>
+        <span class="ph-title">Clinging Mud</span>
+      </div>
+      <div class="art-frame"></div>
+      <button class="gen-art-btn">✦ Generate art</button>
+    </div>
+    <div class="title-bar">
+      <span class="card-name">Clinging Mud</span>
+      <span class="rarity-label">Common</span>
+    </div>
+    <div class="type-line">Battlefield Condition — Terrain</div>
+    <div class="text-box">
+      <p class="card-desc">The ground has turned to thick, ankle-deep mud after days of rain. Every step is a battle against the earth itself — footing is treacherous and movement costs more than it should.</p>
+    </div>
+    <div class="tags">
+      <span class="tag terrain">terrain</span>
+      <span class="tag movement">movement</span>
+      <span class="tag hazard">hazard</span>
+    </div>
+    <div class="hint">⊕ Click to interact</div>
+  </div>
+
+  <!-- UNCOMMON -->
+  <div class="card uncommon">
+    <div class="accent-bar"></div>
+    <div class="art-panel">
+      <div class="art-placeholder">
+        <span class="ph-icon">🖼</span>
+        <span class="ph-title">Dense Undergrowth</span>
+      </div>
+      <div class="art-frame"></div>
+      <button class="gen-art-btn">✦ Generate art</button>
+    </div>
+    <div class="title-bar">
+      <span class="card-name">Dense Undergrowth</span>
+      <span class="rarity-label">Uncommon</span>
+    </div>
+    <div class="type-line">Battlefield Condition — Terrain</div>
+    <div class="text-box">
+      <p class="card-desc">Thick brambles and tangled roots choke the forest floor, turning every advance into a wrestling match with nature itself. The shadows between the trunks hide both danger and opportunity.</p>
+    </div>
+    <div class="tags">
+      <span class="tag terrain">terrain</span>
+      <span class="tag stealth">stealth</span>
+      <span class="tag cover">cover</span>
+    </div>
+    <div class="hint">⊕ Click to interact</div>
+  </div>
+
+  <!-- RARE -->
+  <div class="card rare">
+    <div class="accent-bar"></div>
+    <div class="art-panel">
+      <div class="art-placeholder">
+        <span class="ph-icon">🖼</span>
+        <span class="ph-title">Crumbling Balcony</span>
+      </div>
+      <div class="art-frame"></div>
+      <button class="gen-art-btn">✦ Generate art</button>
+    </div>
+    <div class="title-bar">
+      <span class="card-name">Crumbling Balcony</span>
+      <span class="rarity-label">Rare</span>
+    </div>
+    <div class="type-line">Battlefield Condition — Structure</div>
+    <div class="text-box">
+      <p class="card-desc">A stone balcony juts from the wall above — its mortar cracked, guardrail gone. It offers the high ground, but the wrong footfall could send the whole thing down in a cascade of rubble.</p>
+    </div>
+    <div class="tags">
+      <span class="tag high-ground">high ground</span>
+      <span class="tag hazard">hazard</span>
+    </div>
+    <div class="hint">⊕ Click to interact</div>
+  </div>
+
+  <!-- EPIC -->
+  <div class="card epic">
+    <div class="accent-bar"></div>
+    <div class="art-panel">
+      <div class="art-placeholder">
+        <span class="ph-icon">🖼</span>
+        <span class="ph-title">Molten Fissure</span>
+      </div>
+      <div class="art-frame"></div>
+      <button class="gen-art-btn">✦ Generate art</button>
+    </div>
+    <div class="title-bar">
+      <span class="card-name">Molten Fissure</span>
+      <span class="rarity-label">Epic</span>
+    </div>
+    <div class="type-line">Battlefield Condition — Hazard</div>
+    <div class="text-box">
+      <p class="card-desc">A jagged crack runs across the battlefield floor, glowing orange-white from the molten rock churning far below. Heat shimmers distort the air above it, and the acrid smell of sulphur burns the lungs.</p>
+    </div>
+    <div class="tags">
+      <span class="tag hazard">hazard</span>
+      <span class="tag magical">magical</span>
+    </div>
+    <div class="hint">⊕ Click to interact</div>
+  </div>
+
+</div>
+
+<!-- ══ Compact strip (in-combat horizontal scroll) ══════════════════════════ -->
+<div class="section-title">Compact cards (in-combat horizontal strip)</div>
+<div class="compact-strip">
+  <span class="strip-label">Battlefield</span>
+
+  <div class="card compact common">
+    <div class="accent-bar"></div>
+    <div class="art-panel">
+      <div class="art-placeholder">
+        <span class="ph-icon">🖼</span>
+        <span class="ph-title" style="font-size:8px">Clinging Mud</span>
+      </div>
+    </div>
+    <div class="title-bar" style="padding:5px 8px">
+      <span class="card-name" style="font-size:10px">Clinging Mud</span>
+      <span class="rarity-label" style="font-size:8px">C</span>
+    </div>
+    <div class="tags" style="padding:4px 8px">
+      <span class="tag terrain" style="font-size:8px">terrain</span>
+    </div>
+  </div>
+
+  <div class="card compact uncommon">
+    <div class="accent-bar"></div>
+    <div class="art-panel">
+      <div class="art-placeholder">
+        <span class="ph-icon">🖼</span>
+        <span class="ph-title" style="font-size:8px">Dense Undergrowth</span>
+      </div>
+    </div>
+    <div class="title-bar" style="padding:5px 8px">
+      <span class="card-name" style="font-size:10px">Dense Undergrowth</span>
+      <span class="rarity-label" style="font-size:8px">U</span>
+    </div>
+    <div class="tags" style="padding:4px 8px">
+      <span class="tag stealth" style="font-size:8px">stealth</span>
+    </div>
+  </div>
+
+  <div class="card compact rare">
+    <div class="accent-bar"></div>
+    <div class="art-panel">
+      <div class="art-placeholder">
+        <span class="ph-icon">🖼</span>
+        <span class="ph-title" style="font-size:8px">Crumbling Balcony</span>
+      </div>
+    </div>
+    <div class="title-bar" style="padding:5px 8px">
+      <span class="card-name" style="font-size:10px">Crumbling Balcony</span>
+      <span class="rarity-label" style="font-size:8px">R</span>
+    </div>
+    <div class="tags" style="padding:4px 8px">
+      <span class="tag high-ground" style="font-size:8px">high ground</span>
+    </div>
+  </div>
+
+  <div class="card compact epic">
+    <div class="accent-bar"></div>
+    <div class="art-panel">
+      <div class="art-placeholder">
+        <span class="ph-icon">🖼</span>
+        <span class="ph-title" style="font-size:8px">Molten Fissure</span>
+      </div>
+    </div>
+    <div class="title-bar" style="padding:5px 8px">
+      <span class="card-name" style="font-size:10px">Molten Fissure</span>
+      <span class="rarity-label" style="font-size:8px">E</span>
+    </div>
+    <div class="tags" style="padding:4px 8px">
+      <span class="tag hazard" style="font-size:8px">hazard</span>
+    </div>
+  </div>
+
+</div>
+
+<p style="font-size:11px;color:#334155;font-family:sans-serif;text-align:center;margin-top:20px">
+  Tell me what to change — size, proportions, fonts, colors, layout order, border style, anything.
+</p>
+
+</body>
+</html>

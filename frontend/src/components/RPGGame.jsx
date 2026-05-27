@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useBrowserTTS } from '../hooks/useTTS';
+import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import MainMenu from './MainMenu';
 import FocusedRPG from './FocusedRPG';
+import CombatScreen from './CombatScreen';
 import WorldMap from './WorldMap';
 import WorldMapGraph from './WorldMapGraph';
 import Inventory from './Inventory';
@@ -15,8 +18,10 @@ import { generateWorldBlueprint, createCharacter, getLastCampaign } from '../api
 import sessionManager from '../state/SessionManager';
 import { toast } from 'sonner';
 import GameEscapeMenu from './GameEscapeMenu';
+import SessionRecapModal from './SessionRecapModal';
 import DMNotebookPanel from './DMNotebookPanel';
 import CanonTimelinePanel from './CanonTimelinePanel';
+import LootPanel from './LootPanel';
 import { checkLevelUp, getLevelFromXP, getXPForNextLevel } from '../data/levelingData';
 import { useSessionCore } from '../store/useSessionCore';
 import { raceData as RACE_DATA } from '../data/raceData';
@@ -101,8 +106,26 @@ const RPGGame = () => {
   
   // gameState tracks only the main menu vs. in-game experience; new campaigns now flow through CharacterCreationV2.
   const [gameState, setGameState] = useState('main-menu'); // main-menu, playing
+  // Full-screen combat overlay — set to the combatState dict when combat begins, null otherwise.
+  const [combatScene, setCombatScene] = useState(null);
+  // Loot panel shown after victory; holds pending_loot array from the backend.
+  const [pendingLoot, setPendingLoot] = useState(null);
   // ESC pause menu — only meaningful in-game.
   const [escMenuOpen, setEscMenuOpen] = useState(false);
+  // Narrator tone — shared with GameEscapeMenu and AdventureLogWithDM via prop-drilling
+  const [narratorTone, setNarratorTone] = useState(() => {
+    try { return localStorage.getItem('dnd_narrator_tone') || 'balanced'; } catch { return 'balanced'; }
+  });
+  const handleToneChange = useCallback((t) => {
+    setNarratorTone(t);
+    try { localStorage.setItem('dnd_narrator_tone', t); } catch {}
+  }, []);
+  // Browser TTS toggle
+  const { enabled: ttsEnabled, toggle: toggleTTS } = useBrowserTTS();
+  // Auth — for plan-gating features
+  const { user: authUser } = useAuth();
+  // Session recap modal trigger
+  const [showRecap, setShowRecap] = useState(false);
   // DM Notebook — opened from the ESC pause menu, shows persistent lessons.
   const [dmNotebookOpen, setDmNotebookOpen] = useState(false);
   // Canon Timeline — locked-in scenes from passed checks.
@@ -267,6 +290,36 @@ const RPGGame = () => {
             skills: characterData?.skills || [],
             equipment: characterData?.equipment || [],
             spells: characterData?.spells || [],
+            // Compute spell slots from class + level (V2 characters don't store them)
+            spell_slots: (() => {
+              const cls = (classData.key || '').toLowerCase();
+              const lvl = classData.level || 1;
+              const FULL = {
+                1:{'1':2},2:{'1':3},3:{'1':4,'2':2},4:{'1':4,'2':3},
+                5:{'1':4,'2':3,'3':2},6:{'1':4,'2':3,'3':3},
+                7:{'1':4,'2':3,'3':3,'4':1},8:{'1':4,'2':3,'3':3,'4':2},
+                9:{'1':4,'2':3,'3':3,'4':3,'5':1},10:{'1':4,'2':3,'3':3,'4':3,'5':2},
+                11:{'1':4,'2':3,'3':3,'4':3,'5':2,'6':1},12:{'1':4,'2':3,'3':3,'4':3,'5':2,'6':1},
+                13:{'1':4,'2':3,'3':3,'4':3,'5':2,'6':1,'7':1},14:{'1':4,'2':3,'3':3,'4':3,'5':2,'6':1,'7':1},
+                15:{'1':4,'2':3,'3':3,'4':3,'5':2,'6':1,'7':1,'8':1},16:{'1':4,'2':3,'3':3,'4':3,'5':2,'6':1,'7':1,'8':1},
+                17:{'1':4,'2':3,'3':3,'4':3,'5':2,'6':1,'7':1,'8':1,'9':1},18:{'1':4,'2':3,'3':3,'4':3,'5':3,'6':1,'7':1,'8':1,'9':1},
+                19:{'1':4,'2':3,'3':3,'4':3,'5':3,'6':2,'7':1,'8':1,'9':1},20:{'1':4,'2':3,'3':3,'4':3,'5':3,'6':2,'7':2,'8':1,'9':1},
+              };
+              const HALF = {
+                1:{},2:{'1':2},3:{'1':3},4:{'1':3},5:{'1':4,'2':2},6:{'1':4,'2':2},
+                7:{'1':4,'2':3},8:{'1':4,'2':3},9:{'1':4,'2':3,'3':2},10:{'1':4,'2':3,'3':2},
+                11:{'1':4,'2':3,'3':3},12:{'1':4,'2':3,'3':3},13:{'1':4,'2':3,'3':3,'4':1},14:{'1':4,'2':3,'3':3,'4':1},
+                15:{'1':4,'2':3,'3':3,'4':2},16:{'1':4,'2':3,'3':3,'4':2},17:{'1':4,'2':3,'3':3,'4':3,'5':1},18:{'1':4,'2':3,'3':3,'4':3,'5':1},
+                19:{'1':4,'2':3,'3':3,'4':3,'5':2},20:{'1':4,'2':3,'3':3,'4':3,'5':2},
+              };
+              const fullCasters = ['bard','cleric','druid','sorcerer','wizard'];
+              const halfCasters = ['paladin','ranger'];
+              const capped = Math.min(Math.max(lvl, 1), 20);
+              if (fullCasters.includes(cls)) return FULL[capped] || {};
+              if (halfCasters.includes(cls)) return HALF[capped] || {};
+              return {};
+            })(),
+            cantrips: characterData?.cantrips || characterData?.spells?.filter(s => s?.level === 0)?.map(s => s?.name || s) || [],
             // Portrait (AI-generated via Nano Banana, may be null until ready)
             portrait: characterData?.portraitDataUrl || characterData?.portrait || null,
           };
@@ -294,7 +347,35 @@ const RPGGame = () => {
         
         // Set character state
         setCharacter(characterForRPG);
-        
+
+        // Sync V2 character into GameStateContext so panels like GameDetailsDrawer
+        // (which reads characterState from context) display spell slots, HP, etc.
+        updateCharacter({
+          id: characterForRPG.id,
+          name: characterForRPG.name,
+          race: characterForRPG.race,
+          class: characterForRPG.class,
+          level: characterForRPG.level,
+          background: characterForRPG.background,
+          alignment: characterForRPG.alignment || '',
+          stats: characterForRPG.stats,
+          proficiency_bonus: characterForRPG.proficiency_bonus || 2,
+          hp: {
+            current: characterForRPG.hp || characterForRPG.maxHp || 10,
+            max: characterForRPG.maxHp || characterForRPG.hp || 10,
+          },
+          ac: characterForRPG.armorClass || characterForRPG.ac || 10,
+          speed: characterForRPG.speed || 30,
+          spell_slots: characterForRPG.spell_slots || {},
+          prepared_spells: characterForRPG.prepared_spells || [],
+          cantrips: characterForRPG.cantrips || [],
+          conditions: characterForRPG.conditions || [],
+          traits: characterForRPG.traits || [],
+          inventory: characterForRPG.equipment || characterForRPG.inventory || [],
+          gold: characterForRPG.gold || 0,
+          active_quests: characterForRPG.active_quests || [],
+        });
+
         // Bridge to legacy storage for compatibility with other components
         localStorage.setItem('rpg-campaign-character', JSON.stringify(characterForRPG));
         console.log('🌉 Bridge: Character data set and saved to legacy storage');
@@ -1165,6 +1246,7 @@ const RPGGame = () => {
             onLocationChange={changeLocation}
             inventory={inventory}
             setInventory={setInventory}
+            onCombatStart={(cs) => setCombatScene(cs)}
           />
         )}
         
@@ -1231,7 +1313,22 @@ const RPGGame = () => {
         }}
         onOpenDMNotebook={() => setDmNotebookOpen(true)}
         onOpenCanonTimeline={() => setCanonTimelineOpen(true)}
+        narratorTone={narratorTone}
+        onToneChange={handleToneChange}
+        ttsEnabled={ttsEnabled}
+        onTTSToggle={toggleTTS}
+        onOpenRecap={() => setShowRecap(true)}
+        userPlan={authUser?.plan || 'free'}
       />
+
+      {/* Session Recap / Adventure Journal */}
+      {showRecap && (
+        <SessionRecapModal
+          campaignId={campaignId}
+          characterName={character?.name}
+          onClose={() => setShowRecap(false)}
+        />
+      )}
 
       {/* DM Notebook — persistent learned lessons */}
       <DMNotebookPanel
@@ -1247,6 +1344,40 @@ const RPGGame = () => {
         onClose={() => setCanonTimelineOpen(false)}
         campaignId={campaignId}
       />
+
+      {/* Full-screen combat overlay — renders on top of everything when combat is active */}
+      {combatScene && (
+        <CombatScreen
+          combatState={combatScene}
+          onCombatEnd={({ outcome, narration, pendingLoot: loot }) => {
+            setCombatScene(null);
+            if (narration) {
+              addToGameLog({ type: 'dm', message: narration, timestamp: Date.now() });
+            }
+            addToGameLog({
+              type: 'system',
+              message: outcome === 'victory'
+                ? '⚔️ Victory! Combat has ended.'
+                : outcome === 'fled'
+                  ? '🏃 You escaped from combat.'
+                  : '💀 You were defeated...',
+              timestamp: Date.now(),
+            });
+            if (outcome === 'victory' && loot?.length > 0) {
+              setPendingLoot(loot);
+            }
+          }}
+        />
+      )}
+
+      {pendingLoot && (
+        <LootPanel
+          pendingLoot={pendingLoot}
+          campaignId={activeCampaignId || campaignId}
+          characterId={activeCharacterId}
+          onClose={() => setPendingLoot(null)}
+        />
+      )}
     </div>
   );
 };

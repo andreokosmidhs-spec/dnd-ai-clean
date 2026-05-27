@@ -8,12 +8,12 @@ pipeline. Uses emergentintegrations + gpt-4o-mini for narration.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+from uuid import uuid4
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from services.campaign_service import build_v2_entity_index
@@ -32,6 +32,7 @@ from services.character_deck import (
     _new_card as _new_deck_card,
     art_key_for,
     deck_context_block,
+    draw_quest_card_rewards,
     seed_deck_for_character,
     merge_deck,
 )
@@ -99,7 +100,100 @@ def _format_title(s: str) -> str:
     return str(s or "").replace("_", " ").strip().title()
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None) -> str:
+def _build_inventory_block(cards: List[dict]) -> str:
+    """Format the player's item and spell cards into a compact DM inventory block."""
+    item_cards = [c for c in cards if (c.get("type") or "").lower() in {"item", "spell"}]
+    if not item_cards:
+        return "(no items in inventory)"
+
+    equipped: List[str] = []
+    consumables: List[str] = []
+    carried: List[str] = []
+    spells: List[str] = []
+
+    for c in item_cards:
+        status = (c.get("status") or "acquired").lower()
+        ctype = (c.get("type") or "item").lower()
+        title = (c.get("title") or "unnamed item").strip()
+        bonuses = c.get("grants_bonus") or []
+        quantity = c.get("quantity") or 1
+        slot = (c.get("equip_slot") or "").strip()
+        item_type = (c.get("item_type") or "").lower()
+
+        bonus_str = ""
+        if bonuses:
+            bonus_str = " [" + ", ".join(
+                f"+{b.get('modifier', 0)} {b.get('check', '?')}" for b in bonuses
+            ) + "]"
+
+        if ctype == "spell":
+            spells.append(f"- {title}")
+        elif status == "consumed" or status == "expended":
+            pass  # used up — omit from active inventory
+        elif item_type in {"consumable", "material", "currency"}:
+            qty_str = f" ×{quantity}" if quantity > 1 else ""
+            consumables.append(f"- {title}{qty_str}")
+        elif status == "equipped":
+            slot_str = f" [{slot}]" if slot else ""
+            equipped.append(f"- {title}{slot_str}{bonus_str}")
+        else:
+            carried.append(f"- {title}")
+
+    parts: List[str] = []
+    if equipped:
+        parts.append(
+            "EQUIPPED (bonuses ACTIVE — apply automatically to relevant checks):\n"
+            + "\n".join(equipped)
+        )
+    if consumables:
+        parts.append(
+            "CONSUMABLES (player may declare use; apply effect then mark consumed):\n"
+            + "\n".join(consumables)
+        )
+    if carried:
+        parts.append(
+            "CARRIED (unequipped — no active bonus unless player equips):\n"
+            + "\n".join(carried)
+        )
+    if spells:
+        parts.append("KNOWN SPELLS/ABILITIES:\n" + "\n".join(spells))
+
+    return "\n\n".join(parts) if parts else "(no items in inventory)"
+
+
+# Type-specific DM directives for pinned cards — what "pinned" means per card type.
+_PINNED_DIRECTIVES: Dict[str, str] = {
+    "quest":     "ADVANCE this — introduce a complication, clue, or NPC that moves it forward. Do not let it sit idle.",
+    "lead":      "SURFACE a concrete detail this turn that makes this lead feel urgent or actionable.",
+    "character": "Keep this NPC present or referenced — the player wants to engage with them. If nearby, give them a line.",
+    "location":  "The player wants to go here or is actively thinking about it — let the environment hint at it.",
+    "item":      "Create a natural moment for the player to USE or interact with this item this turn.",
+    "favor":     "Work this obligation into the scene — the debt is on the player's mind.",
+    "curse":     "Let this affliction make itself felt — a symptom, a reminder, a complication.",
+    "faction":   "Weave faction presence in — a symbol, a rumor, a member in the scene.",
+    "spell":     "Create a moment where this spell or ability would be a satisfying choice.",
+}
+_PINNED_DEFAULT_DIRECTIVE = "Weave this into the scene — the player has flagged it as actively important."
+
+
+def _build_pinned_block(pinned_cards: List[dict]) -> str:
+    """Format pinned cards as a session-agenda block with per-type DM directives."""
+    if not pinned_cards:
+        return "(player has not pinned any cards — no explicit session agenda)"
+    lines: List[str] = []
+    for c in pinned_cards[:8]:
+        title = (c.get("title") or "").strip()
+        ctype = (c.get("type") or "note").lower()
+        content = (c.get("content") or c.get("description") or "")[:100].strip()
+        status = (c.get("status") or "").lower()
+        directive = _PINNED_DIRECTIVES.get(ctype, _PINNED_DEFAULT_DIRECTIVE)
+        status_str = f" [{status}]" if status else ""
+        content_str = f" — {content}" if content else ""
+        lines.append(f"★ [{ctype}]{status_str} {title}{content_str}\n  → DM: {directive}")
+    return "\n".join(lines)
+
+
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None, pressure_context: str = "") -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -151,10 +245,20 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         appearance_bits.append("notable: " + ", ".join(notable[:3]))
     appearance_line = "; ".join(appearance_bits) if appearance_bits else "unremarkable at first glance"
 
+    from services.faction_service import build_factions_block as _build_factions_block
+
+    # Separate pinned from the rest — pinned cards get their own high-priority block
+    # and are excluded from the general card_summaries so they never get buried.
+    pinned_cards = [c for c in cards if c.get("pinned")]
+    pinned_ids = {c.get("id") for c in pinned_cards}
+    pinned_block = _build_pinned_block(pinned_cards)
+
     card_summaries: List[str] = []
     active_leads: List[str] = []
     closed_leads: List[str] = []
     for c in cards[:16]:
+        if c.get("id") in pinned_ids:
+            continue  # already in the pinned block — don't duplicate
         title = c.get("title") or ""
         content = (c.get("content") or c.get("description") or "")[:200]
         ctype = (c.get("type") or "lore").lower()
@@ -179,6 +283,9 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
     card_block = "\n".join(card_summaries) if card_summaries else "(no active cards — rely on campaign context)"
     active_lead_block = "\n".join(active_leads) if active_leads else "(no active opening lead — advance scene naturally)"
     closed_lead_block = "\n".join(closed_leads) if closed_leads else "(none)"
+
+    # Player inventory — items and spells sorted by equip status.
+    inventory_block = _build_inventory_block(cards)
 
     # Pull the most recently updated location card with biome metadata —
     # that's effectively "where the player is right now" for grounding
@@ -222,42 +329,89 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
             setting_lines.append(f"- Current tension: {tension}")
     setting_block = "\n".join(setting_lines) if setting_lines else "(no setting context)"
 
-    # NPC roleplay anchors — pull the hidden identity sheets from any NPC
-    # cards in the player's deck so the DM can voice them consistently and
-    # gate social actions against their actual social DCs. Cap at 6 to keep
-    # the prompt tight; the DM only needs the in-scene crowd, not every NPC
-    # they've ever met.
-    npc_anchor_lines: List[str] = []
-    for c in cards[:24]:
-        if (c.get("type") or "").lower() != "character":
-            continue
-        secret = c.get("secret_content") or {}
-        if not isinstance(secret, dict) or not secret:
-            continue
+    # NPC roleplay anchors — split by location so the DM knows who is
+    # physically reachable vs. who is elsewhere.
+    cur_loc_name = ((current_location or {}).get("name") or "").strip()
+
+    def _fmt_anchor(c: dict) -> str:
+        from services.npc_delta import render_deltas_for_prompt
+        sec = c.get("secret_content") or {}
         nm = (c.get("title") or "").strip()
-        if not nm:
-            continue
-        stats = secret.get("stats") or {}
-        pers = secret.get("personality") or {}
-        manners = secret.get("mannerisms") or []
-        npc_anchor_lines.append(
-            f"- {nm} — speech: {secret.get('speech_style','plain')}; "
-            f"voice: {pers.get('trait','')}; ideal: {pers.get('ideal','')}; "
-            f"flaw: {pers.get('flaw','')}; mannerisms: {', '.join(manners[:3])}; "
-            f"motive THIS scene: {secret.get('current_motivation','')}; "
+        stats = sec.get("stats") or {}
+        pers = sec.get("personality") or {}
+        manners = sec.get("mannerisms") or []
+        base = (
+            f"- {nm} — speech: {sec.get('speech_style','plain')}; "
+            f"voice: {pers.get('trait','')}; flaw: {pers.get('flaw','')}; "
+            f"mannerisms: {', '.join(manners[:3])}; "
+            f"motive THIS scene: {sec.get('current_motivation','')}; "
             f"social DCs — Intim {stats.get('intimidation_dc',13)}, "
             f"Persuasion {stats.get('persuasion_dc',13)}, "
             f"Deception (against them) {stats.get('deception_dc',13)}, "
             f"Insight (to read them) {stats.get('insight_dc',12)}; "
-            f"secrets (NEVER reveal unless extracted): {' | '.join((secret.get('secrets') or [])[:2])}; "
-            f"allegiances: {', '.join((secret.get('allegiances') or [])[:2])}"
+            f"secrets (NEVER reveal unless extracted): {' | '.join((sec.get('secrets') or [])[:2])}; "
+            f"allegiances: {', '.join((sec.get('allegiances') or [])[:2])}"
         )
-        if len(npc_anchor_lines) >= 6:
-            break
+        delta_str = render_deltas_for_prompt(c.get("character_deltas") or [])
+        if delta_str:
+            base += f"\n  → PLAYER HISTORY (treat as ground truth): {delta_str}"
+        return base
+
+    here_npcs: List[dict] = []
+    elsewhere_npcs: List[dict] = []
+    unknown_npcs: List[dict] = []
+
+    for c in cards[:40]:
+        if (c.get("type") or "").lower() != "character":
+            continue
+        nm = (c.get("title") or "").strip()
+        if not nm:
+            continue
+        card_loc = (c.get("at_location") or "").strip()
+        if cur_loc_name and card_loc:
+            if card_loc.lower() == cur_loc_name.lower():
+                here_npcs.append(c)
+            else:
+                elsewhere_npcs.append(c)
+        else:
+            unknown_npcs.append(c)
+
+    anchor_parts: List[str] = []
+
+    if cur_loc_name:
+        here_with_sheet = [c for c in here_npcs if c.get("secret_content")]
+        here_lines = [_fmt_anchor(c) for c in here_with_sheet[:6]]
+        if here_lines:
+            anchor_parts.append(
+                f"PRESENT at {cur_loc_name} (can be spoken to, interacted with):\n"
+                + "\n".join(here_lines)
+            )
+        else:
+            anchor_parts.append(f"PRESENT at {cur_loc_name}: (no known NPCs here)")
+
+    if elsewhere_npcs:
+        elsewhere_lines = [
+            f"- {(c.get('title') or '').strip()} — last seen: {(c.get('at_location') or '').strip()}"
+            for c in elsewhere_npcs[:8]
+        ]
+        anchor_parts.append(
+            "ELSEWHERE — NOT reachable this turn (do NOT have them appear or speak unless "
+            "the player has explicitly travelled to their location):\n"
+            + "\n".join(elsewhere_lines)
+        )
+
+    unknown_with_sheet = [c for c in unknown_npcs if c.get("secret_content")]
+    unknown_lines = [_fmt_anchor(c) for c in unknown_with_sheet[:4]]
+    if unknown_lines:
+        anchor_parts.append(
+            "LOCATION UNKNOWN (may be nearby — use context to decide):\n"
+            + "\n".join(unknown_lines)
+        )
+
     npc_anchor_block = (
-        "\n".join(npc_anchor_lines)
-        if npc_anchor_lines
-        else "(no NPCs with identity sheets in scene — describe new NPCs as silhouettes/voices until interacted with)"
+        "\n\n".join(anchor_parts)
+        if anchor_parts
+        else "(no NPCs with identity sheets — describe new NPCs as silhouettes/voices until interacted with)"
     )
 
     # Recent player feedback / rulings — when the player has previously
@@ -327,12 +481,27 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         "Personality hooks (use sparingly — let NPCs react TO these; do not put them in "
         "the hero's head, do not quote verbatim):\n"
         f"{personality_block}\n\n"
+        "=== PLAYER'S PINNED FOCUS — SESSION AGENDA (HARD CONTRACT) ===\n"
+        "The player has starred these cards as their active priorities for this session. "
+        "Each entry carries a DM directive in plain English. You MUST honor each directive "
+        "within the next 1-3 turns — not all at once, but none may go unaddressed for more "
+        "than 3 consecutive turns. If nothing is pinned, advance the active leads instead.\n"
+        f"{pinned_block}\n\n"
         "=== ACTIVE OPENING LEAD(S) (advance or raise stakes in the next 1-3 turns unless the player pivots hard) ===\n"
         f"{active_lead_block}\n\n"
         "=== CLOSED LEADS (do NOT push these again; reference only if naturally relevant) ===\n"
         f"{closed_lead_block}\n\n"
         "=== OTHER KNOWLEDGE CARDS (weave in only when natural) ===\n"
         f"{card_block}\n\n"
+        "=== PLAYER INVENTORY (equipped bonuses apply to all relevant checks automatically) ===\n"
+        f"{inventory_block}\n\n"
+        "=== FACTIONS (political entities — active perks are in effect NOW; "
+        "suspended perks lost a requirement and are dormant) ===\n"
+        "Faction tenets are the value-levers for social manipulation: NPCs from "
+        "that faction respond to appeals that match their tenets. Use controlled "
+        "areas and hideout to ground NPC locations. If a high-ranking position is "
+        "vacant (NPC was killed / left), note it — the faction is visibly weakened.\n"
+        f"{_build_factions_block(cards)}\n\n"
         "=== NPC ROLEPLAY ANCHORS (DM-only, NEVER reveal verbatim — these are the "
         "actor's notes for staying in character across turns) ===\n"
         f"{npc_anchor_block}\n\n"
@@ -340,13 +509,14 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{biome_block}\n\n"
         f"{time_context_block(clock_hour)}\n\n"
         f"{passive_perception_block(character)}\n\n"
-        f"{deck_context_block(deck or [])}\n\n"
+        f"{deck_context_block(deck or [], character_state=character)}\n\n"
         f"{chaos_block_for_dm(chaos)}\n\n"
         f"{feedback_block}\n\n"
         f"{lessons_block}\n\n"
         f"{canon_block}\n\n"
         f"{obligations_block}\n"
-        "=== MERCER STYLE — STRICT ===\n"
+        + (f"{pressure_context}\n\n" if pressure_context else "")
+        + "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "
         "intent. You may say \"the door yields\" or \"the latch clicks open\" but NEVER "
@@ -359,15 +529,16 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         "Cut metaphor density by 80% from a typical AI default.\n"
         "4) NPCs are silhouettes/voices/postures until named or interacted with. \"The hooded "
         "figure stiffens\", \"a man's voice cuts through the noise\". Do NOT invent names.\n"
-        "4b) IN-CHARACTER NPC ROLEPLAY (HARD RULE). Once an NPC has an identity sheet "
-        "in the NPC ROLEPLAY ANCHORS block above, they MUST stay in character across "
-        "every turn — same speech style, same mannerisms, same motive. Their decisions "
-        "follow their flaw + bond + current_motivation; they NEVER act 'out of character' "
-        "to advance plot. They never volunteer their listed secrets — those have to be "
-        "EXTRACTED via successful Intimidation/Persuasion/Deception/Insight. Write their "
-        "dialogue with their voice ('clipped, drops r's' = clipped, drops r's), drop "
-        "their physical mannerisms into the prose. If multiple NPCs are present, "
-        "their voices must be DISTINCT from each other.\n"
+        "4b) IN-CHARACTER NPC ROLEPLAY (HARD RULE). Only NPCs listed under PRESENT "
+        "in the NPC ROLEPLAY ANCHORS block may appear or speak this turn. NPCs listed "
+        "under ELSEWHERE must NOT appear — they are in a different place. NPCs with an "
+        "identity sheet MUST stay in character across every turn — same speech style, "
+        "same mannerisms, same motive. Their decisions follow their flaw + bond + "
+        "current_motivation; they NEVER act 'out of character' to advance plot. They "
+        "never volunteer their listed secrets — those have to be EXTRACTED via successful "
+        "Intimidation/Persuasion/Deception/Insight. Write their dialogue with their voice "
+        "('clipped, drops r's' = clipped, drops r's), drop their physical mannerisms into "
+        "the prose. If multiple NPCs are present, their voices must be DISTINCT.\n"
         "4c) QUOTE NPC SPEECH — NEVER SUMMARIZE IT (HARD RULE). When an NPC speaks, "
         "is overheard, whispers, mutters, prays, sings, or otherwise produces words "
         "the player can hear, you MUST render the actual words in double quotes. "
@@ -408,6 +579,35 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         "blade.' The system layer will roll the check; you narrate the FALLOUT "
         "in the next turn. Auto-resolving social pressure (NPC instantly "
         "confesses / believes / bows) without a check breaks the rule.\n"
+        "7c) PHYSICAL VIOLENCE — IMMEDIATE WORLD RESPONSE (HARD RULE). When the player "
+        "initiates physical violence (punch, attack, shove, strike, grab, kick, bite, "
+        "draw a weapon and swing), ALL of the following are mandatory in the SAME turn:\n"
+        "  • The TARGET reacts physically AND vocally in the same beat — staggers, cries "
+        "    out, grabs the wound, goes down, swings back, bolts — whatever their nature "
+        "    demands. They do NOT 'slip quietly into shadows' as if nothing happened.\n"
+        "  • Every GUARD or AUTHORITY FIGURE present ESCALATES immediately — not 'glances', "
+        "    not 'watches nervously', not 'on high alert'. They shout a specific warning in "
+        "    quotes, close distance, draw weapons, or physically restrain. Guards who witness "
+        "    assault do not mutter — they ACT.\n"
+        "  • The scene LOCKS on the violence. Every sentence must be about: the target's "
+        "    reaction, authority figures closing in, or the physical consequences of the "
+        "    blow. Ambient detail (food smells, passing merchants, unrelated bystanders, "
+        "    weather) is BANNED until the confrontation reaches a pause or resolution. A "
+        "    bread merchant opening her stall during an active assault is a failure mode.\n"
+        "  • Civilians scatter, freeze, back away, or shout — they do NOT continue their "
+        "    business as if nothing happened.\n"
+        "  Soft failure mode to avoid: guard 'glances', figure 'slips away', crowd "
+        "  'watches'. Hard enforcement: if a punch was thrown, the first word of your "
+        "  reply should be about impact.\n"
+        "7d) NEVER ADVISE THE PLAYER (ABSOLUTE, anywhere in the reply — not just the ending). "
+        "Forbidden phrases and constructs:\n"
+        "  'you might want to', 'now would be a good time to', 'you sense it's best to', "
+        "  'you could slip away', 'you could X', 'a good idea would be', 'you should', "
+        "  'this might be your chance to', 'you sense that leaving would be wise', "
+        "  'a hasty exit might serve you', 'blending into the crowd would be prudent'.\n"
+        "  The player decides what is wise. Your job is to show what the WORLD is doing "
+        "  right now. If you catch yourself writing player advice, delete it and replace "
+        "  with one more physical fact about what an NPC or the environment is doing.\n"
         "8) APPEARANCE may surface only via (a) physical sensation, (b) a reflection, (c) gear "
         "the hero touches, or (d) someone reacting to them. Never describe the hero's own "
         "face/eyes/build from outside.\n"
@@ -418,14 +618,17 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         "\"ye olde\", rhetorical questions like \"What better place...?\".\n\n"
         "=== LENGTH & FORM ===\n"
         "- 70-130 words, 1-2 tight paragraphs, second person present tense.\n"
+        "- During active conflict (violence just initiated, guards closing, combat started): "
+        "short punchy sentences. Urgency lives in sentence length, not adjectives.\n"
         "- Mix sentence lengths. No headings, no bullet lists, no OOC, no meta.\n\n"
         "=== ENDING (Mercer's signature — hand agency back) ===\n"
         "End by giving the player a CLEAR moment of choice. Choose one:\n"
         "  (A) State 2-3 concrete observable facts UNIQUE to this scene (do not reuse a "
-        "previous reply's set). Schematic example only: \"<a specific physical fact you just "
-        "discovered>; <a specific sound or movement happening now>; <a specific person doing "
-        "a specific thing>.\" Replace each placeholder with details true to THIS turn. Stop. "
-        "Let the player choose.\n"
+        "previous reply's set). During conflict, ALL 3 facts must be conflict-relevant "
+        "(guard position, target state, exit status — NOT ambient smells or unrelated NPCs). "
+        "Schematic example only: \"<what the target is doing now>; <where the nearest "
+        "guard is and what they're doing>; <one environmental fact that creates a decision "
+        "point>.\" Stop. Let the player choose.\n"
         "  (B) Pose ONE sharp specific question rooted in what just changed: "
         "\"Do you draw, or keep your hands where he can see them?\".\n"
         "  (C) End with the simple plain handover: \"What do you do?\"\n"
@@ -446,6 +649,376 @@ async def _load_recent_messages(db, session_id: str) -> List[dict]:
     docs = await cursor.to_list(length=_MAX_HISTORY)
     docs.reverse()
     return docs
+
+
+@router.get("/{campaign_id}/leads")
+async def get_leads(
+    campaign_id: str,
+    status: Optional[str] = None,
+    pool: Optional[str] = None,
+    include_planted: bool = False,
+):
+    """Unified lead feed — reads all type='lead' cards from campaign_cards.
+
+    Consolidates leads from three legacy sources (pressure engine, campaign log,
+    and storyline knowledge beats) into a single sorted list.
+
+    Query params:
+      status         — filter by exact status (active, planted, sealed, resolved, …)
+      pool           — filter by pool (currently always "world")
+      include_planted — include pre-seeded 'planted' leads not yet encountered
+                        (default False so the player only sees active leads)
+    """
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    query: Dict = {"campaign_id": campaign_id, "type": "lead"}
+    if status:
+        query["status"] = status
+    elif not include_planted:
+        query["status"] = {"$ne": "planted"}
+    if pool:
+        query["pool"] = pool
+
+    cursor = db.campaign_cards.find(query, {"_id": 0}).sort("createdAt", -1).limit(100)
+    leads = await cursor.to_list(length=100)
+
+    # Group by status for summary counts
+    counts: Dict[str, int] = {}
+    for lead in leads:
+        s = lead.get("status") or "unknown"
+        counts[s] = counts.get(s, 0) + 1
+
+    return {
+        "campaign_id": campaign_id,
+        "leads": leads,
+        "total": len(leads),
+        "counts": counts,
+    }
+
+
+@router.patch("/{campaign_id}/leads/{card_id}/status")
+async def update_lead_status(campaign_id: str, card_id: str, body: BaseModel):
+    """Update a lead card's status, player_notes, or linked_quest_id."""
+    raise HTTPException(status_code=501, detail="Use PATCH /cards/{card_id} instead")
+
+
+@router.patch("/{campaign_id}/cards/{card_id}/equip")
+async def toggle_equip(campaign_id: str, card_id: str):
+    """Toggle an item card between 'equipped' and 'unequipped' status."""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    card = await db.campaign_cards.find_one({"campaign_id": campaign_id, "id": card_id})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    current = (card.get("status") or "acquired").lower()
+    new_status = "unequipped" if current == "equipped" else "equipped"
+    await db.campaign_cards.update_one(
+        {"campaign_id": campaign_id, "id": card_id},
+        {"$set": {"status": new_status, "updatedAt": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"success": True, "status": new_status}
+
+
+@router.patch("/{campaign_id}/cards/{card_id}/consume")
+async def consume_item(campaign_id: str, card_id: str):
+    """Decrement a consumable's quantity by 1; mark 'consumed' when it hits 0."""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    card = await db.campaign_cards.find_one({"campaign_id": campaign_id, "id": card_id})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    qty = max(0, int(card.get("quantity") or 1))
+    new_qty = max(0, qty - 1)
+    new_status = "consumed" if new_qty == 0 else (card.get("status") or "acquired")
+    await db.campaign_cards.update_one(
+        {"campaign_id": campaign_id, "id": card_id},
+        {"$set": {
+            "quantity": new_qty,
+            "status": new_status,
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    return {"success": True, "quantity": new_qty, "status": new_status}
+
+
+@router.patch("/{campaign_id}/cards/{card_id}/pin")
+async def toggle_pin(campaign_id: str, card_id: str):
+    """Toggle the pinned flag on a campaign card."""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    card = await db.campaign_cards.find_one({"campaign_id": campaign_id, "id": card_id})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    new_pinned = not bool(card.get("pinned"))
+    await db.campaign_cards.update_one(
+        {"campaign_id": campaign_id, "id": card_id},
+        {"$set": {"pinned": new_pinned, "updatedAt": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"success": True, "pinned": new_pinned}
+
+
+class UpdateLeadBody(BaseModel):
+    status: Optional[str] = None            # any value from LEAD_STATUSES
+    player_notes: Optional[str] = None
+    linked_quest_id: Optional[str] = None
+
+
+@router.patch("/{campaign_id}/cards/{card_id}/lead")
+async def update_lead_card(campaign_id: str, card_id: str, body: UpdateLeadBody):
+    """Update mutable lead fields: status, player_notes, linked_quest_id."""
+    from services.lead_card_service import LEAD_STATUSES
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    card = await db.campaign_cards.find_one({"campaign_id": campaign_id, "id": card_id})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    if card.get("type") != "lead":
+        raise HTTPException(status_code=400, detail="Card is not a lead")
+
+    updates: Dict = {"updatedAt": datetime.now(timezone.utc).isoformat()}
+    if body.status is not None:
+        if body.status not in LEAD_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {sorted(LEAD_STATUSES)}")
+        updates["status"] = body.status
+    if body.player_notes is not None:
+        updates["player_notes"] = body.player_notes
+    if body.linked_quest_id is not None:
+        updates["linked_quest_id"] = body.linked_quest_id
+
+    await db.campaign_cards.update_one(
+        {"campaign_id": campaign_id, "id": card_id},
+        {"$set": updates},
+    )
+    card.update(updates)
+    card.pop("_id", None)
+    return {"success": True, "card": card}
+
+
+class ResolveCardBody(BaseModel):
+    character_id: Optional[str] = None  # required to draw deck rewards
+    outcome: str = "completed"           # completed | failed
+
+
+@router.post("/{campaign_id}/cards/{card_id}/resolve")
+async def resolve_card(campaign_id: str, card_id: str, body: ResolveCardBody):
+    """Mark a campaign quest card as completed/failed and draw any card_rewards
+    to the character's player deck.
+
+    The quest card in campaign_cards may carry a `card_rewards` list (same spec
+    as QuestRewards.card_rewards). If `character_id` is supplied and the card
+    has rewards, they are drawn into that character's character_decks entry.
+    """
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    card = await db.campaign_cards.find_one({"campaign_id": campaign_id, "id": card_id})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    if card.get("type") != "quest":
+        raise HTTPException(status_code=400, detail="Only quest cards can be resolved")
+
+    outcome = body.outcome if body.outcome in {"completed", "failed"} else "completed"
+    now = datetime.now(timezone.utc).isoformat()
+
+    await db.campaign_cards.update_one(
+        {"campaign_id": campaign_id, "id": card_id},
+        {"$set": {"status": outcome, "resolved_at": now, "updatedAt": now}},
+    )
+
+    drawn_deck_cards: list = []
+    if outcome == "completed" and body.character_id:
+        raw_rewards = card.get("card_rewards") or []
+        if raw_rewards:
+            try:
+                drawn_deck_cards = await draw_quest_card_rewards(
+                    db, body.character_id, raw_rewards
+                )
+                logger.info(
+                    f"🃏 Drew {len(drawn_deck_cards)} deck card(s) from quest card "
+                    f"{card_id} for character {body.character_id}"
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"Card reward draw failed for campaign card {card_id}: {exc}")
+
+    tick = None
+    try:
+        campaign = await db.campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+        if campaign and campaign.get("campaign_id"):
+            tick = await narrative_tick_service.run_tick(
+                db,
+                campaign_id,
+                "major_quest_completion",
+                context={"card_id": card_id, "outcome": outcome},
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Narrative tick failed after card resolve {card_id}: {exc}")
+
+    return {
+        "success": True,
+        "card_id": card_id,
+        "outcome": outcome,
+        "drawn_deck_cards": drawn_deck_cards,
+        "narrative_tick": tick,
+    }
+
+
+class RevealCardBody(BaseModel):
+    roll_result: Optional[int] = None   # player's skill check total (for type="check")
+    quest_id: Optional[str] = None      # completed quest id (for type="quest")
+
+
+@router.post("/{campaign_id}/cards/{card_id}/reveal")
+async def reveal_card(campaign_id: str, card_id: str, body: RevealCardBody):
+    """Attempt to reveal a hidden info card.
+
+    Checks the card's reveal_condition:
+      - type="free"  → always succeeds.
+      - type="check" → roll_result must be >= dc.
+      - type="quest" → the named quest must exist with status="completed".
+
+    On success: sets revealed=true, status="revealed", exposes full_content.
+    On failure: returns success=false with the condition details so the
+    frontend can show the player why the reveal was blocked.
+    """
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    card = await db.campaign_cards.find_one({"campaign_id": campaign_id, "id": card_id})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    if card.get("revealed"):
+        card.pop("_id", None)
+        return {"success": True, "already_revealed": True, "card": card}
+
+    condition = card.get("reveal_condition") or {"type": "free"}
+    ctype = condition.get("type", "free")
+
+    met = False
+    failure_reason: Optional[str] = None
+
+    if ctype == "free":
+        met = True
+    elif ctype == "check":
+        dc = int(condition.get("dc") or 10)
+        roll = int(body.roll_result or 0)
+        if roll >= dc:
+            met = True
+        else:
+            failure_reason = (
+                f"Requires {condition.get('check_type', 'investigation').title()} "
+                f"DC {dc} (you rolled {roll})."
+            )
+    elif ctype == "quest":
+        required_quest_id = condition.get("quest_id")
+        if not required_quest_id:
+            met = True  # quest_id not yet set — allow free reveal
+        else:
+            quest_doc = await db.quests.find_one({"quest_id": required_quest_id}, {"status": 1})
+            if quest_doc and quest_doc.get("status") == "completed":
+                met = True
+            else:
+                failure_reason = "A specific quest must be completed first."
+
+    if not met:
+        return {"success": False, "failure_reason": failure_reason, "reveal_condition": condition}
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.campaign_cards.update_one(
+        {"campaign_id": campaign_id, "id": card_id},
+        {"$set": {"revealed": True, "status": "revealed", "revealed_at": now, "updatedAt": now}},
+    )
+    # Return the full card with full_content exposed
+    card["revealed"] = True
+    card["status"] = "revealed"
+    card["revealed_at"] = now
+    card["updatedAt"] = now
+    card.pop("_id", None)
+    return {"success": True, "already_revealed": False, "card": card}
+
+
+_CARD_DEFAULT_STATUS: Dict[str, str] = {
+    "item":      "acquired",
+    "spell":     "known",
+    "quest":     "active",
+    "favor":     "owed",
+    "curse":     "active",
+    "faction":   "discovered",
+    "location":  "visited",
+    "character": "known",
+    "npc":       "known",
+    "info":      "hidden",
+}
+
+
+@router.post("/{campaign_id}/cards")
+async def create_card(campaign_id: str, request: Request):
+    """DM-created card — insert directly into campaign_cards."""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    body: dict = await request.json()
+
+    card_type = (body.get("type") or "").strip().lower()
+    title = (body.get("title") or "").strip()
+
+    if not card_type:
+        raise HTTPException(status_code=400, detail="'type' is required")
+    if not title:
+        raise HTTPException(status_code=400, detail="'title' is required")
+
+    now = datetime.now(timezone.utc).isoformat()
+    card_id = str(uuid4())
+
+    # Protected fields that must not be overwritten by the caller
+    protected = {"id", "campaign_id", "source", "auto_seeded", "is_new", "createdAt", "updatedAt"}
+
+    card: dict = {
+        "id": card_id,
+        "campaign_id": campaign_id,
+        "type": card_type,
+        "title": title,
+        "content": body.get("content", ""),
+        "status": body.get("status") or _CARD_DEFAULT_STATUS.get(card_type, "active"),
+        "source": "dm_created",
+        "auto_seeded": False,
+        "is_new": True,
+        "pinned": False,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+
+    # Merge caller-supplied fields (skip protected)
+    for k, v in body.items():
+        if k not in protected:
+            card[k] = v
+
+    # Location: resolve biome metadata from catalog
+    if card_type == "location":
+        biome_key = body.get("biome", "")
+        if biome_key:
+            from data.biomes import BIOMES  # noqa: PLC0415
+            biome_def = BIOMES.get(biome_key)
+            if biome_def:
+                card["biome"] = biome_key
+                card["biome_label"] = biome_def["label"]
+                card["biome_accent"] = biome_def["accent"]
+                card["survival_dc_mod"] = biome_def["survival_dc_mod"]
+                card["nature_dc_mod"] = biome_def["nature_dc_mod"]
+
+    await db.campaign_cards.insert_one(card)
+    card.pop("_id", None)
+    return card
 
 
 @router.post("/{campaign_id}/dm/action")
@@ -471,8 +1044,8 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     # Load active knowledge cards (canonical collection: campaign_cards)
     cards_cursor = db.campaign_cards.find(
         {"campaign_id": campaign_id}, {"_id": 0}
-    ).sort("updatedAt", -1).limit(20)
-    cards = await cards_cursor.to_list(length=20)
+    ).sort("updatedAt", -1).limit(40)
+    cards = await cards_cursor.to_list(length=40)
 
     # Load recent message history (session = campaign + character)
     session_id = f"{campaign_id}:{req.character_id}"
@@ -555,6 +1128,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
 
     # Build LLM prompt — inject current time-of-day for narration grounding.
     clock_hour = get_world_clock(campaign)
+    current_location: Optional[Dict] = (campaign.get("world_state") or {}).get("current_location") or None
     passive_perception = compute_passive_perception(character)
     chaos_value = get_chaos(campaign)
 
@@ -620,28 +1194,27 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         logger.warning(f"canon scenes load failed (non-fatal): {exc}")
         recent_canon = []
 
+    # Pressure context — living campaign state (non-blocking)
+    _lean_pressure_ctx = ""
+    try:
+        from services.pressure_context_service import build_pressure_context_block
+        _lean_pressure_ctx = await build_pressure_context_block(campaign_id, db)
+    except Exception as _lpce:
+        logger.warning(f"Lean DM pressure context failed (non-fatal): {_lpce}")
+
     system_prompt = _build_system_prompt(
         campaign, character, cards, clock_hour,
         deck=deck_cards, chaos=chaos_value,
         recent_feedback=recent_feedback,
         dm_lessons=active_lessons,
         canon_scenes=recent_canon,
+        current_location=current_location,
+        pressure_context=_lean_pressure_ctx,
     )
 
     # Call the LLM
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="LLM key not configured")
-
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=session_id,
-            system_message=system_prompt,
-        )
-        chat.with_model("openai", "gpt-4o-mini")
+        from services.claude_client import call_haiku_async
 
         # Fold previous history into a single context prefix to keep latency low
         history_block = ""
@@ -675,10 +1248,67 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             f"Narrate the next beat."
         )
 
-        narration = (await chat.send_message(UserMessage(text=user_msg))).strip()
+        narration = (await call_haiku_async(system_prompt, user_msg, max_tokens=800, temperature=0)).strip()
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Lean DM LLM call failed: {exc}")
         raise HTTPException(status_code=502, detail=f"DM generation failed: {exc}") from exc
+
+    # Paused-quest obligation reminder — fire probabilistically based on urgency.
+    # Runs after the main narration so it never blocks the primary DM response.
+    obligation_reminder = None
+    pending_obligations = campaign.get("pending_obligations") or []
+    if pending_obligations:
+        try:
+            from services.obligation_reminder import generate_obligation_reminder
+            obligation_reminder = await generate_obligation_reminder(
+                obligations=pending_obligations,
+                campaign=campaign,
+                character=character,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Obligation reminder failed (non-fatal): {exc}")
+
+    # Spontaneous world event — an NPC approaches the player unprompted.
+    # Probabilistic (20% base / 6% night). Non-fatal if it fails.
+    world_event = None
+    try:
+        from services.world_event import generate_world_event
+        world_event = await generate_world_event(
+            campaign=campaign,
+            character=character,
+            clock_hour=clock_hour,
+            cards_collection=db.campaign_cards,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"World event generation failed (non-fatal): {exc}")
+
+    # NPC delta extraction — detect what changed about present NPCs this turn
+    # and record it on their cards so the DM carries it forward permanently.
+    # Only fires when a known NPC name appears in the narration; zero cost otherwise.
+    try:
+        from services.npc_delta import apply_npc_deltas, extract_npc_deltas
+        _cur_loc = ((current_location or {}).get("name") or "").strip().lower()
+        _present_npc_names = [
+            (c.get("title") or "").strip()
+            for c in cards
+            if (c.get("type") or "").lower() == "character"
+            and c.get("secret_content")
+            and (
+                not _cur_loc
+                or not (c.get("at_location") or "")
+                or (c.get("at_location") or "").strip().lower() == _cur_loc
+            )
+        ][:6]
+        if _present_npc_names:
+            npc_deltas = await extract_npc_deltas(
+                narration=narration,
+                player_action=req.player_action,
+                npc_names=_present_npc_names,
+            )
+            if npc_deltas:
+                await apply_npc_deltas(db.campaign_cards, campaign_id, npc_deltas)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"NPC delta tracking failed (non-fatal): {exc}")
 
     # Track that the active lessons were actually applied this turn — bumps
     # apply_count + last_applied_at so the DM Notebook can show usage stats.
@@ -913,9 +1543,34 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         entity_index=entity_index,
         cards_collection=db.campaign_cards,
         location_origin=location_origin,
+        current_location_name=(current_location or {}).get("name") or None,
     )
     if new_cards:
         entity_index = build_v2_entity_index(world_dict, cards=cards + new_cards)
+
+    # Location transition detection — update world_state.current_location when
+    # the player moves to a new or already-known place. Signal 1: a location
+    # card was just auto-seeded. Signal 2: movement keywords + a known location
+    # name appear in the player action or narration.
+    try:
+        from services.location_tracker import (
+            detect_transition_from_known_locations,
+            detect_transition_from_new_cards,
+        )
+        new_loc = detect_transition_from_new_cards(new_cards)
+        if new_loc is None:
+            known_loc_cards = [c for c in cards if (c.get("type") or "").lower() == "location"]
+            new_loc = detect_transition_from_known_locations(
+                req.player_action, narration, known_loc_cards
+            )
+        if new_loc and new_loc.get("name"):
+            current_location = new_loc
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {"$set": {"world_state.current_location": new_loc}},
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Location transition detection failed (non-fatal): {exc}")
 
     mentions = extract_entity_mentions(narration, entity_index)
     return {
@@ -926,6 +1581,8 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             "hooks": narration_hooks,
             "engaged_hook_id": (engaged_hook or {}).get("id") if engaged_hook else None,
             "storyline": storyline_payload,
+            "obligation_reminder": obligation_reminder,
+            "world_event": world_event,
             # Surface the detected intent so the frontend can flash a small
             # "🎯 Stealth check expected" chip beside the player's message —
             # the player sees the rule fired even if the DM still hedged.
@@ -944,6 +1601,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
                 "narrative_ticks": narrative_ticks,
                 "passive_perception": passive_perception,  # {score, tier, wis_mod, proficient, prof_bonus}
                 "chaos": chaos_payload,                # {value, delta, tier, alignment, drafted_curse}
+                "current_location": current_location,  # {name, card_id} or None
             },
             "player_updates": {},
             "options": [],

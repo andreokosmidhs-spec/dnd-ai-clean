@@ -323,6 +323,36 @@ async def create_lead(campaign_id: str, req: LeadCreateRequest):
     state.leads.append(lead)
     await _save_state(state)
 
+    # Mirror write → campaign_cards so this lead is visible in the unified feed.
+    try:
+        from services.lead_card_service import make_lead_card
+        db = _get_db()
+        card = make_lead_card(
+            campaign_id,
+            title=lead.title,
+            summary=lead.summary,
+            source="pressure_engine",
+            source_type="hook",
+            character_id=lead.character_id,
+            status="active",
+            tags=["lead", "pressure-engine"],
+            source_hook_id=lead.source_hook_id,
+            linked_quest_id=lead.linked_quest_id,
+            related_npc_ids=list(lead.related_npc_ids),
+            related_faction_ids=list(lead.related_faction_ids),
+            player_notes=lead.player_notes,
+            importance_score=lead.importance_score,
+            narrative_importance=lead.narrative_importance,
+        )
+        card["pressure_lead_id"] = lead.id  # back-link to the pressure model
+        existing = await db.campaign_cards.find_one(
+            {"campaign_id": campaign_id, "pressure_lead_id": lead.id}
+        )
+        if not existing:
+            await db.campaign_cards.insert_one(card)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[pressure] lead mirror write failed (non-fatal): {exc}")
+
     return {
         "status": "lead_created",
         "lead": lead.model_dump(mode="json"),

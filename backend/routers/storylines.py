@@ -30,7 +30,6 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
@@ -40,6 +39,7 @@ from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
 from models.campaign_models import KnowledgeCard
+from services.claude_client import call_haiku_async
 from services.storyline_service import (
     advance_storyline,
     draft_initial_scene,
@@ -814,6 +814,7 @@ async def attempt_resume_storyline(
     # If the DM gave the player a NEW lead while ruling expired, surface it
     # as a hook card so the player can engage it as a fresh storyline.
     new_lead_card_id = None
+    new_lead_card_data = None
     new_lead = ruling.get("new_lead")
     if decision == "expired" and isinstance(new_lead, dict) and new_lead.get("hook_text"):
         lead_card = KnowledgeCard(
@@ -833,6 +834,11 @@ async def attempt_resume_storyline(
         }
         await _cards_collection().insert_one(lead_doc)
         new_lead_card_id = lead_card.id
+        new_lead_card_data = {
+            "id": lead_card.id,
+            "title": lead_card.title,
+            "description": lead_card.description,
+        }
 
     # Refresh the storyline doc to return its post-update state.
     refreshed = await _storylines_collection().find_one(
@@ -848,6 +854,7 @@ async def attempt_resume_storyline(
         "storyline": storyline_to_dict(refreshed),
         "ruling": ruling,
         "new_lead_card_id": new_lead_card_id,
+        "new_lead_card": new_lead_card_data,
     }
 
 
@@ -931,11 +938,7 @@ async def _extract_targets_from_description_llm(
     text = (description or "").strip()
     if not text:
         return []
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return []
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
         prompt = (
             "Extract up to "
             f"{max_targets} NAMED ENTITIES from the D&D scene below — proper nouns "
@@ -953,16 +956,13 @@ async def _extract_targets_from_description_llm(
             "]}\n"
             "Return {\"entities\": []} if there are no proper-name entities."
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"target-extract-{uuid4()}",
-            system_message=(
-                "You are a precise scene parser. You return only proper-noun "
-                "entities verbatim. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a precise scene parser. You return only proper-noun "
+            "entities verbatim. Output strict JSON only.",
+            prompt,
+            max_tokens=200,
+            temperature=0,
+        ) or ""
         s = raw.strip()
         if s.startswith("```"):
             s = s.strip("`")
@@ -1013,15 +1013,13 @@ async def _generate_npc_identity_sheet(
       allegiances: [factions/people they answer to]
       current_motivation: what they want from the player THIS scene
     """
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key or not name:
+    if not name:
         return {}
     realm = ((campaign or {}).get("world") or {}).get("world_core", {}).get("name", "the realm")
     starting = ((campaign or {}).get("world") or {}).get("startingLocation", {}).get("name", "the town")
     tone = ((campaign or {}).get("intent") or {}).get("tone", "balanced")
     danger = ((campaign or {}).get("intent") or {}).get("danger", "medium")
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
         prompt = (
             f"Generate a HIDDEN NPC identity sheet for **{name}** based on the in-fiction "
             f"context below. The player has just learned this NPC's name; you are filling in "
@@ -1056,17 +1054,14 @@ async def _generate_npc_identity_sheet(
             "Make the numbers playable (DCs 9-19). Make the personality and secrets "
             "specific and useful as roleplay anchors — never generic 'wants gold'."
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"npc-sheet-{uuid4()}",
-            system_message=(
-                "You are a senior D&D Dungeon Master statting a brand-new NPC. "
-                "You produce concrete, playable, roleplay-ready sheets. Output "
-                "strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D Dungeon Master statting a brand-new NPC. "
+            "You produce concrete, playable, roleplay-ready sheets. Output "
+            "strict JSON only.",
+            prompt,
+            max_tokens=500,
+            temperature=0,
+        ) or ""
         s = raw.strip()
         if s.startswith("```"):
             s = s.strip("`")
@@ -1834,22 +1829,63 @@ async def creative_approach_endpoint(
 
 @router.post("/{campaign_id}/storylines/{storyline_id}/abandon")
 async def abandon_storyline(campaign_id: str, storyline_id: str):
-    res = await _storylines_collection().update_one(
-        {"campaign_id": campaign_id, "id": storyline_id, "status": "active"},
+    doc = await _storylines_collection().find_one(
+        {"campaign_id": campaign_id, "id": storyline_id}, {"_id": 0}
+    )
+    if not doc or doc.get("status") != "active":
+        raise HTTPException(status_code=404, detail="Active storyline not found")
+
+    await _storylines_collection().update_one(
+        {"campaign_id": campaign_id, "id": storyline_id},
         {"$set": {"status": "abandoned", "updated_at": datetime.now(timezone.utc)}},
     )
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Active storyline not found")
     # Mark linked quest card failed
-    doc = await _storylines_collection().find_one(
-        {"campaign_id": campaign_id, "id": storyline_id}, {"quest_card_id": 1}
-    )
-    if doc and doc.get("quest_card_id"):
+    if doc.get("quest_card_id"):
         await _cards_collection().update_one(
             {"campaign_id": campaign_id, "id": doc["quest_card_id"]},
             {"$set": {"status": "failed", "updatedAt": datetime.now(timezone.utc)}},
         )
-    return {"ok": True}
+
+    # Template-based farewell narration — no LLM call so abandon is instant.
+    title = (doc.get("title") or "the investigation").lower().rstrip(".")
+    beats = doc.get("beats") or []
+    passed = sum(1 for b in beats if b.get("status") == "passed")
+    total = len(beats)
+
+    npc_names: List[str] = []
+    for b in beats:
+        for t in (b.get("targets") or []):
+            if isinstance(t, dict) and t.get("name"):
+                n = t["name"].strip()
+                if n and n not in npc_names:
+                    npc_names.append(n)
+
+    if passed > 0 and npc_names:
+        who = npc_names[0]
+        farewell = (
+            f"You step back from {title} — {passed} lead{'s' if passed != 1 else ''} "
+            f"followed, the rest left untouched. {who} won't forget you were here. "
+            "The thread unravels into the city's noise, neither resolved nor forgotten."
+        )
+    elif passed > 0:
+        farewell = (
+            f"You walk away from {title} with {passed} of {total} "
+            f"thread{'s' if total != 1 else ''} followed. "
+            "What you found stays with you; what you left is anyone's to find."
+        )
+    elif npc_names:
+        who = npc_names[0]
+        farewell = (
+            f"You pull back from {title}, nothing resolved. "
+            f"{who} watches you go — the silence between you will not stay quiet."
+        )
+    else:
+        farewell = (
+            f"You let {title} go. The question you started with is still open, "
+            "somewhere in the dark — waiting."
+        )
+
+    return {"ok": True, "farewell_narration": farewell}
 
 
 # ==================== Sealed Lead Cards ====================
@@ -2072,16 +2108,6 @@ async def _judge_dm_feedback(
         "dc_reasoning": str,       # one-line "why this DC"
       }
     """
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return {
-            "agrees_with_player": False,
-            "explanation": "(DM judge unavailable — please retry shortly.)",
-            "should_correct": False,
-            "check_type": None,
-            "dc": None,
-            "dc_reasoning": "",
-        }
     intent = campaign.get("intent") or {}
     realm = (campaign.get("world") or {}).get("world_core", {}).get("name", "the realm")
     sl_title = storyline.get("title") or "the scene"
@@ -2089,7 +2115,6 @@ async def _judge_dm_feedback(
     beat_desc = beat.get("description") or ""
     beat_outcome = beat.get("outcome_text") or ""
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
         prompt = (
             "You are an experienced D&D rules judge reviewing a DM ruling. The player "
             "is contesting a moment in the scene. Your job: decide if the player has a "
@@ -2133,16 +2158,13 @@ async def _judge_dm_feedback(
             "  \"dc_reasoning\": \"one-line: why this DC (e.g. 'moderate cover, distracted target')\"\n"
             "}"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"dm-feedback-{uuid4()}",
-            system_message=(
-                "You are a fair, experienced D&D rules judge. You side with the player "
-                "when the rules support them and explain clearly. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a fair, experienced D&D rules judge. You side with the player "
+            "when the rules support them and explain clearly. Output strict JSON only.",
+            prompt,
+            max_tokens=400,
+            temperature=0,
+        ) or ""
         s = raw.strip()
         if s.startswith("```"):
             s = s.strip("`")
@@ -2339,13 +2361,17 @@ async def submit_dm_feedback(campaign_id: str, storyline_id: str, body: DMFeedba
             "rewind_to_scene_id": rewind_target.get("id") if rewind_target else None,
             "rewind_to_scene_number": rewind_target.get("scene_number") if rewind_target else None,
         }
-        beats.append(correction_beat)
-        new_idx = len(beats) - 1
+        # Truncate at the contested beat index: replace beat[idx] and remove
+        # all beats after it (they were generated from the wrong outcome and
+        # are no longer coherent). The correction beat takes that slot so the
+        # total count stays controlled and the 7-beat cap isn't hit early.
+        corrected_beats = beats[:idx] + [correction_beat]
+        new_idx = len(corrected_beats) - 1
         await _storylines_collection().update_one(
             {"campaign_id": campaign_id, "id": storyline_id},
-            {"$set": {"beats": beats, "current_beat": new_idx}},
+            {"$set": {"beats": corrected_beats, "current_beat": new_idx}},
         )
-        sl["beats"] = beats
+        sl["beats"] = corrected_beats
         sl["current_beat"] = new_idx
 
     return {
@@ -2529,18 +2555,8 @@ async def _judge_pitch_quality(
     Smart, in-character, well-targeted offers REDUCE the DC; insulting,
     blunt, or off-target attempts RAISE it.
     """
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
     base_dc = int(beat.get("dc") or 12)
     check_type = beat.get("check_type") or "Persuasion"
-
-    if not api_key:
-        return {
-            "modifier": 0,
-            "adjusted_dc": base_dc,
-            "rationale": "Judge offline — DC unchanged.",
-            "quality": "neutral",
-        }
-
     intent = campaign.get("intent") or {}
     realm = (campaign.get("world") or {}).get("world_core", {}).get("name", "the realm")
 
@@ -2581,7 +2597,6 @@ async def _judge_pitch_quality(
         npc_block = "NPC TARGET: an NPC the player is trying to influence (no detailed sheet on file).\n"
 
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
         prompt = (
             f"You are an experienced D&D Dungeon Master sizing up the player's PITCH "
             f"before they roll a {check_type} check. Your job: rate the quality of what "
@@ -2617,17 +2632,14 @@ async def _judge_pitch_quality(
             "  \"quality\": \"brilliant|smart|neutral|weak|foolish\"\n"
             "}"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"dc-adjust-{uuid4()}",
-            system_message=(
-                "You are a fair, experienced D&D Dungeon Master. You reward smart play "
-                "with lower DCs and punish dumb play with higher DCs — never zero, never "
-                "auto-success. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a fair, experienced D&D Dungeon Master. You reward smart play "
+            "with lower DCs and punish dumb play with higher DCs — never zero, never "
+            "auto-success. Output strict JSON only.",
+            prompt,
+            max_tokens=200,
+            temperature=0,
+        ) or ""
         s = raw.strip()
         if s.startswith("```"):
             s = s.strip("`")

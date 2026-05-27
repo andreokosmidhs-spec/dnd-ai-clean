@@ -19,7 +19,6 @@ from __future__ import annotations
 import json as _json
 import logging
 import math
-import os
 import random
 from typing import Dict, List, Optional
 from uuid import uuid4
@@ -27,6 +26,7 @@ from uuid import uuid4
 from data.biomes import BIOMES, list_biome_keys
 from data.event_catalog import EVENT_TYPES, filter_eligible
 from models.campaign_models import CampaignIntent
+from services.claude_client import call_haiku_async
 
 logger = logging.getLogger(__name__)
 
@@ -538,12 +538,6 @@ async def generate_world_graph(
     fallback = _template_graph(intent, world, character, region_count, events_per_region)
 
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-        api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            return fallback
-
         start_biome = _choose_starting_biome(world)
         starter_name = (world.get("startingLocation") or {}).get("name", "the starting area")
         starter_desc = (world.get("startingLocation") or {}).get("description", "")
@@ -592,16 +586,13 @@ async def generate_world_graph(
             "}\n"
         )
 
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"world-graph-{uuid4()}",
-            system_message=(
-                "You are a senior D&D worldbuilder. You design tight, biome-varied campaign "
-                "maps with grounded region names and specific, flavorful quest seeds. Output strict JSON only."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D worldbuilder. You design tight, biome-varied campaign "
+            "maps with grounded region names and specific, flavorful quest seeds. Output strict JSON only.",
+            prompt,
+            max_tokens=500,
+            temperature=0,
+        ) or ""
         text = raw.strip()
         if text.startswith("```"):
             text = text.strip("`")
@@ -763,12 +754,6 @@ async def hydrate_region(
     type_keys = ", ".join(EVENT_TYPES.keys())
 
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-        api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise RuntimeError("no LLM key")
-
         realm = (world.get("world_core") or {}).get("name", "the realm")
         prompt = (
             f"Seed {events_count} event hooks for a D&D 5e region the player has just entered.\n\n"
@@ -785,13 +770,12 @@ async def hydrate_region(
             "{ \"events\": [ { \"title\": \"...\", \"description\": \"...\", "
             "\"type\": \"<event_type_key>\", \"difficulty\": \"easy|medium|hard\" } ] }"
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"region-hydrate-{uuid4()}",
-            system_message="You are a senior D&D campaign designer. Output strict JSON only.",
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D campaign designer. Output strict JSON only.",
+            prompt,
+            max_tokens=400,
+            temperature=0,
+        ) or ""
         text = raw.strip()
         if text.startswith("```"):
             text = text.strip("`")
@@ -883,12 +867,6 @@ async def generate_event_arrival_beat(
     """
     fallback = _template_arrival_beat(region, event)
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-        api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            return fallback
-
         hero_name = "the hero"
         class_key = "adventurer"
         bg_key = "wanderer"
@@ -921,16 +899,13 @@ async def generate_event_arrival_beat(
             "- NO cliches ('fate', 'destiny', 'the adventure calls', 'a chill runs down your spine').\n"
             "- No quotation marks around the passage itself. Output only the beat."
         )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"arrival-beat-{uuid4()}",
-            system_message=(
-                "You are a senior D&D narrator (Matt-Mercer style): cinematic, grounded, restrained. "
-                "You open quests with one tight, sensory beat, never with fate talk."
-            ),
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=prompt))) or ""
+        raw = await call_haiku_async(
+            "You are a senior D&D narrator (Matt-Mercer style): cinematic, grounded, restrained. "
+            "You open quests with one tight, sensory beat, never with fate talk.",
+            prompt,
+            max_tokens=150,
+            temperature=0,
+        ) or ""
         text = raw.strip()
         if text.startswith('"') and text.endswith('"') and len(text) > 2:
             text = text[1:-1].strip()

@@ -44,10 +44,11 @@ from __future__ import annotations
 
 import json as _json
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
+
+from services.claude_client import call_haiku_async
 
 logger = logging.getLogger(__name__)
 
@@ -417,10 +418,6 @@ async def generate_from_prompt(prompt: str) -> Optional[Dict]:
     Returns None on failure; caller should surface a friendly error."""
     if not prompt or not prompt.strip():
         return None
-    api_key = os.getenv("EMERGENT_LLM_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        logger.warning("mission_type generate_from_prompt: no API key")
-        return None
     sys_msg = (
         "You are a senior D&D Dungeon Master designing a STRUCTURED MISSION TYPE "
         "blueprint. A mission type is a 3-5 phase arc that storylines of this "
@@ -459,14 +456,7 @@ async def generate_from_prompt(prompt: str) -> Optional[Dict]:
         "}"
     )
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"mt-gen-{uuid4()}",
-            system_message=sys_msg,
-        )
-        chat.with_model("openai", "gpt-4o-mini")
-        raw = (await chat.send_message(UserMessage(text=user_msg))) or ""
+        raw = await call_haiku_async(sys_msg, user_msg, max_tokens=500, temperature=0) or ""
         s = _strip_json_fence(raw)
         try:
             data = _json.loads(s)

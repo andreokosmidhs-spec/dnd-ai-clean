@@ -122,6 +122,14 @@ class CharacterState(BaseModel):
     # P3: Defeat tracking
     injury_count: int = 0
 
+    # Spell slots (D&D 5e slot economy)
+    spell_slots: Dict[str, int] = Field(default_factory=dict)      # remaining: {"1": 3, "2": 2}
+    spell_slots_max: Dict[str, int] = Field(default_factory=dict)  # max on long rest
+
+    # Active concentration spell
+    concentration_spell: Optional[str] = None
+    concentration_card_id: Optional[str] = None
+
 
 class CharacterDoc(BaseModel):
     """Character document - character with metadata"""
@@ -156,9 +164,28 @@ class CombatParticipant(BaseModel):
     conditions: List[str] = Field(default_factory=list)
     faction_id: Optional[str] = None
     
+    # Damage modifiers
+    resistances: List[str] = Field(default_factory=list)  # ["fire", "slashing"]
+    immunities: List[str] = Field(default_factory=list)   # ["poison", "psychic"]
+
     # NPC specific (for plot armor tracking)
     is_essential: bool = False
     plot_armor_attempts: int = 0  # Number of times attacked while having plot armor
+
+
+class GridCell(BaseModel):
+    """Single cell in the tactical battlefield grid"""
+    x: int
+    y: int
+    type: str  # floor, wall, pillar, difficult, cover, door, water, tree, rock, rubble, altar, chest
+
+
+class BattlefieldGrid(BaseModel):
+    """Tactical grid for a combat location — generated once per location, cached forever"""
+    cols: int = 8
+    rows: int = 6
+    cells: List[GridCell] = Field(default_factory=list)
+    generated: bool = False  # True when produced by LLM; False when using fallback
 
 
 class EnemyState(BaseModel):
@@ -170,12 +197,19 @@ class EnemyState(BaseModel):
     ac: int
     conditions: List[str] = Field(default_factory=list)
     faction_id: Optional[str] = None
-    
+
     # Combat stats for D&D 5e mechanics
     abilities: Dict[str, int] = Field(default_factory=lambda: {"str": 10, "dex": 10, "con": 10})
     proficiency_bonus: int = 2
     attack_bonus: int = 0
     damage_die: str = "1d6"
+    resistances: List[str] = Field(default_factory=list)
+    immunities: List[str] = Field(default_factory=list)
+
+    # Grid position (col, row on the battlefield)
+    grid_x: Optional[int] = None
+    grid_y: Optional[int] = None
+    lane: int = 2  # Retained for mechanical targeting (derived from grid_x)
 
 
 class CombatState(BaseModel):
@@ -187,9 +221,18 @@ class CombatState(BaseModel):
     round: int = 1
     combat_over: bool = False
     outcome: Optional[str] = None  # None during combat, set to "victory"/"fled"/"player_defeated" when over
-    
+
     # Track original NPC IDs that were converted to enemies
     converted_npcs: List[str] = Field(default_factory=list)
+
+    # Tactical grid (None until combat starts; generated once per location)
+    battlefield_grid: Optional[BattlefieldGrid] = None
+    player_grid_x: int = 1
+    player_grid_y: int = 2
+
+    # DM-applied grid modifications (persisted in combats collection)
+    cell_overrides: List[Dict[str, Any]] = Field(default_factory=list)  # [{x, y, type}]
+    spell_zones: List[Dict[str, Any]] = Field(default_factory=list)     # [{id, name, cx, cy, radius, color, shape}]
 
 
 class CombatDoc(BaseModel):
@@ -226,3 +269,5 @@ class ActionRequest(BaseModel):
     choice_source: Optional[str] = None
     check_result: Optional[int] = None
     client_target_id: Optional[str] = None  # Phase 1: Explicit target selection from frontend
+    card_used: Optional[str] = None  # card id used for this action
+    narrator_tone: Optional[str] = "balanced"  # balanced|heroic|gritty|dark|comedic

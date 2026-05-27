@@ -27,8 +27,28 @@ def _get_openai_key() -> str | None:
     return os.getenv("OPENAI_API_KEY")
 
 
+_SPLIT = "\x00CONTEXT_SPLIT\x00"
+
 def _cached_system(system_prompt: str) -> list:
-    """Wrap system prompt in a cache_control block for Anthropic prompt caching."""
+    """
+    Build a system content list with prompt caching.
+
+    If the prompt contains the _SPLIT sentinel, the part before it (static rules)
+    gets cache_control so only that prefix is cached. The dynamic context after
+    the sentinel is a plain text block that changes every turn — caching it would
+    bust the cache immediately and waste the write cost.
+
+    Without the sentinel the entire prompt is wrapped in one cache block (legacy
+    behaviour, preserved for callers that don't use the marker).
+    """
+    if _SPLIT in system_prompt:
+        static, dynamic = system_prompt.split(_SPLIT, 1)
+        static = static.rstrip("- \n")   # strip the trailing `---` separator
+        dynamic = dynamic.lstrip("- \n") # strip the leading `---` separator
+        return [
+            {"type": "text", "text": static, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": dynamic},
+        ]
     return [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
 
 

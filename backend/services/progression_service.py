@@ -133,7 +133,32 @@ def apply_xp_gain(
             character["level"] = level
             character["max_hp"] = character.get("max_hp", 10) + 6  # +6 HP per level
             character["hp"] = character["max_hp"]  # Full heal on level-up
-            
+
+            # Update proficiency bonus (D&D 5e: +2 at 1-4, +3 at 5)
+            from services.dnd_rules import proficiency_bonus_for_level
+            character["proficiency_bonus"] = proficiency_bonus_for_level(level)
+            logger.info(f"📖 Proficiency bonus updated to {character['proficiency_bonus']}")
+
+            # Update hit dice max (max = level in D&D 5e)
+            character["hit_dice_max"] = level
+            # Gain 1 new hit die on level up — add it to remaining pool
+            character["hit_dice_remaining"] = min(level, character.get("hit_dice_remaining", level - 1) + 1)
+            logger.info(f"🎲 Hit dice: {character['hit_dice_remaining']}/{level}")
+
+            # Update spell slots max for caster classes
+            try:
+                from data.spell_slots import get_spell_slots
+                cls_raw = character.get("class") or character.get("class_") or ""
+                cls_name = (cls_raw.get("name") or cls_raw.get("key") or "").strip().title() if isinstance(cls_raw, dict) else str(cls_raw).strip().title()
+                new_slots = get_spell_slots(cls_name, level)
+                if new_slots:
+                    character["spell_slots_max"] = dict(new_slots)
+                    # Restore spell slots on level up
+                    character["spell_slots"] = dict(new_slots)
+                    logger.info(f"🔮 Spell slots updated for {cls_name} level {level}")
+            except Exception:
+                pass
+
             # +1 attack bonus at levels 3 and 5
             if level == 3 or level == 5:
                 character["attack_bonus"] = character.get("attack_bonus", 0) + 1

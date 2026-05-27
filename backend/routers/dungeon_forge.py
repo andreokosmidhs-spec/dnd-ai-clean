@@ -8,7 +8,8 @@ import logging
 import uuid
 import asyncio
 from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
+from typing import Optional as _Opt
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import sys
@@ -61,6 +62,19 @@ def get_db():
     if _db is None:
         raise RuntimeError("Database not initialized. Call set_database() first.")
     return _db
+
+
+_TONE_INSTRUCTIONS = {
+    "balanced": "Use a balanced, classic fantasy D&D tone — adventurous, immersive, and accessible.",
+    "heroic":   "Use an epic, uplifting tone. Deeds feel legendary. Descriptions soar. Stakes feel world-shaking.",
+    "gritty":   "Use dark realism. Wounds hurt. Consequences matter. Victory is hard-won and often costly.",
+    "dark":     "Use a gothic, foreboding tone. Shadows linger. Dread is palpable. Moral ambiguity abounds.",
+    "comedic":  "Use a light, witty tone. Absurdist moments are welcome. Keep it playful without breaking immersion.",
+}
+
+
+def _tone_instruction(tone: str) -> str:
+    return _TONE_INSTRUCTIONS.get(tone or "balanced", _TONE_INSTRUCTIONS["balanced"])
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -390,7 +404,10 @@ async def run_dungeon_forge(
     session_mode: Optional[Dict[str, Any]] = None,
     improvisation_result: Optional[Dict[str, Any]] = None,
     npc_personalities: Optional[List[Dict[str, Any]]] = None,
-    active_tailing_quest: Optional[Dict[str, Any]] = None
+    active_tailing_quest: Optional[Dict[str, Any]] = None,
+    narrator_tone: str = "balanced",
+    pressure_context: str = "",
+    scene_intelligence: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     DUNGEON FORGE: Main action resolution agent.
@@ -454,9 +471,12 @@ async def run_dungeon_forge(
         session_mode=session_mode,
         improvisation_result=improvisation_result,
         npc_personalities=npc_personalities,
-        active_tailing_quest=active_tailing_quest
+        active_tailing_quest=active_tailing_quest,
+        scene_intelligence=scene_intelligence or (world_state.get("scene_intelligence") if isinstance(world_state, dict) else None),
+        narrator_tone=narrator_tone,
+        pressure_context=pressure_context,
     )
-    
+
     # A-Version prompt now built above - removed old prompt code
     # Old prompt content removed - now using A-Version prompt built above
     
@@ -929,13 +949,16 @@ def build_a_version_dm_prompt(
     session_mode: Optional[Dict[str, Any]] = None,
     improvisation_result: Optional[Dict[str, Any]] = None,
     npc_personalities: Optional[List[Dict[str, Any]]] = None,
-    active_tailing_quest: Optional[Dict[str, Any]] = None
+    active_tailing_quest: Optional[Dict[str, Any]] = None,
+    scene_intelligence: Optional[Dict[str, Any]] = None,
+    narrator_tone: Optional[str] = "balanced",
+    pressure_context: str = "",
 ) -> str:
     """
     Build A-Version compliant DM system prompt.
-    
+
     Integrates all 10 A-Version requirements with Phase 1 & Phase 2 DMG systems.
-    
+
     PHASE 1: Pacing, Information, Consequences, Context Memory
     PHASE 2: NPC Personality, Improvisation, Session Flow
     """
@@ -987,7 +1010,25 @@ Reasoning: {intent_flags.get('dc_reasoning', '')}
         check_result_info = f"**CHECK RESULT:** Player rolled {check_result}"
     else:
         check_result_info = "No check result yet - await player roll if check required."
-    
+
+    # Build active quest context for the DM
+    _active_quests_list = [q for q in world_state.get("quests", []) if q.get("status") == "active"]
+    if _active_quests_list:
+        _quest_lines = []
+        for _q in _active_quests_list:
+            _obj_strs = []
+            for _i, _obj in enumerate(_q.get("objectives", [])):
+                _prog = _obj.get("progress", 0)
+                _cnt = _obj.get("count", 1)
+                _desc = _obj.get("description", _obj.get("target", ""))
+                _obj_strs.append(f"  [{_i}] {_desc} ({_prog}/{_cnt})")
+            _quest_lines.append(
+                f"- {_q['name']} (id: {_q['quest_id']})\n" + "\n".join(_obj_strs)
+            )
+        quest_state_block = "Active Quests\n```\n" + "\n".join(_quest_lines) + "\n```"
+    else:
+        quest_state_block = "Active Quests\n```\nNone\n```"
+
     prompt = f"""DUNGEON MASTER AGENT — SYSTEM PROMPT (v6.1 Unified Edition)
 
 SYSTEM
@@ -1091,6 +1132,8 @@ You cannot invent or change mechanics.
 
 6. Tone & Style
 
+{_tone_instruction(narrator_tone)}
+
 Vivid but concise description
 
 Balanced sensory detail (sound, sight, touch, smell)
@@ -1169,86 +1212,6 @@ These MUST guide your narration.
 
 ---
 
-INJECTED CONTEXT FOR THIS REQUEST
-
-Player Character
-```
-Name: {character_name}
-Class: {character_class}
-Level: {character_state.get("level", 1)}
-HP: {character_state.get("hp", "?")} / {character_state.get("max_hp", "?")}
-AC: {character_state.get("ac", "?")}
-
-Stats:
-  STR {character_state.get("stats", {}).get("strength", 10)} ({(character_state.get("stats", {}).get("strength", 10) - 10) // 2:+d})
-  DEX {character_state.get("stats", {}).get("dexterity", 10)} ({(character_state.get("stats", {}).get("dexterity", 10) - 10) // 2:+d})
-  CON {character_state.get("stats", {}).get("constitution", 10)} ({(character_state.get("stats", {}).get("constitution", 10) - 10) // 2:+d})
-  INT {character_state.get("stats", {}).get("intelligence", 10)} ({(character_state.get("stats", {}).get("intelligence", 10) - 10) // 2:+d})
-  WIS {character_state.get("stats", {}).get("wisdom", 10)} ({(character_state.get("stats", {}).get("wisdom", 10) - 10) // 2:+d})
-  CHA {character_state.get("stats", {}).get("charisma", 10)} ({(character_state.get("stats", {}).get("charisma", 10) - 10) // 2:+d})
-
-Passive Perception: {10 + (character_state.get("stats", {}).get("wisdom", 10) - 10) // 2}
-Skills: {", ".join(character_state.get("skills", [])) if character_state.get("skills") else "None"}
-Conditions: {", ".join(character_state.get("conditions", [])) if character_state.get("conditions") else "None"}
-Inventory: {", ".join(character_state.get("inventory", [])) if character_state.get("inventory") else "Empty"}
-```
-
-Environment
-```
-Location: {current_location}
-Time: {time_of_day}
-Weather: {weather}
-
-{location_constraints if location_constraints else ""}
-```
-
-Visible Entities
-```
-{npc_constraints if npc_constraints else "No visible NPCs or creatures."}
-```
-
-Ongoing Situations
-```
-{ongoing_situations if ongoing_situations else "None"}
-```
-
-Auto-Revealed Information (Passive Perception)
-```
-{", ".join(auto_revealed_info) if auto_revealed_info else "Nothing automatically noticed."}
-```
-
-Active Conditions
-```
-{"; ".join(condition_explanations) if condition_explanations else "None"}
-```
-
-Combat State (if applicable)
-```
-{mechanical_display if mechanical_display else ""}
-```
-
-System-Calculated DC (if provided)
-```
-{dc_info if dc_info else "No DC provided - determine if check is needed based on action context."}
-```
-
-Check Result (if resolved)
-```
-{check_result_info}
-```
-
-Current Scene Mode
-```
-{session_mode.get("mode", "exploration") if session_mode else "exploration"}
-```
-
-Player Action
-```
-{player_action}
-```
-
----
-
 OUTPUT FORMAT
 
 Return ONLY this JSON:
@@ -1262,14 +1225,30 @@ Return ONLY this JSON:
   "entities": [],
   "scene_mode": "intro | exploration | combat | social | travel | rest",
   "world_state_update": {{}},
-  "player_updates": {{}}
+  "player_updates": {{}},
+  "quest_updates": {{
+      "new_quests": [],
+      "progress_events": [
+          {{"quest_id": "string", "objective_index": 0, "progress_delta": 1}}
+      ],
+      "completed_quest_ids": [],
+      "failed_quest_ids": []
+  }},
+  "xp_reward": null | {{"amount": 0, "reason": "string"}}
 }}
+
+Quest update rules:
+- Emit progress_events when the player visibly advances a tracked quest objective (entered a location, talked to an NPC, found an item). Use the exact quest_id from the injected quest_state.
+- Emit completed_quest_ids when all objectives of a quest are satisfied by this action.
+- Emit failed_quest_ids when the player's action definitively closes off a quest with failure — a key NPC dies, the target escapes permanently, the window of opportunity closes. Only use for clear, irreversible failures.
+- Emit new_quests only when an NPC explicitly offers a new quest the player accepts.
+- Grant xp_reward (10–50 XP) for significant non-combat accomplishments: solving a puzzle, gathering key information, forging an alliance. Omit for trivial actions.
 
 Restrictions:
 
 requested_check ONLY when absolutely necessary.
 
-NEVER add fields not defined above.
+NEVER invent quest_ids not present in the injected quest_state.
 
 NEVER invent entities unless visible.
 
@@ -1293,7 +1272,7 @@ Scene history
 
 SYSTEM overrides everything.
 
----
+---\x00CONTEXT_SPLIT\x00---
 
 INJECTED CONTEXT FOR THIS REQUEST
 
@@ -1338,6 +1317,8 @@ Ongoing Situations
 {ongoing_situations if ongoing_situations else "None"}
 ```
 
+{quest_state_block}
+
 Auto-Revealed Information (Passive Perception)
 ```
 {", ".join(auto_revealed_info) if auto_revealed_info else "Nothing automatically noticed."}
@@ -1373,10 +1354,32 @@ Player Action
 {player_action}
 ```
 
----
+{_build_scene_intel_block(scene_intelligence)}
+{f"{pressure_context}" + chr(10) if pressure_context else ""}---
 
 Generate your response now.
 """
+
+
+def _build_scene_intel_block(scene_intel: Optional[Dict[str, Any]]) -> str:
+    """Build the scene intelligence embedding block for the DM prompt."""
+    if not scene_intel:
+        return ""
+    try:
+        from services.scene_intelligence_service import get_dm_embedding_instructions
+        instructions = get_dm_embedding_instructions(scene_intel)
+        if not instructions:
+            return ""
+        tension = scene_intel.get("tension_score", 0.0)
+        return f"""
+Scene Intelligence (Tension: {tension:.0%})
+```
+{instructions}
+```
+
+"""
+    except Exception:
+        return ""
 
 
 def generate_combat_narration_from_mechanical(
@@ -1395,31 +1398,90 @@ def generate_combat_narration_from_mechanical(
         Narration string
     """
     narration_parts = []
-    
-    # Player attack
+
+    # Player attack / spell result
     player_attack = mechanical_summary['player_attack']
-    target = player_attack['target']
-    
-    if player_attack['critical_miss']:
-        narration_parts.append(f"You swing at the {target}, but your attack goes completely awry!")
-    elif player_attack['critical']:
+
+    # ── Heal spell ────────────────────────────────────────────────────────
+    if player_attack.get("is_heal_spell"):
+        spell_name = player_attack.get("spell_name", "your spell")
+        heal_amount = player_attack.get("heal_amount", 0)
+        new_hp = player_attack.get("new_hp", 0)
+        if heal_amount > 0:
+            narration_parts.append(
+                f"You cast **{spell_name}**, restoring **{heal_amount} hit points**! "
+                f"(HP: {new_hp})"
+            )
+        else:
+            narration_parts.append(
+                f"You cast **{spell_name}**, but your wounds are too severe to heal further."
+            )
+
+    # ── Spell attack ──────────────────────────────────────────────────────
+    elif player_attack.get("is_spell_attack"):
+        spell_name = player_attack.get("spell_name", "your spell")
+        target = player_attack.get("target", "the enemy")
+        if player_attack.get("critical_miss"):
+            narration_parts.append(f"You hurl **{spell_name}** at the {target}, but it fizzles wide!")
+        elif player_attack.get("critical"):
+            narration_parts.append(
+                f"**Critical hit!** Your **{spell_name}** strikes the {target} with devastating force "
+                f"for **{player_attack['damage']} damage**!"
+            )
+            if player_attack.get("target_killed"):
+                narration_parts.append(f" The {target} collapses!")
+        elif player_attack.get("hit"):
+            narration_parts.append(
+                f"Your **{spell_name}** hits the {target} for **{player_attack['damage']} damage**! "
+                f"({player_attack['target_hp_remaining']}/{player_attack['target_max_hp']} HP remaining)"
+            )
+            if player_attack.get("target_killed"):
+                narration_parts.append(f" The {target} falls defeated!")
+        else:
+            narration_parts.append(
+                f"Your **{spell_name}** streaks toward the {target} but misses! "
+                f"(Rolled {player_attack['total_attack']} vs AC {player_attack['target_ac']})"
+            )
+
+    # ── Auto-hit spell (Magic Missile) ────────────────────────────────────
+    elif player_attack.get("auto_hit"):
+        spell_name = player_attack.get("spell_name", "your spell")
+        target = player_attack.get("target", "the enemy")
         narration_parts.append(
-            f"**Critical hit!** You strike the {target} with devastating force for **{player_attack['damage']} damage**!"
-        )
-        if player_attack['target_killed']:
-            narration_parts.append(f"The {target} collapses, defeated!")
-    elif player_attack['hit']:
-        narration_parts.append(
-            f"You hit the {target} for **{player_attack['damage']} damage**! "
+            f"Your **{spell_name}** unerringly strikes the {target} for **{player_attack['damage']} damage**! "
             f"({player_attack['target_hp_remaining']}/{player_attack['target_max_hp']} HP remaining)"
         )
-        if player_attack['target_killed']:
-            narration_parts.append(f"The {target} falls defeated!")
+        if player_attack.get("target_killed"):
+            narration_parts.append(f" The {target} is destroyed!")
+
+    # ── Buff spell ────────────────────────────────────────────────────────
+    elif player_attack.get("is_buff_spell"):
+        spell_name = player_attack.get("spell_name", "your spell")
+        narration_parts.append(player_attack.get("narration", f"You cast **{spell_name}**."))
+
+    # ── Weapon attack ─────────────────────────────────────────────────────
     else:
-        narration_parts.append(
-            f"You attack the {target}, but miss! "
-            f"(Rolled {player_attack['total_attack']} vs AC {player_attack['target_ac']})"
-        )
+        target = player_attack.get("target", "the enemy")
+        if player_attack.get("critical_miss"):
+            narration_parts.append(f"You swing at the {target}, but your attack goes completely awry!")
+        elif player_attack.get("critical"):
+            narration_parts.append(
+                f"**Critical hit!** You strike the {target} with devastating force for **{player_attack['damage']} damage**!"
+            )
+            if player_attack.get("target_killed"):
+                narration_parts.append(f" The {target} collapses, defeated!")
+        elif player_attack.get("hit"):
+            narration_parts.append(
+                f"You hit the {target} for **{player_attack['damage']} damage**! "
+                f"({player_attack['target_hp_remaining']}/{player_attack['target_max_hp']} HP remaining)"
+            )
+            if player_attack.get("target_killed"):
+                narration_parts.append(f" The {target} falls defeated!")
+        else:
+            narration_parts.append(
+                f"You attack the {target}, but miss! "
+                f"(Rolled {player_attack['total_attack']} vs AC {player_attack['target_ac']})"
+            )
     
     # Enemy turns
     if mechanical_summary['enemy_turns']:
@@ -1620,14 +1682,34 @@ async def create_character_endpoint(request: CharacterCreateRequest):
             # Add homeland to character
             character_state_dict = character_state.dict()
             character_state_dict["homeland"] = homeland
-            
+
+            # Auto-equip sensible defaults from starting inventory
+            from services.equipment_service import auto_equip_defaults
+            character_state_dict = auto_equip_defaults(character_state_dict)
+
+            # Initialise spell slot economy for caster classes
+            from data.spell_slots import get_spell_slots, get_spellcasting_ability
+            _cls_key = (character_state_dict.get("class") or character_state_dict.get("class_") or "")
+            _cls_name = (_cls_key.get("name") or _cls_key.get("key") or "").strip().title() if isinstance(_cls_key, dict) else str(_cls_key).strip().title()
+            _char_level = int(character_state_dict.get("level", 1))
+            _slots = get_spell_slots(_cls_name, _char_level)
+            character_state_dict["spell_slots"] = dict(_slots)
+            character_state_dict["spell_slots_max"] = dict(_slots)
+            if not character_state_dict.get("concentration_spell"):
+                character_state_dict["concentration_spell"] = None
+                character_state_dict["concentration_card_id"] = None
+            # Initialise hit dice tracking (max = level, all available at start)
+            character_state_dict["hit_dice_max"] = _char_level
+            character_state_dict.setdefault("hit_dice_remaining", _char_level)
+            logger.info(f"🔮 Spell slots for {_cls_name} lv{_char_level}: {_slots}")
+
             char_doc = await create_character_doc(
                 campaign_id=request.campaign_id,
                 character_id=character_id,
                 character_state=character_state_dict,
                 player_id=None
             )
-            
+
             # P3.5: Generate intro immediately and return it with character
             from services.intro_service import generate_intro_markdown
             
@@ -1781,22 +1863,59 @@ async def create_character_endpoint(request: CharacterCreateRequest):
             })
         else:
             # Fallback if world not found
+            from services.equipment_service import auto_equip_defaults
+            from data.spell_slots import get_spell_slots
+            _fallback_state = auto_equip_defaults(character_state.dict())
+            _fb_cls = (_fallback_state.get("class") or _fallback_state.get("class_") or "")
+            _fb_cls_name = (_fb_cls.get("name") or _fb_cls.get("key") or "").strip().title() if isinstance(_fb_cls, dict) else str(_fb_cls).strip().title()
+            _fb_level = int(_fallback_state.get("level", 1))
+            _fb_slots = get_spell_slots(_fb_cls_name, _fb_level)
+            _fallback_state["spell_slots"] = dict(_fb_slots)
+            _fallback_state["spell_slots_max"] = dict(_fb_slots)
+            _fallback_state.setdefault("concentration_spell", None)
+            _fallback_state.setdefault("concentration_card_id", None)
             char_doc = await create_character_doc(
                 campaign_id=request.campaign_id,
                 character_id=character_id,
-                character_state=character_state.dict(),
+                character_state=_fallback_state,
                 player_id=None
             )
-            
+
             logger.info(f"✅ Character created: {character_id} - {character_state.name}")
             return api_success({
                 "character_id": character_id,
-                "character_state": character_state.dict()
+                "character_state": _fallback_state
             })
         
     except Exception as e:
         logger.error(f"❌ Character creation failed: {e}", exc_info=True)
         return api_error("internal_error", f"Character creation failed: {str(e)}", status_code=500)
+
+
+def _classify_check_failure(ability: str, skill) -> dict:
+    """Map ability/skill → consequence category for world_state persistence."""
+    check_name = (skill or ability or "").lower()
+    if any(s in check_name for s in ("stealth", "dex")):
+        return {"type": "exposure",         "key": "exposure_event"}
+    if any(s in check_name for s in ("persuasion", "deception", "intimidation", "performance", "cha")):
+        return {"type": "social_setback",   "key": "social_setback"}
+    if any(s in check_name for s in ("perception", "insight", "wis")):
+        return {"type": "information_gap",  "key": "missed_information"}
+    if any(s in check_name for s in ("investigation", "history", "arcana", "religion", "nature", "int")):
+        return {"type": "knowledge_gap",    "key": "missed_clue"}
+    if any(s in check_name for s in ("athletics", "acrobatics", "str")):
+        return {"type": "physical_setback", "key": "physical_setback"}
+    return {"type": "complication",         "key": "recent_complication"}
+
+
+def _critical_failure_condition(ability: str, skill) -> str | None:
+    """Return a D&D condition to apply on nat-1 / margin ≤ -10, or None."""
+    check_name = (skill or ability or "").lower()
+    if any(s in check_name for s in ("athletics", "acrobatics", "str", "dex")):
+        return "prone"
+    if any(s in check_name for s in ("con", "constitution")):
+        return "exhausted"
+    return None  # social / mental checks: narrated consequence only
 
 
 @router.post("/rpg_dm/resolve_check")
@@ -1854,11 +1973,31 @@ async def resolve_check(request: dict):
             world_state = {"world_state": {}}
         
         # Build a narration prompt for the DM with the resolution
+        active_quests = world_state["world_state"].get("quests", [])
+        active_quest_list = [q for q in active_quests if q.get("status") == "active"]
+        quest_context = ""
+        if active_quest_list:
+            lines = [f"  - {q['name']} (id: {q['quest_id']})" for q in active_quest_list[:5]]
+            quest_context = "\nACTIVE QUESTS:\n" + "\n".join(lines)
+
+        failure_guidance = ""
+        if not resolution.success:
+            fc = _classify_check_failure(check_request.ability, check_request.skill)
+            failure_guidance = f"""
+FAILURE CONSEQUENCE REQUIRED:
+Since this check failed ({resolution.outcome}), you MUST include in world_state_update:
+  "{fc['key']}": {{"active": true, "context": "<one sentence>", "severity": "{'severe' if resolution.outcome == 'critical_failure' else 'moderate' if resolution.outcome == 'clear_failure' else 'minor'}"}}
+
+This persists the consequence so future scenes remember it.
+{f'If this failure is directly tied to one of the active quests above, also set "failed_quest_ids": ["<quest_id>"] in your JSON response.' if active_quest_list else ''}
+Fail forward: even on failure, give the player a thread — a clue, a complication, a new problem to solve."""
+
         narration_prompt = f"""The player just completed an ability check. Here is the structured result:
 
 CHECK: {check_request.skill or check_request.ability} ({check_request.ability})
 ACTION: {check_request.action_context}
 DC: {check_request.dc} ({check_request.dc_band})
+{quest_context}
 
 ROLL RESULT:
 - D20 Roll: {player_roll.d20_roll}
@@ -1871,13 +2010,14 @@ OUTCOME: {resolution.outcome.upper()}
 - Tier: {resolution.outcome_tier}
 
 NARRATION GUIDANCE: {resolution.suggested_narration_style}
+{failure_guidance}
 
 YOU MUST:
-1. Narrate what happens based on this result
-2. DO NOT re-roll or change the outcome
-3. Show specific consequences (items found, information learned, complications, etc.)
-4. Update world_state_update if needed
-5. Update player_updates with any rewards/consequences"""
+1. Narrate what happens based on this exact result — DO NOT re-roll or change the outcome
+2. Show specific consequences (items found, information learned, complications triggered)
+3. On failure: narrate a "fail forward" — something still happens, just not what the player wanted
+4. Update world_state_update with the required consequence key (see above)
+5. Update player_updates with any mechanical effects"""
 
         # Call DUNGEON FORGE with the resolution context
         try:
@@ -1913,31 +2053,124 @@ YOU MUST:
             )
             entity_mentions = extract_entity_mentions(narration_text, entity_index)
             
-            # Apply world state updates
+            # ── World state updates ───────────────────────────────────────────
             world_state_update = dm_response.get("world_state_update", {})
-            if world_state_update:
-                current_world = world_state["world_state"]
-                current_world.update(world_state_update)
-                await db.world_states.update_one(
-                    {"campaign_id": campaign_id, "character_id": character_id},
-                    {"$set": {"world_state": current_world}}
+            current_world = world_state["world_state"]
+
+            # Always persist a structured failure record — don't rely solely on DM
+            if not resolution.success:
+                fc = _classify_check_failure(check_request.ability, check_request.skill)
+                severity = (
+                    "severe" if resolution.outcome == "critical_failure" else
+                    "moderate" if resolution.outcome == "clear_failure" else
+                    "minor"
                 )
-            
-            # Apply player updates
+                failure_record = {
+                    "type": fc["type"],
+                    "severity": severity,
+                    "ability": check_request.ability,
+                    "skill": check_request.skill,
+                    "action": check_request.action_context[:100],
+                    "outcome": resolution.outcome,
+                    "margin": resolution.margin,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                current_world.setdefault("check_failures", []).append(failure_record)
+                current_world["check_failures"] = current_world["check_failures"][-10:]
+
+                # If DM didn't write the consequence key, write a baseline
+                if fc["key"] not in world_state_update:
+                    world_state_update[fc["key"]] = {
+                        "active": True,
+                        "context": check_request.action_context[:80],
+                        "severity": severity,
+                    }
+                    logger.info(f"⚠️ Injecting baseline failure consequence: {fc['key']} ({severity})")
+
+            # Apply DM world state on top
+            current_world.update(world_state_update)
+
+            # ── Quest failure from DM or critical check ───────────────────────
+            failed_quest_ids = dm_response.get("failed_quest_ids", [])
+            newly_failed_quests = []
+            for quest_id in failed_quest_ids:
+                for quest in current_world.get("quests", []):
+                    if quest["quest_id"] == quest_id and quest.get("status") == "active":
+                        quest["status"] = "failed"
+                        newly_failed_quests.append(quest.get("name", quest_id))
+                        logger.info(f"❌ Quest failed (DM flagged): {quest.get('name', quest_id)}")
+
+            await db.world_states.update_one(
+                {"campaign_id": campaign_id, "character_id": character_id},
+                {"$set": {"world_state": current_world}},
+                upsert=True,
+            )
+
+            # ── Player updates + critical failure condition ────────────────────
             player_updates = dm_response.get("player_updates", {})
-            if player_updates:
-                # Update character state
-                current_char = char_doc["character_state"]
+            current_char = char_doc["character_state"]
+
+            if resolution.outcome == "critical_failure":
+                crit_cond = _critical_failure_condition(check_request.ability, check_request.skill)
+                if crit_cond:
+                    conditions = current_char.get("conditions", [])
+                    if crit_cond not in conditions:
+                        conditions.append(crit_cond)
+                        current_char["conditions"] = conditions
+                        player_updates["condition_added"] = crit_cond
+                        logger.info(f"💥 Critical failure condition applied: {crit_cond}")
+
+            if player_updates or resolution.outcome == "critical_failure":
                 if "gold_gained" in player_updates:
                     current_char["gold"] = current_char.get("gold", 0) + player_updates["gold_gained"]
                 if "items_gained" in player_updates:
                     current_char["inventory"] = current_char.get("inventory", []) + player_updates["items_gained"]
                 if "hp" in player_updates:
                     current_char["hp"] = player_updates["hp"]
-                
                 await update_character_state(campaign_id, character_id, current_char)
-            
-            # v4.1 UNIFIED SPEC: No options field - narration ends with open prompts
+
+            if newly_failed_quests:
+                player_updates["quests_failed"] = newly_failed_quests
+
+            # ── NPC relationship updates from check outcome ───────────────────
+            try:
+                from services.npc_delta import extract_npc_deltas, apply_npc_deltas, downgrade_npc_relationship
+
+                # Collect NPC names from knowledge cards for this campaign
+                npc_cards = await db.campaign_cards.find(
+                    {"campaign_id": campaign_id, "type": "character"},
+                    {"title": 1},
+                ).to_list(20)
+                npc_names = [c["title"] for c in npc_cards if c.get("title")]
+
+                if npc_names and narration_text:
+                    # LLM-based extraction from DM narration
+                    npc_deltas = await extract_npc_deltas(
+                        narration=narration_text,
+                        player_action=check_request.action_context,
+                        npc_names=npc_names,
+                    )
+                    if npc_deltas:
+                        await apply_npc_deltas(db.campaign_cards, campaign_id, npc_deltas)
+                        logger.info(f"🤝 NPC deltas applied from check resolution: {len(npc_deltas)}")
+
+                # Deterministic fallback for failed social checks — downgrade any
+                # mentioned NPC one tier regardless of LLM extraction result.
+                check_name = (check_request.skill or check_request.ability or "").lower()
+                is_social = any(s in check_name for s in ("persuasion", "deception", "intimidation", "performance", "cha"))
+                if not resolution.success and is_social:
+                    for npc_name in npc_names:
+                        if npc_name.lower() in check_request.action_context.lower() or npc_name.lower() in narration_text.lower():
+                            await downgrade_npc_relationship(
+                                db.campaign_cards,
+                                campaign_id,
+                                npc_name,
+                                reason=f"failed {check_request.skill or check_request.ability} check (margin {resolution.margin:+d})",
+                            )
+                            break  # downgrade first matched NPC only
+            except Exception as exc:
+                logger.warning(f"NPC delta tracking in check resolution failed (non-fatal): {exc}")
+
             response_data = {
                 "narration": narration_text,
                 "entity_mentions": entity_mentions,
@@ -1946,8 +2179,8 @@ YOU MUST:
                 "resolution": {
                     "success": resolution.success,
                     "outcome": resolution.outcome,
-                    "margin": resolution.margin
-                }
+                    "margin": resolution.margin,
+                },
             }
             
             logger.info(f"✅ Check resolution complete - returning response")
@@ -1966,7 +2199,7 @@ YOU MUST:
 
 
 @router.post("/rpg_dm/action")
-async def process_action(request: dict):
+async def process_action(request: dict, authorization: _Opt[str] = Header(None)):
     """
     Main gameplay action endpoint for DUNGEON FORGE.
     
@@ -1992,20 +2225,33 @@ async def process_action(request: dict):
         player_action = action_req.player_action
         check_result = action_req.check_result
         client_target_id = action_req.client_target_id  # Phase 1: Explicit target from frontend
-        
+        card_used_id = action_req.card_used  # Card used for this action (weapon resolution)
+        narrator_tone = action_req.narrator_tone or "balanced"
+
         logger.info(f"🎮 Processing action for campaign: {campaign_id}, character: {character_id}")
         logger.info(f"   Action: {player_action[:100]}")
         if client_target_id:
             logger.info(f"   Explicit target: {client_target_id}")
-        
+        if card_used_id:
+            logger.info(f"   Card used: {card_used_id}")
+
         # Fetch state from DB (parallelized for performance)
         db = get_db()
-        campaign, char_doc, world_state, combat_doc = await asyncio.gather(
+        campaign, char_doc, world_state, combat_doc, deck_doc = await asyncio.gather(
             get_campaign(campaign_id),
             get_character_doc(campaign_id, character_id),
             get_world_state(campaign_id),
-            db.combats.find_one({"campaign_id": campaign_id, "character_id": character_id})
+            db.combats.find_one({"campaign_id": campaign_id, "character_id": character_id}),
+            db.character_decks.find_one({"character_id": character_id}),
         )
+
+        # Fetch pressure context (non-blocking — graceful if missing)
+        _pressure_context = ""
+        try:
+            from services.pressure_context_service import build_pressure_context_block
+            _pressure_context = await build_pressure_context_block(campaign_id, db)
+        except Exception as _pce:
+            logger.warning(f"Pressure context fetch failed (non-fatal): {_pce}")
         
         # Validate all required data exists
         if not campaign:
@@ -2016,7 +2262,79 @@ async def process_action(request: dict):
             raise HTTPException(status_code=404, detail=f"World state not found for campaign: {campaign_id}")
         
         is_combat_active = combat_doc and not combat_doc.get("combat_state", {}).get("combat_over", True)
-        
+
+        # ── USAGE ENFORCEMENT ─────────────────────────────────────────────────────
+        _usage_info = None
+        if authorization and authorization.startswith("Bearer "):
+            try:
+                from middleware.auth_middleware import _decode
+                from routers.billing import check_and_increment_usage
+                _user_id = _decode(authorization.split(" ", 1)[1])
+                if _user_id:
+                    _usage_info = await check_and_increment_usage(_user_id)
+            except HTTPException:
+                raise
+            except Exception as _ue:
+                logger.warning(f"Usage check failed (non-fatal): {_ue}")
+
+        # ── REST DETECTION: short-circuit before DM pipeline ─────────────────────
+        # Rest is deterministic — don't route through the LLM, just compute and return.
+        if is_combat_active:
+            # Block rest attempts during combat — give the player clear feedback.
+            # Must return a flat dict (NOT api_success wrapper) so CombatScreen's
+            # response handler can read data.narration directly.
+            from services.rest_service import detect_rest_intent
+            if detect_rest_intent(player_action):
+                return {
+                    "narration": "You can't rest while enemies are attacking! Finish the fight first.\n\nWhat do you do?",
+                    "combat_active": True,
+                    "world_state_update": {},
+                    "player_updates": {},
+                    "entity_mentions": [],
+                }
+        if not is_combat_active:
+            from services.rest_service import detect_rest_intent, compute_short_rest, compute_long_rest, build_rest_narration
+            _rest_type = detect_rest_intent(player_action)
+            if _rest_type:
+                char_state = char_doc["character_state"]
+                _current_location = world_state["world_state"].get("current_location", "")
+                _result = compute_short_rest(char_state) if _rest_type == "short" else compute_long_rest(char_state)
+
+                # Build updated character state
+                _updated_char = {
+                    **char_state,
+                    "hp": _result["hp"],
+                    "spell_slots": _result["spell_slots"],
+                    "conditions": _result["conditions"],
+                    "hit_dice_remaining": _result["hit_dice_remaining"],
+                    "hit_dice_max": _result["hit_dice_max"],
+                }
+                if "spell_slots_max" in _result:
+                    _updated_char["spell_slots_max"] = _result["spell_slots_max"]
+
+                await update_character_state(campaign_id, character_id, _updated_char)
+                logger.info(
+                    "💤 %s rest: HP %d→%d, hit dice %d/%d, slots recovered: %s",
+                    _rest_type.title(),
+                    char_state.get("hp", 0), _result["hp"],
+                    _result["hit_dice_remaining"], _result["hit_dice_max"],
+                    _result.get("slots_recovered", {}),
+                )
+
+                _narration = build_rest_narration(_rest_type, _result, _current_location)
+                return api_success({
+                    "narration": _narration,
+                    "player_updates": {
+                        "rest_result": _result,
+                        "hp": _result["hp"],
+                        "spell_slots": _result["spell_slots"],
+                        "hit_dice_remaining": _result["hit_dice_remaining"],
+                        "hit_dice_max": _result["hit_dice_max"],
+                    },
+                    "world_state_update": {},
+                    "entity_mentions": [],
+                })
+
         # Ensure NPCs are activated for current location
         from services.npc_activation_service import populate_active_npcs_for_location, ensure_npcs_have_ids
         
@@ -2340,14 +2658,42 @@ async def process_action(request: dict):
                     process_enemy_turns
                 )
                 from models.game_models import CombatDoc, CombatState
-                
+
+                # Fetch (or generate) the cached battlefield grid for this location
+                _ws_inner = world_state.get("world_state", world_state) if isinstance(world_state, dict) else {}
+                _location_name = _ws_inner.get("current_location") or _ws_inner.get("location") or "Unknown Location"
+                try:
+                    from services.battlefield_layout_service import (
+                        get_or_generate_layout,
+                        location_key_for,
+                    )
+                    # Look up a description from the world blueprint's points_of_interest
+                    _poi_desc = ""
+                    for _poi in (campaign.get("world_blueprint", {}).get("points_of_interest") or []):
+                        if (_poi.get("name") or "").lower() == _location_name.lower():
+                            _poi_desc = _poi.get("description", "")
+                            break
+                    _battlefield_grid = await get_or_generate_layout(
+                        db=get_db(),
+                        campaign_id=campaign_id,
+                        location_key=location_key_for(_location_name),
+                        location_name=_location_name,
+                        location_description=_poi_desc,
+                        biome=(campaign.get("world_blueprint", {}).get("starting_region", {}).get("biome_layers") or ["dungeon"])[0],
+                    )
+                except Exception as _ge:
+                    logger.warning(f"⚠️ Could not load battlefield grid: {_ge}")
+                    _battlefield_grid = None
+
                 # Start combat
                 character_level = char_doc["character_state"].get("level", 1)
                 combat_state_dict = start_combat_with_target(
                     target_resolution=target_resolution,
                     character_state=char_doc["character_state"],
                     world_blueprint=campaign["world_blueprint"],
-                    character_level=character_level
+                    character_level=character_level,
+                    world_state=_ws_inner,
+                    battlefield_grid=_battlefield_grid,
                 )
                 
                 # Process player's first attack mechanically
@@ -2476,33 +2822,329 @@ async def process_action(request: dict):
                 clarification = NarrationFilter.apply_filter(target_resolution['clarification_reason'], max_sentences=3, context="target_clarification")
                 
                 # v4.1 UNIFIED SPEC: No options field - narration ends with open prompts
-                return api_success({
+                return {
                     "narration": clarification + "\n\nWhat do you do?",
                     "entity_mentions": [],
                     "combat_active": True,
                     "world_state_update": {},
                     "player_updates": {}
-                })
+                }
             
-            # Process player attack mechanically
-            attack_result = process_player_attack(
-                target_id=target_resolution['target_id'],
-                character_state=char_doc["character_state"],
-                combat_state=combat_state
+            # ── Action Economy: check if action already used ──────────────────
+            from services.dnd_rules import classify_action_cost
+            # Prefer the card's action_cost over free-text inference when a card is used
+            deck_cards_for_cost = (deck_doc.get("cards", []) if deck_doc else [])
+            card_action_cost = None
+            if card_used_id:
+                for _c in deck_cards_for_cost:
+                    if _c.get("id") == card_used_id:
+                        card_action_cost = _c.get("action_cost")
+                        break
+            action_cost = card_action_cost or classify_action_cost(player_action)
+            player_turn_state = combat_state.get("player_turn_state", {
+                "action_used": False,
+                "bonus_action_used": False,
+                "reaction_used": False,
+            })
+            if action_cost == "action" and player_turn_state.get("action_used", False):
+                return {
+                    "narration": "You've already used your action this turn. Use a bonus action, or end your turn.\n\nWhat do you do?",
+                    "combat_active": True,
+                    "world_state_update": {},
+                    "player_updates": {},
+                }
+            if action_cost == "bonus_action" and player_turn_state.get("bonus_action_used", False):
+                return {
+                    "narration": "You've already used your bonus action this turn.\n\nWhat do you do?",
+                    "combat_active": True,
+                    "world_state_update": {},
+                    "player_updates": {},
+                }
+
+            # ── Spell component check ─────────────────────────────────────
+            from services.component_service import (
+                check_costly_component,
+                check_noncostly_component,
+                check_somatic_component,
+                consume_component_if_needed,
             )
-            
+            _inventory = list(char_doc["character_state"].get("inventory", []))
+            _card_for_comp = next((c for c in deck_cards if c.get("id") == card_used_id), {})
+            _card_spell_name = _card_for_comp.get("title", "") if _card_for_comp.get("source") == "spell" else ""
+            _component_idx = None
+            if _card_spell_name:
+                _card_comps = _card_for_comp.get("components", {})
+                # Check somatic (free hand)
+                _som_ok, _som_err = check_somatic_component(
+                    _card_spell_name, _card_comps,
+                    char_doc["character_state"], deck_cards,
+                )
+                if not _som_ok:
+                    return {
+                        "narration": _som_err + "\n\nWhat do you do?",
+                        "combat_active": True,
+                        "world_state_update": {},
+                        "player_updates": {},
+                    }
+                # Check costly material component
+                _comp_ok, _comp_err, _component_idx = check_costly_component(_card_spell_name, _inventory)
+                if not _comp_ok:
+                    return {
+                        "narration": _comp_err + "\n\nWhat do you do?",
+                        "combat_active": True,
+                        "world_state_update": {},
+                        "player_updates": {},
+                    }
+                # Advisory warning for non-costly M (doesn't block)
+                _, _noncostly_warn = check_noncostly_component(
+                    _card_spell_name, _card_comps, _inventory,
+                )
+                if _noncostly_warn:
+                    logger.warning(_noncostly_warn)
+
+            # ── DM narrative advantage/disadvantage assessment ────────────────
+            from services.advantage_service import get_dm_advantage_assessment
+            _target_for_adv = next(
+                (e for e in combat_state.get("enemies", [])
+                 if e.get("id") == target_resolution.get("target_id")), {}
+            )
+            _bf_conditions = [
+                c.get("title", "") for c in
+                combat_state.get("battlefield", {}).get("passive_conditions", [])
+                if isinstance(c, dict)
+            ]
+            _light = combat_state.get("light_level", {})
+            _light_str = _light.get("level", "bright") if isinstance(_light, dict) else "bright"
+            dm_adv_result = await get_dm_advantage_assessment(
+                player_action=player_action,
+                target_name=_target_for_adv.get("name", "enemy"),
+                target_conditions=_target_for_adv.get("conditions", []),
+                attacker_conditions=char_doc["character_state"].get("conditions", []),
+                battlefield_conditions=_bf_conditions,
+                light_level=_light_str,
+            )
+            # Inject into combat_state so process_player_attack can read them
+            combat_state["_dm_advantage"]        = dm_adv_result["advantage"]
+            combat_state["_dm_disadvantage"]     = dm_adv_result["disadvantage"]
+            combat_state["_dm_advantage_reason"] = dm_adv_result["reason"]
+            if dm_adv_result["reason"]:
+                logger.info(f"🎲 DM adv assessment: adv={dm_adv_result['advantage']} disadv={dm_adv_result['disadvantage']} — {dm_adv_result['reason']}")
+
+            # ── Spell slot check ──────────────────────────────────────────────
+            deck_cards = deck_cards_for_cost
+            _spell_level = 0
+            _is_concentration_spell = False
+            if _card_spell_name:
+                _card_for_slot = next((c for c in deck_cards if c.get("id") == card_used_id), {})
+                _spell_level = int((_card_for_slot.get("metadata") or {}).get("spell_level") or 0)
+                _is_concentration_spell = bool(_card_for_slot.get("concentration", False))
+
+                if _spell_level > 0:
+                    _slots = dict(char_doc["character_state"].get("spell_slots") or {})
+                    _slot_key = str(_spell_level)
+                    _slots_available = int(_slots.get(_slot_key, 0))
+                    if _slots_available <= 0:
+                        return {
+                            "narration": f"You have no {_slot_key}{'st' if _slot_key=='1' else 'nd' if _slot_key=='2' else 'rd' if _slot_key=='3' else 'th'}-level spell slots remaining. Rest to recover them.\n\nWhat do you do?",
+                            "combat_active": True,
+                            "world_state_update": {},
+                            "player_updates": {},
+                        }
+
+            # ── Concentration warning ─────────────────────────────────────────
+            _prev_conc_spell = char_doc["character_state"].get("concentration_spell")
+            if _is_concentration_spell and _prev_conc_spell and _prev_conc_spell != _card_spell_name:
+                logger.info(f"⚡ Concentration broken: {_prev_conc_spell} → {_card_spell_name}")
+
+            # ── Route: save-spell / attack-spell / heal / auto-hit / weapon ──────
+            from services.combat_engine_service import process_save_spell
+            from services.saving_throw_service import spell_save_dc as calc_spell_save_dc
+            from data.spell_slots import get_spellcasting_ability
+
+            _card_for_attack = next((c for c in deck_cards if c.get("id") == card_used_id), None)
+            _is_save_spell = bool(_card_for_attack and _card_for_attack.get("save_type"))
+            _spell_type = (_card_for_attack.get("spell_type") or "") if _card_for_attack else ""
+
+            def _get_target_enemy():
+                return next(
+                    (e for e in combat_state.get("enemies", [])
+                     if e.get("id") == target_resolution.get("target_id")), None
+                )
+
+            def _caster_cls_name():
+                _cls = (char_doc["character_state"].get("class") or char_doc["character_state"].get("class_") or "")
+                return (_cls.get("name") or _cls.get("key") or "").strip().title() if isinstance(_cls, dict) else str(_cls).strip().title()
+
+            if _is_save_spell:
+                # Save-based spell: find target, compute DC, resolve
+                _target_enemy = _get_target_enemy()
+                if not _target_enemy:
+                    return {
+                        "narration": "No valid target for that spell. Choose a different target.\n\nWhat do you do?",
+                        "combat_active": True,
+                        "world_state_update": {},
+                        "player_updates": {},
+                    }
+                _sc_ability = get_spellcasting_ability(_caster_cls_name()) or "int"
+                _dc = calc_spell_save_dc(char_doc["character_state"], _sc_ability)
+                attack_result = process_save_spell(
+                    spell_name=_card_spell_name,
+                    spell_card=_card_for_attack,
+                    caster_state=char_doc["character_state"],
+                    target=_target_enemy,
+                    spell_save_dc=_dc,
+                    combat_state=combat_state,
+                )
+            elif _spell_type == "attack":
+                # Attack-roll spell: uses spellcasting ability modifier
+                from services.combat_engine_service import process_spell_attack
+                _target_enemy = _get_target_enemy()
+                if not _target_enemy:
+                    return {
+                        "narration": "No valid target for that spell. Choose a different target.\n\nWhat do you do?",
+                        "combat_active": True,
+                        "world_state_update": {},
+                        "player_updates": {},
+                    }
+                attack_result = process_spell_attack(
+                    spell_name=_card_spell_name,
+                    spell_card=_card_for_attack,
+                    caster_state=char_doc["character_state"],
+                    target_id=target_resolution["target_id"],
+                    combat_state=combat_state,
+                )
+            elif _spell_type == "heal":
+                # Healing spell: restore caster HP (no target required)
+                from services.combat_engine_service import process_heal_spell
+                attack_result = process_heal_spell(
+                    spell_name=_card_spell_name,
+                    spell_card=_card_for_attack,
+                    caster_state=char_doc["character_state"],
+                    combat_state=combat_state,
+                )
+            elif _spell_type == "auto_hit":
+                # Auto-hit spell: no attack roll (Magic Missile)
+                from services.combat_engine_service import process_auto_hit_spell
+                _target_enemy = _get_target_enemy()
+                if not _target_enemy:
+                    return {
+                        "narration": "No valid target for that spell. Choose a different target.\n\nWhat do you do?",
+                        "combat_active": True,
+                        "world_state_update": {},
+                        "player_updates": {},
+                    }
+                attack_result = process_auto_hit_spell(
+                    spell_name=_card_spell_name,
+                    spell_card=_card_for_attack,
+                    caster_state=char_doc["character_state"],
+                    target_id=target_resolution["target_id"],
+                    combat_state=combat_state,
+                )
+            elif _spell_type == "buff" or (_card_spell_name and not _is_save_spell and not _spell_type):
+                # Buff/utility spell — no attack roll, no damage, just apply and narrate
+                _buff_narration = {
+                    "Bless": "Divine favor washes over you, bolstering your attacks and saves.",
+                    "Shield of Faith": "A shimmering field of holy energy surrounds you (+2 AC).",
+                    "Hex": "A dark curse settles over your target.",
+                    "Hunter's Mark": "You mark your quarry with spectral light.",
+                    "Armor of Agathys": "Icy magical armor wraps around you, dealing cold damage to attackers.",
+                    "Divine Favor": "Your weapon pulses with radiant energy.",
+                    "Mirror Image": "Three illusory copies of you appear, confusing your enemies.",
+                    "Invisibility": "You fade from sight.",
+                    "Misty Step": "You vanish in a puff of silver mist and reappear nearby.",
+                    "Shield": "A magical barrier flares to life, deflecting the blow.",
+                    "Mage Armor": "Magical force wraps around you like armor (AC 13 + DEX).",
+                    "Guidance": "A touch of divine guidance steadies your hand.",
+                    "Shillelagh": "Your staff glows with natural magic.",
+                }.get(_card_spell_name, f"You cast {_card_spell_name}.")
+                attack_result = {
+                    "success": True,
+                    "mechanical_summary": {
+                        "spell_name": _card_spell_name,
+                        "is_buff_spell": True,
+                        "hit": True,
+                        "narration": _buff_narration,
+                    },
+                    "combat_state_update": {},
+                    "character_state_update": {},
+                    "combat_over": False,
+                    "xp_gained": 0,
+                }
+            else:
+                # Weapon attack (or buff spell played as weapon — falls through)
+                from services.weapon_service import resolve_player_weapon
+                weapon = resolve_player_weapon(
+                    char_doc["character_state"],
+                    card_used_id,
+                    deck_cards,
+                )
+                logger.info(f"⚔️ Weapon resolved: {weapon['name']} ({weapon['damage_die']}, {weapon['weapon_type']})")
+                attack_result = process_player_attack(
+                    target_id=target_resolution['target_id'],
+                    character_state=char_doc["character_state"],
+                    combat_state=combat_state,
+                    weapon_type=weapon["weapon_type"],
+                    weapon_damage=weapon["damage_die"],
+                    weapon_name=weapon["name"],
+                )
+
             if not attack_result['success']:
-                # v4.1 UNIFIED SPEC: No options field - narration ends with open prompts
                 return {
                     "narration": attack_result['mechanical_summary'].get('error', 'Unable to process attack') + "\n\nWhat do you do?",
                     "combat_active": True,
                     "world_state_update": {},
                     "player_updates": {}
                 }
-            
+
+            # Mark action as used in player_turn_state
+            if action_cost == "action":
+                player_turn_state["action_used"] = True
+            elif action_cost == "bonus_action":
+                player_turn_state["bonus_action_used"] = True
+            elif action_cost == "reaction":
+                player_turn_state["reaction_used"] = True
+            combat_state["player_turn_state"] = player_turn_state
+
+            # ── Consume spell slot after successful cast ───────────────────────
+            _char_state_patch = {}
+            if _card_spell_name and _spell_level > 0:
+                _slots = dict(char_doc["character_state"].get("spell_slots") or {})
+                _slot_key = str(_spell_level)
+                _slots[_slot_key] = max(0, int(_slots.get(_slot_key, 0)) - 1)
+                char_doc["character_state"]["spell_slots"] = _slots
+                _char_state_patch["spell_slots"] = _slots
+                logger.info(f"🔮 Consumed {_slot_key}th-level slot for {_card_spell_name}. Remaining: {_slots}")
+
+            # ── Track concentration ────────────────────────────────────────────
+            if _is_concentration_spell and _card_spell_name:
+                char_doc["character_state"]["concentration_spell"] = _card_spell_name
+                char_doc["character_state"]["concentration_card_id"] = card_used_id
+                _char_state_patch["concentration_spell"] = _card_spell_name
+                _char_state_patch["concentration_card_id"] = card_used_id
+            elif not _is_concentration_spell and not _card_spell_name:
+                pass  # weapon attack — don't touch concentration
+
+            # Consume costly M component if the spell was cast successfully
+            if _card_spell_name and _component_idx is not None:
+                _inventory = consume_component_if_needed(_card_spell_name, _inventory, _component_idx)
+                _char_state_patch["inventory"] = _inventory
+                char_doc["character_state"]["inventory"] = _inventory
+                logger.info(f"💎 Consumed component for {_card_spell_name}")
+
+            # Persist character state changes (slots, concentration, inventory)
+            if _char_state_patch:
+                _updated_char = {**char_doc["character_state"], **_char_state_patch}
+                await update_character_state(campaign_id, character_id, _updated_char)
+                char_doc["character_state"].update(_char_state_patch)
+
+            # Apply immediate character state changes (e.g. heal spells) before enemy turns
+            _spell_char_patch = attack_result.get("character_state_update", {})
+            if _spell_char_patch:
+                char_doc["character_state"].update(_spell_char_patch)
+
             # Update combat state
             combat_state.update(attack_result['combat_state_update'])
-            
+
             # Process enemy turns if combat continues
             enemy_result = {"enemy_actions": [], "total_damage_to_player": 0}
             if not attack_result['combat_over']:
@@ -2510,36 +3152,126 @@ async def process_action(request: dict):
                     character_state=char_doc["character_state"],
                     combat_state=combat_state
                 )
-                
+
                 # Update character HP
+                char_hp_patch = {}
                 if enemy_result['character_state_update']:
-                    updated_char = {**char_doc["character_state"], **enemy_result['character_state_update']}
+                    char_hp_patch = enemy_result['character_state_update']
+                    updated_char = {**char_doc["character_state"], **char_hp_patch}
                     await update_character_state(campaign_id, character_id, updated_char)
-                
-                # Check if player defeated
+                    char_doc["character_state"].update(char_hp_patch)
+
+                # ── Concentration check after taking damage ────────────────────
+                _damage_taken = enemy_result.get("total_damage_to_player", 0)
+                _conc_spell = char_doc["character_state"].get("concentration_spell")
+                if _conc_spell and _damage_taken > 0:
+                    from services.saving_throw_service import roll_saving_throw
+                    _conc_dc = max(10, _damage_taken // 2)
+                    _conc_save = roll_saving_throw(
+                        character_state=char_doc["character_state"],
+                        ability="con",
+                        dc=_conc_dc,
+                    )
+                    if not _conc_save["success"]:
+                        char_doc["character_state"]["concentration_spell"] = None
+                        char_doc["character_state"]["concentration_card_id"] = None
+                        await update_character_state(campaign_id, character_id, {
+                            **char_doc["character_state"],
+                            "concentration_spell": None,
+                            "concentration_card_id": None,
+                        })
+                        logger.info(f"💥 Concentration broken on {_conc_spell} (CON save {_conc_save['total']} vs DC {_conc_dc})")
+                        combat_state["_concentration_broken"] = _conc_spell
+                        combat_state["_concentration_save"] = _conc_save
+                    else:
+                        combat_state["_concentration_save"] = _conc_save
+
+                # After enemy turns: reset action economy for next player turn
+                combat_state["player_turn_state"] = {
+                    "action_used": False,
+                    "bonus_action_used": False,
+                    "reaction_used": False,
+                }
+
+                # If player is now dying, reflect in combat state but don't end combat
+                if enemy_result.get('player_dying'):
+                    combat_state['player_dying'] = True
+                    combat_state['death_saves'] = enemy_result.get('death_saves', {
+                        "successes": 0, "failures": 0, "stable": False, "dead": False
+                    })
+
+                # Concentration save result
+                conc_save = enemy_result.get("concentration_save")
+                if conc_save:
+                    combat_state["_concentration_save"] = conc_save
+                    if not conc_save["saved"]:
+                        combat_state["_concentration_broken"] = True
+                        char_doc["character_state"]["concentration_spell"] = None
+                        char_doc["character_state"]["concentration_card_id"] = None
+                        logger.info("🎯 Concentration broken (dungeon_forge sync): %s", conc_save["spell"])
+
+                # Check if player defeated (fallback — shouldn't happen now with death saves)
                 if enemy_result.get('combat_over'):
                     combat_state['combat_over'] = True
                     combat_state['outcome'] = enemy_result.get('outcome')
-            
+
             # Generate mechanical summary
             mechanical_summary = {
                 "player_attack": attack_result['mechanical_summary'],
                 "enemy_turns": enemy_result.get('enemy_actions', []),
                 "total_damage_to_player": enemy_result.get('total_damage_to_player', 0),
                 "combat_over": attack_result['combat_over'] or enemy_result.get('combat_over', False),
-                "outcome": combat_state.get('outcome')
+                "player_dying": enemy_result.get('player_dying', False),
+                "outcome": combat_state.get('outcome'),
+                # Spell slot / concentration state for frontend
+                "spell_slots": char_doc["character_state"].get("spell_slots", {}),
+                "concentration_spell": char_doc["character_state"].get("concentration_spell"),
+                "concentration_broken": combat_state.get("_concentration_broken"),
+                "concentration_save": combat_state.get("_concentration_save"),
             }
-            
-            # Generate narration
+
+            # Increment round after both sides have acted
+            if not mechanical_summary['combat_over']:
+                combat_state["round"] = combat_state.get("round", 1) + 1
+                combat_state["active_turn"] = "player"
+
+            # Generate narration (player attack portion only)
             narration = generate_combat_narration_from_mechanical(mechanical_summary, char_doc["character_state"])
-            
+
+            # Build individual enemy narrations for frontend popup sequencing
+            enemy_narrations = []
+            for ea in mechanical_summary['enemy_turns']:
+                attacker = ea.get('attacker', 'Enemy')
+                dmg = ea.get('damage', 0)
+                if ea.get('critical_miss'):
+                    en_text = f"The {attacker} swings wildly and misses completely!"
+                elif ea.get('critical'):
+                    en_text = f"Critical hit! The {attacker} strikes you with devastating force for {dmg} damage!"
+                elif ea.get('hit'):
+                    en_text = f"The {attacker} hits you for {dmg} damage!"
+                else:
+                    en_text = f"The {attacker} attacks but you manage to dodge!"
+                enemy_narrations.append({
+                    "text": en_text,
+                    "mechanics": ea,
+                })
+
             combat_result = {
                 "narration": narration,
+                "enemy_narrations": enemy_narrations,
                 "combat_state_update": combat_state,
                 "character_state_update": enemy_result.get('character_state_update', {}),
                 "combat_over": mechanical_summary['combat_over'],
                 "outcome": mechanical_summary.get('outcome'),
-                "xp_gained": attack_result.get('xp_gained', 0)
+                "xp_gained": attack_result.get('xp_gained', 0),
+                # Player state updates for frontend sync
+                "player_updates": {
+                    "spell_slots": char_doc["character_state"].get("spell_slots", {}),
+                    "spell_slots_max": char_doc["character_state"].get("spell_slots_max", {}),
+                    "concentration_spell": char_doc["character_state"].get("concentration_spell"),
+                    "concentration_card_id": char_doc["character_state"].get("concentration_card_id"),
+                },
+                "mechanical_summary": mechanical_summary,
             }
             
             # Update combat state in DB
@@ -2577,7 +3309,7 @@ async def process_action(request: dict):
                     active_npcs = world_state["world_state"].get("active_npcs", [])
                     enemy_names = [e["name"] for e in combat_result["combat_state_update"]["enemies"]]
                     world_state_update["active_npcs"] = [n for n in active_npcs if n not in enemy_names]
-                    
+
                     # P3: Apply XP gain and level-ups
                     xp_gained = combat_result.get("xp_gained", 0)
                     if xp_gained > 0:
@@ -2591,6 +3323,24 @@ async def process_action(request: dict):
                         player_updates["xp_gained"] = xp_gained
                         player_updates["level_up_events"] = level_up_events
                         logger.info(f"💰 Awarded {xp_gained} XP, level-ups: {level_up_events}")
+
+                    # ── Generate loot for all defeated enemies ──────────────
+                    try:
+                        from services.loot_service import generate_combat_loot
+                        defeated_enemies = combat_result["combat_state_update"].get("enemies", [])
+                        loot_results = generate_combat_loot(
+                            defeated_enemies,
+                            char_doc["character_state"],
+                        )
+                        player_updates["pending_loot"] = loot_results
+                        total_loot_items = sum(
+                            len(l["guaranteed"]) + len(l["hidden"]) for l in loot_results
+                        )
+                        total_gold = sum(l["gold"] for l in loot_results)
+                        logger.info("🎒 Generated loot: %d items, %d gp across %d enemies",
+                                    total_loot_items, total_gold, len(defeated_enemies))
+                    except Exception as _le:
+                        logger.warning("⚠️ Loot generation failed: %s", _le)
                 
                 elif combat_result["outcome"] == "player_defeated":
                     # P3: Handle player defeat
@@ -2632,6 +3382,11 @@ async def process_action(request: dict):
             # v4.1 UNIFIED SPEC: No options field - narration ends with open prompts
             return {
                 "narration": combat_result["narration"],
+                "enemy_narrations": combat_result.get("enemy_narrations", []),
+                "mechanical_summary": mechanical_summary,
+                "combat_state": combat_result["combat_state_update"],
+                "player_dying": mechanical_summary.get("player_dying", False),
+                "death_saves": combat_result["combat_state_update"].get("death_saves"),
                 "combat_active": True,
                 "world_state_update": {},
                 "player_updates": {}  # P3: No updates mid-combat
@@ -2696,6 +3451,18 @@ async def process_action(request: dict):
                 intent_flags["suggested_dc"] = suggested_dc
                 intent_flags["dc_band"] = "moderate"
         
+        # ── Scene intelligence: load existing + build embedding instructions ────
+        _world_inner = world_state.get("world_state", world_state) if isinstance(world_state, dict) else {}
+        _scene_intel = _world_inner.get("scene_intelligence") or {}
+        _active_quests = _world_inner.get("active_quests", {})
+        _first_quest = next(iter(_active_quests.values()), {}) if _active_quests else {}
+        _quest_context = {
+            "quest_type": _first_quest.get("quest_type", _first_quest.get("type", "default")),
+            "quest_id": _first_quest.get("quest_id", ""),
+            "quest_name": _first_quest.get("name", _first_quest.get("title", "")),
+            "objective_hint": "",
+        }
+
         logger.info("🎲 Running DUNGEON FORGE...")
         dm_response = await run_dungeon_forge(
             player_action=player_action,
@@ -2710,7 +3477,10 @@ async def process_action(request: dict):
             session_mode=session_mode,
             improvisation_result=improvisation_result,
             npc_personalities=npc_personalities_data,
-            active_tailing_quest=active_tailing_quest
+            active_tailing_quest=active_tailing_quest,
+            scene_intelligence=_scene_intel if _scene_intel else None,
+            narrator_tone=narrator_tone,
+            pressure_context=_pressure_context,
         )
         logger.info(f"   DM Response: narration length={len(dm_response.get('narration', ''))}")
         
@@ -2846,6 +3616,7 @@ async def process_action(request: dict):
         # WORLD MUTATOR (apply state changes)
         logger.info("🌍 Running WORLD MUTATOR...")
         world_state_update = dm_response.get("world_state_update", {})
+        _quest_completion_xp = 0  # accumulated from completed quests below
         
         if world_state_update:
             updated_state = {**world_state["world_state"], **world_state_update}
@@ -2887,7 +3658,8 @@ async def process_action(request: dict):
         if quest_updates and any([
             quest_updates.get("new_quests"),
             quest_updates.get("progress_events"),
-            quest_updates.get("completed_quest_ids")
+            quest_updates.get("completed_quest_ids"),
+            quest_updates.get("failed_quest_ids"),
         ]):
             logger.info("📜 Processing quest updates from DUNGEON FORGE...")
             from services.quest_service import (
@@ -2926,11 +3698,20 @@ async def process_action(request: dict):
                             quest["status"] = "completed"
                             logger.info(f"✅ Quest '{quest['name']}' completed!")
             
-            # Handle completed quests
+            # Handle completed quests — accumulate XP from all completions
             for quest_id in quest_updates.get("completed_quest_ids", []):
-                quest_xp = complete_quest(current_world, quest_id)
-                logger.info(f"🎊 Quest completed, awarding {quest_xp} XP")
-            
+                _qxp = complete_quest(current_world, quest_id)
+                _quest_completion_xp += _qxp
+                logger.info(f"🎊 Quest completed, awarding {_qxp} XP")
+
+            # Handle failed quests — mark status, no XP
+            for quest_id in quest_updates.get("failed_quest_ids", []):
+                for quest in current_world.get("quests", []):
+                    if quest["quest_id"] == quest_id and quest.get("status") == "active":
+                        quest["status"] = "failed"
+                        player_updates.setdefault("quests_failed", []).append(quest.get("name", quest_id))
+                        logger.info(f"❌ Quest failed (DM flagged): {quest.get('name', quest_id)}")
+
             # Save updated world state with quests
             await update_world_state(campaign_id, current_world)
         
@@ -2945,8 +3726,10 @@ async def process_action(request: dict):
         
         # Legacy support: also check player_updates.xp_gained
         xp_from_legacy = player_updates.get("xp_gained", 0)
-        
-        total_xp = xp_from_action + xp_from_legacy
+
+        total_xp = xp_from_action + xp_from_legacy + _quest_completion_xp
+        if _quest_completion_xp > 0:
+            xp_reason = xp_reason or "Quest completed"
         
         if total_xp > 0:
             from services.progression_service import apply_xp_gain
@@ -3006,15 +3789,44 @@ async def process_action(request: dict):
             from services.combat_engine_service import start_combat, generate_combat_options
             from services.enemy_sourcing_service import select_enemies_for_location
             from models.normalized_entities import normalize_character, normalize_enemy_list
-            
-            # Build enemy templates from world context (P2.5: world-aware enemy sourcing)
+
             character_level = char_doc["character_state"].get("level", 1)
-            enemy_templates = select_enemies_for_location(
-                world_blueprint=campaign["world_blueprint"],
-                world_state=world_state["world_state"],
-                character_level=character_level
-            )
-            
+
+            # ── Scene-aware enemy sourcing ──────────────────────────────────────
+            # If we have accumulated scene intelligence, compose the encounter
+            # from what the player already observed — battlefield matches narration.
+            _combat_scene_intel = world_state_update.get("scene_intelligence") or _scene_intel
+            if _combat_scene_intel and _combat_scene_intel.get("tension_score", 0) >= 0.2:
+                try:
+                    from services.scene_intelligence_service import build_encounter_from_scene
+                    _player_intel_level = min(3, int(_combat_scene_intel.get("narration_count", 0)))
+                    _composed = build_encounter_from_scene(
+                        scene_intel=_combat_scene_intel,
+                        player_level=character_level,
+                        player_intel_level=_player_intel_level,
+                    )
+                    enemy_templates = _composed.get("enemies", [])
+                    logger.info(
+                        "🎭 Scene-composed encounter: %d enemies, difficulty=%s, quest=%s",
+                        len(enemy_templates),
+                        _composed.get("difficulty", "?"),
+                        _quest_context.get("quest_type", "?"),
+                    )
+                except Exception as _ce:
+                    logger.warning("Scene encounter composition failed, falling back: %s", _ce)
+                    enemy_templates = select_enemies_for_location(
+                        world_blueprint=campaign["world_blueprint"],
+                        world_state=world_state["world_state"],
+                        character_level=character_level,
+                    )
+            else:
+                # No scene intel — fall back to location-based enemy sourcing
+                enemy_templates = select_enemies_for_location(
+                    world_blueprint=campaign["world_blueprint"],
+                    world_state=world_state["world_state"],
+                    character_level=character_level,
+                )
+
             # Normalize enemies before combat starts
             normalized_enemies = normalize_enemy_list(enemy_templates)
             logger.info(f"✅ Normalized {len(normalized_enemies)} enemies for combat initialization")
@@ -3025,7 +3837,8 @@ async def process_action(request: dict):
                 character_state=char_doc["character_state"],
                 enemy_templates=normalized_enemies,
                 campaign_id=campaign_id,
-                character_id=character_id
+                character_id=character_id,
+                world_state=world_state.get("world_state", world_state) if isinstance(world_state, dict) else {},
             )
             
             # Create CombatDoc
@@ -3184,15 +3997,36 @@ async def process_action(request: dict):
             # After prepending scene, re-apply final filter to combined narration
             narration_text = NarrationFilter.apply_filter(narration_text, max_sentences=mode_limits["max"], context=f"final_combined_{current_mode}")
         
+        # ── Update scene intelligence from this narration (sync fast path) ──────
+        try:
+            from services.scene_intelligence_service import update_scene_intelligence
+            _location_name = _world_inner.get("current_location") or _world_inner.get("location") or "Unknown"
+            _updated_intel = update_scene_intelligence(
+                narration=narration_text,
+                existing_intel=_scene_intel,
+                quest_context=_quest_context,
+                location_name=_location_name,
+            )
+            # Persist updated scene_intelligence back into world_state
+            world_state_update["scene_intelligence"] = _updated_intel
+            logger.info(
+                "🎭 Scene intel updated — tension: %.0f%%, people: %d",
+                _updated_intel.get("tension_score", 0) * 100,
+                len(_updated_intel.get("people", [])),
+            )
+        except Exception as _si_err:
+            logger.warning("Scene intelligence update failed (non-fatal): %s", _si_err)
+
         # v4.1 UNIFIED SPEC: No options field - narration ends with open prompts
         return api_success({
             "narration": narration_text,
             "entity_mentions": entity_mentions,
             "check_request": check_request,
             "world_state_update": world_state_update,
-            "player_updates": player_updates
+            "player_updates": player_updates,
+            "usage": _usage_info,
         })
-        
+
     except Exception as e:
         logger.error(f"❌ Action processing failed: {e}", exc_info=True)
         return api_error("internal_error", f"Action processing failed: {str(e)}", status_code=500)

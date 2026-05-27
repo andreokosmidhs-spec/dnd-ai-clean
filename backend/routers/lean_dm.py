@@ -193,7 +193,7 @@ def _build_pinned_block(pinned_cards: List[dict]) -> str:
     return "\n".join(lines)
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None, pressure_context: str = "", scene_thread: str = "") -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None, pressure_context: str = "", scene_thread: str = "", downtime_block: str = "") -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -516,6 +516,7 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{canon_block}\n\n"
         f"{obligations_block}\n"
         + (f"{pressure_context}\n\n" if pressure_context else "")
+        + (f"{downtime_block}\n\n" if downtime_block else "")
         + (f"{scene_thread}\n\n" if scene_thread else "")
         + "=== SCENE THREADING — NON-NEGOTIABLE ===\n"
         "When the player investigates, follows, or engages any detail from the scene:\n"
@@ -1221,6 +1222,22 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     except Exception as _lpce:
         logger.warning(f"Lean DM pressure context failed (non-fatal): {_lpce}")
 
+    # Downtime / breathing room — pacing state, needs, victory feast (non-blocking)
+    _downtime_block = ""
+    _pacing_mutated = False
+    try:
+        from services.downtime_service import (
+            build_downtime_block,
+            check_player_action_for_needs,
+        )
+        _pacing_before = str((campaign.get("world_state") or {}).get("narrative_pacing"))
+        check_player_action_for_needs(req.player_action, campaign, clock_hour)
+        _pacing_after = str((campaign.get("world_state") or {}).get("narrative_pacing"))
+        _pacing_mutated = _pacing_before != _pacing_after
+        _downtime_block = build_downtime_block(campaign, clock_hour, character, current_location)
+    except Exception as _dte:
+        logger.warning(f"Downtime block build failed (non-fatal): {_dte}")
+
     # Scene thread — close/open loops, wound reveal, continuity (non-blocking)
     _scene_thread = ""
     try:
@@ -1254,6 +1271,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         current_location=current_location,
         pressure_context=_lean_pressure_ctx,
         scene_thread=_scene_thread,
+        downtime_block=_downtime_block,
     )
 
     # Call the LLM
@@ -1382,6 +1400,16 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"Failed to persist clock_hour: {exc}")
+
+    # Persist narrative_pacing if check_player_action_for_needs mutated it
+    if _pacing_mutated:
+        try:
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {"$set": {"world_state.narrative_pacing": (campaign.get("world_state") or {}).get("narrative_pacing") or {}}},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Failed to persist narrative_pacing: {exc}")
     time_bucket = bucket_for_hour(new_clock_hour)
     # Update in-memory campaign so any downstream code (storyline draft) sees it.
     campaign.setdefault("world_state", {})["clock_hour"] = new_clock_hour
@@ -1565,6 +1593,17 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             }
             await db.campaign_storylines.insert_one(dict(storyline_doc))
             storyline_payload = storyline_to_dict(storyline_doc)
+
+            # Hook engagement means a thread was resolved — advance pacing counter
+            try:
+                from services.downtime_service import increment_hook_resolutions
+                increment_hook_resolutions(campaign)
+                await db.campaigns.update_one(
+                    {"campaign_id": campaign_id},
+                    {"$set": {"world_state.narrative_pacing": (campaign.get("world_state") or {}).get("narrative_pacing") or {}}},
+                )
+            except Exception as _dhe:
+                logger.warning(f"Downtime hook increment failed (non-fatal): {_dhe}")
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"Storyline auto-draft failed: {exc}")
             storyline_payload = None
@@ -1646,6 +1685,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
                 "passive_perception": passive_perception,  # {score, tier, wis_mod, proficient, prof_bonus}
                 "chaos": chaos_payload,                # {value, delta, tier, alignment, drafted_curse}
                 "current_location": current_location,  # {name, card_id} or None
+                "narrative_pacing": (campaign.get("world_state") or {}).get("narrative_pacing") or {},
             },
             "player_updates": {},
             "options": [],

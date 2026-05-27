@@ -212,7 +212,8 @@ const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
           {/* Spell Slots */}
           {(() => {
             const slots = character.spell_slots || (character.spellSlots ? { 1: character.spellSlots.length } : null);
-            if (!slots || Object.keys(slots).length === 0) return null;
+            const total = slots ? Object.values(slots).reduce((a, b) => a + b, 0) : 0;
+            if (!slots || total === 0) return null;
             return (
               <div className="bg-gray-900/50 rounded-lg p-3">
                 <div className="flex items-center gap-2 mb-2">

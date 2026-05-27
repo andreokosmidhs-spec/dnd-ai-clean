@@ -193,7 +193,7 @@ def _build_pinned_block(pinned_cards: List[dict]) -> str:
     return "\n".join(lines)
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None, pressure_context: str = "") -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None, pressure_context: str = "", scene_thread: str = "") -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -516,7 +516,27 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{canon_block}\n\n"
         f"{obligations_block}\n"
         + (f"{pressure_context}\n\n" if pressure_context else "")
-        + "=== MERCER STYLE — STRICT ===\n"
+        + (f"{scene_thread}\n\n" if scene_thread else "")
+        + "=== SCENE THREADING — NON-NEGOTIABLE ===\n"
+        "When the player investigates, follows, or engages any detail from the scene:\n"
+        "1) CLOSE the loop first — deliver the reveal in your FIRST sentence. "
+        "Do not build suspense around the reveal; give it directly.\n"
+        "2) CONNECT — show how the reveal links to something already visible "
+        "(the notice on the door, the watching guard, the person who left). "
+        "The world is coherent; reveals should feel inevitable, not random.\n"
+        "3) PLANT the next hook before the scene ends. Embed it naturally in "
+        "the description — do NOT label it, flag it, or list it. "
+        "The player's brain will find it.\n"
+        "4) CLOSE THE WINDOW — end every response with one thing that is about "
+        "to change, be gone, or demand immediate response. A person at a corner. "
+        "A door starting to close. A guard's hand moving. Plain fact, no editorializing.\n"
+        "5) CARRY FORWARD — open loops that were not engaged last turn still "
+        "exist. If the soldier was watching the checkpoint, he is still watching "
+        "when the player comes back out of the alley. The world does not reset.\n"
+        "NEVER introduce ambient filler (a bread merchant appears, a child laughs) "
+        "when an active investigation thread is live. Every sentence must belong "
+        "to the active thread or advance a connected pressure.\n\n"
+        "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "
         "intent. You may say \"the door yields\" or \"the latch clicks open\" but NEVER "
@@ -621,19 +641,18 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         "- During active conflict (violence just initiated, guards closing, combat started): "
         "short punchy sentences. Urgency lives in sentence length, not adjectives.\n"
         "- Mix sentence lengths. No headings, no bullet lists, no OOC, no meta.\n\n"
-        "=== ENDING (Mercer's signature — hand agency back) ===\n"
-        "End by giving the player a CLEAR moment of choice. Choose one:\n"
-        "  (A) State 2-3 concrete observable facts UNIQUE to this scene (do not reuse a "
-        "previous reply's set). During conflict, ALL 3 facts must be conflict-relevant "
-        "(guard position, target state, exit status — NOT ambient smells or unrelated NPCs). "
-        "Schematic example only: \"<what the target is doing now>; <where the nearest "
-        "guard is and what they're doing>; <one environmental fact that creates a decision "
-        "point>.\" Stop. Let the player choose.\n"
-        "  (B) Pose ONE sharp specific question rooted in what just changed: "
-        "\"Do you draw, or keep your hands where he can see them?\".\n"
-        "  (C) End with the simple plain handover: \"What do you do?\"\n"
-        "Do NOT prescribe the hero's next action (\"you can duck into...\"). List facts; "
-        "the player invents the verb. NEVER reuse a previous reply's facts."
+        "=== ENDING (hand agency back with urgency) ===\n"
+        "Every response ends with a CLOSING WINDOW — one thing that is about to change, "
+        "disappear, or demand immediate response. Then hand agency back. Two options:\n"
+        "  (A) ONE short sentence stating the closing window as a plain fact "
+        "(\"She is almost at the corner.\", \"His hand moves to the latch.\", "
+        "\"The gate is starting to close.\") — then nothing. The player decides.\n"
+        "  (B) During active conflict: state the closing window + ONE sharp question "
+        "rooted in what just changed: \"The guard's blade is level — do you run or talk?\"\n"
+        "NEVER list 3 ambient facts as the ending. NEVER prescribe the hero's next action. "
+        "NEVER reuse a closing window from a previous reply. "
+        "During conflict, the closing window must be conflict-relevant (guard position, "
+        "target state, exit status) — NOT ambient smells or unrelated detail."
     )
 
 
@@ -1202,6 +1221,30 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     except Exception as _lpce:
         logger.warning(f"Lean DM pressure context failed (non-fatal): {_lpce}")
 
+    # Scene thread — close/open loops, wound reveal, continuity (non-blocking)
+    _scene_thread = ""
+    try:
+        from services.scene_thread_service import build_scene_thread_block
+        # Collect recent DM narration for layer detection
+        _recent_narration = " ".join(
+            str(m.get("content") or "")
+            for m in (history or [])[-4:]
+            if m.get("role") == "dm"
+        )
+        # Unengaged hooks = active hooks minus the one just engaged
+        _unengaged = [
+            h for h in active_hooks
+            if not engaged_hook or h.get("id") != engaged_hook.get("id")
+        ]
+        _scene_thread = build_scene_thread_block(
+            engaged_hook=engaged_hook,
+            unengaged_hooks=_unengaged,
+            active_quest_cards=cards,
+            recent_narration=_recent_narration,
+        )
+    except Exception as _ste:
+        logger.warning(f"Scene thread build failed (non-fatal): {_ste}")
+
     system_prompt = _build_system_prompt(
         campaign, character, cards, clock_hour,
         deck=deck_cards, chaos=chaos_value,
@@ -1210,6 +1253,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         canon_scenes=recent_canon,
         current_location=current_location,
         pressure_context=_lean_pressure_ctx,
+        scene_thread=_scene_thread,
     )
 
     # Call the LLM

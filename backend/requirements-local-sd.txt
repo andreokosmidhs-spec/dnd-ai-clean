@@ -1,0 +1,17 @@
+# Optional dependencies for local Stable Diffusion (free image generation).
+# Install these if you want to generate images without any cloud API.
+#
+# Usage:
+#   pip install -r requirements-local-sd.txt
+#
+# Then set ONE of:
+#   SD_LOCAL=true            → uses HuggingFace Diffusers (models auto-download ~4 GB)
+#   A1111_URL=http://localhost:7860  → connects to a running Automatic1111 instance
+#
+# Default model (SD_LOCAL mode): Lykon/dreamshaper-8 (great for fantasy art)
+# Override with: SD_MODEL_ID=stabilityai/stable-diffusion-xl-base-1.0
+
+torch>=2.0.0
+diffusers>=0.27.0
+transformers>=4.40.0
+accelerate>=0.30.0

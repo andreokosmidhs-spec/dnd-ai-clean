@@ -1,24 +1,22 @@
-"""Unified art generation via Replicate API.
+"""Unified art generation.
 
-Required env var:
-  REPLICATE_API_TOKEN   — Replicate account token
+Provider priority (first available wins):
+  1. Replicate API  — REPLICATE_API_TOKEN  (cloud, best quality, ~$0.003–0.05/img)
+  2. Local SD       — A1111_URL or SD_LOCAL=true  (free, runs on your machine)
 
 Optional env var:
-  ART_LORA_URL          — HuggingFace URL to a LoRA .safetensors file.
-                          When set, applied to ALL generations so every piece of
-                          art in the game shares the same visual style.
-                          Example: "https://huggingface.co/user/my-dnd-lora/resolve/main/style.safetensors"
+  ART_LORA_URL  — HuggingFace .safetensors LoRA URL applied to all Replicate
+                  generations for a unified visual style.
 
 Generation strategy
 ───────────────────
 Character / NPC portraits
-  First generation  → fofr/consistent-character (text → image)
-  Gear refresh      → fofr/consistent-character (stored portrait as reference → same face, new outfit)
-  With ART_LORA_URL → lucataco/flux-dev-lora with custom LoRA
+  Replicate: fofr/consistent-character (+ IP-Adapter for gear refresh)
+  Local SD:  portrait prompt → local_sd_service.generate_portrait()
 
 Location / item cards
-  Without LoRA → black-forest-labs/flux-schnell  (4 steps, very fast)
-  With LoRA    → lucataco/flux-dev-lora (28 steps, applies style)
+  Replicate: flux-schnell (fast) or flux-dev-lora (with LoRA)
+  Local SD:  scene / square prompts via local_sd_service
 """
 
 import base64
@@ -125,10 +123,6 @@ async def generate_character_portrait(
     reference_data_url: pass the character's stored portraitDataUrl to re-render
     with the same face but updated gear. Omit for the initial generation.
     """
-    r = _client()
-    if r is None:
-        return None
-
     subject = build_character_subject(character)
     gear = _gear_phrase(character)
     lora_url = os.getenv("ART_LORA_URL", "")
@@ -137,119 +131,137 @@ async def generate_character_portrait(
         f"head-and-shoulders view, {_STYLE}, plain dark background"
     )
 
+    r = _client()
+    if r is not None:
+        try:
+            if lora_url:
+                output = await r.async_run(
+                    _FLUX_LORA,
+                    input={
+                        "prompt": f"portrait of {subject}, {gear}, {_STYLE}, plain dark background",
+                        "hf_lora": lora_url,
+                        "num_inference_steps": 28,
+                        "guidance_scale": 3.5,
+                        "output_format": "webp",
+                        "output_quality": 85,
+                    },
+                )
+            elif reference_data_url:
+                ref_file = _data_url_to_bytes(reference_data_url)
+                output = await r.async_run(
+                    _CONSISTENT_CHARACTER,
+                    input={
+                        "prompt": prompt,
+                        "subject": subject,
+                        "subject_image_0": ref_file,
+                        "num_outputs": 1,
+                        "output_format": "webp",
+                        "output_quality": 85,
+                    },
+                )
+            else:
+                output = await r.async_run(
+                    _CONSISTENT_CHARACTER,
+                    input={
+                        "prompt": prompt,
+                        "subject": subject,
+                        "num_outputs": 1,
+                        "output_format": "webp",
+                        "output_quality": 85,
+                    },
+                )
+            url = _first(output)
+            result = await _fetch_as_data_url(url) if url else None
+            if result:
+                return result
+        except Exception as exc:
+            logger.warning(f"[art] Replicate portrait failed, trying local SD: {exc}")
+
+    # Local SD fallback (A1111 or diffusers)
     try:
-        if lora_url:
-            output = await r.async_run(
-                _FLUX_LORA,
-                input={
-                    "prompt": f"portrait of {subject}, {gear}, {_STYLE}, plain dark background",
-                    "hf_lora": lora_url,
-                    "num_inference_steps": 28,
-                    "guidance_scale": 3.5,
-                    "output_format": "webp",
-                    "output_quality": 85,
-                },
-            )
-        elif reference_data_url:
-            ref_file = _data_url_to_bytes(reference_data_url)
-            output = await r.async_run(
-                _CONSISTENT_CHARACTER,
-                input={
-                    "prompt": prompt,
-                    "subject": subject,
-                    "subject_image_0": ref_file,
-                    "num_outputs": 1,
-                    "output_format": "webp",
-                    "output_quality": 85,
-                },
-            )
-        else:
-            output = await r.async_run(
-                _CONSISTENT_CHARACTER,
-                input={
-                    "prompt": prompt,
-                    "subject": subject,
-                    "num_outputs": 1,
-                    "output_format": "webp",
-                    "output_quality": 85,
-                },
-            )
-
-        url = _first(output)
-        return await _fetch_as_data_url(url) if url else None
-
+        from services.local_sd_service import generate_portrait as _local_portrait
+        full_prompt = f"portrait of {subject}, {gear}, {_STYLE}, plain dark background"
+        return await _local_portrait(full_prompt)
     except Exception as exc:
-        logger.error(f"[art] character portrait: {exc}")
-        return None
+        logger.error(f"[art] local SD portrait failed: {exc}")
+    return None
 
 
 # ── NPC art ───────────────────────────────────────────────────────────────────
 
 async def generate_npc_art(name: str, description: str, role: str = "") -> Optional[str]:
-    r = _client()
-    if r is None:
-        return None
-
     lora_url = os.getenv("ART_LORA_URL", "")
     subject = ", ".join(filter(None, [name, description, role]))
     prompt = f"fantasy RPG NPC portrait of {subject}, head and shoulders, {_STYLE}, plain dark background"
 
+    r = _client()
+    if r is not None:
+        try:
+            if lora_url:
+                output = await r.async_run(
+                    _FLUX_LORA,
+                    input={"prompt": prompt, "hf_lora": lora_url, "num_inference_steps": 28, "output_format": "webp"},
+                )
+            else:
+                output = await r.async_run(
+                    _CONSISTENT_CHARACTER,
+                    input={"prompt": prompt, "subject": subject, "num_outputs": 1, "output_format": "webp"},
+                )
+            url = _first(output)
+            result = await _fetch_as_data_url(url) if url else None
+            if result:
+                return result
+        except Exception as exc:
+            logger.warning(f"[art] Replicate NPC art failed, trying local SD: {exc}")
+
     try:
-        if lora_url:
-            output = await r.async_run(
-                _FLUX_LORA,
-                input={"prompt": prompt, "hf_lora": lora_url, "num_inference_steps": 28, "output_format": "webp"},
-            )
-        else:
-            output = await r.async_run(
-                _CONSISTENT_CHARACTER,
-                input={"prompt": prompt, "subject": subject, "num_outputs": 1, "output_format": "webp"},
-            )
-        url = _first(output)
-        return await _fetch_as_data_url(url) if url else None
+        from services.local_sd_service import generate_portrait as _local_portrait
+        return await _local_portrait(prompt)
     except Exception as exc:
-        logger.error(f"[art] NPC art: {exc}")
-        return None
+        logger.error(f"[art] local SD NPC art failed: {exc}")
+    return None
 
 
 # ── Location / place art ──────────────────────────────────────────────────────
 
 async def generate_place_art(name: str, description: str, biome: str = "") -> Optional[str]:
-    r = _client()
-    if r is None:
-        return None
-
     lora_url = os.getenv("ART_LORA_URL", "")
     biome_tag = f"{biome}, " if biome else ""
     prompt = f"{biome_tag}{name}, {description}, fantasy RPG location, wide establishing shot, {_STYLE}"
 
+    r = _client()
+    if r is not None:
+        try:
+            if lora_url:
+                output = await r.async_run(
+                    _FLUX_LORA,
+                    input={"prompt": prompt, "hf_lora": lora_url, "num_inference_steps": 28,
+                           "output_format": "webp", "aspect_ratio": "16:9"},
+                )
+            else:
+                output = await r.async_run(
+                    _FLUX_SCHNELL,
+                    input={"prompt": prompt, "num_inference_steps": 4,
+                           "output_format": "webp", "aspect_ratio": "16:9"},
+                )
+            url = _first(output)
+            result = await _fetch_as_data_url(url) if url else None
+            if result:
+                return result
+        except Exception as exc:
+            logger.warning(f"[art] Replicate place art failed, trying local SD: {exc}")
+
     try:
-        if lora_url:
-            output = await r.async_run(
-                _FLUX_LORA,
-                input={"prompt": prompt, "hf_lora": lora_url, "num_inference_steps": 28,
-                       "output_format": "webp", "aspect_ratio": "16:9"},
-            )
-        else:
-            output = await r.async_run(
-                _FLUX_SCHNELL,
-                input={"prompt": prompt, "num_inference_steps": 4,
-                       "output_format": "webp", "aspect_ratio": "16:9"},
-            )
-        url = _first(output)
-        return await _fetch_as_data_url(url) if url else None
+        from services.local_sd_service import generate_scene as _local_scene
+        return await _local_scene(prompt)
     except Exception as exc:
-        logger.error(f"[art] place art: {exc}")
-        return None
+        logger.error(f"[art] local SD place art failed: {exc}")
+    return None
 
 
 # ── Item card art ─────────────────────────────────────────────────────────────
 
 async def generate_item_art(name: str, description: str, rarity: str = "common") -> Optional[str]:
-    r = _client()
-    if r is None:
-        return None
-
     lora_url = os.getenv("ART_LORA_URL", "")
     rarity_tag = {
         "legendary": "radiant, golden glow, mythic",
@@ -258,21 +270,31 @@ async def generate_item_art(name: str, description: str, rarity: str = "common")
     }.get(rarity.lower(), "")
     prompt = f"{name}, {description}, fantasy RPG item art, {rarity_tag}, isolated on dark background, {_STYLE}"
 
+    r = _client()
+    if r is not None:
+        try:
+            if lora_url:
+                output = await r.async_run(
+                    _FLUX_LORA,
+                    input={"prompt": prompt, "hf_lora": lora_url, "num_inference_steps": 28,
+                           "output_format": "webp", "aspect_ratio": "1:1"},
+                )
+            else:
+                output = await r.async_run(
+                    _FLUX_SCHNELL,
+                    input={"prompt": prompt, "num_inference_steps": 4,
+                           "output_format": "webp", "aspect_ratio": "1:1"},
+                )
+            url = _first(output)
+            result = await _fetch_as_data_url(url) if url else None
+            if result:
+                return result
+        except Exception as exc:
+            logger.warning(f"[art] Replicate item art failed, trying local SD: {exc}")
+
     try:
-        if lora_url:
-            output = await r.async_run(
-                _FLUX_LORA,
-                input={"prompt": prompt, "hf_lora": lora_url, "num_inference_steps": 28,
-                       "output_format": "webp", "aspect_ratio": "1:1"},
-            )
-        else:
-            output = await r.async_run(
-                _FLUX_SCHNELL,
-                input={"prompt": prompt, "num_inference_steps": 4,
-                       "output_format": "webp", "aspect_ratio": "1:1"},
-            )
-        url = _first(output)
-        return await _fetch_as_data_url(url) if url else None
+        from services.local_sd_service import generate_square as _local_square
+        return await _local_square(prompt)
     except Exception as exc:
-        logger.error(f"[art] item art: {exc}")
-        return None
+        logger.error(f"[art] local SD item art failed: {exc}")
+    return None

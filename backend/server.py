@@ -133,6 +133,7 @@ from routers import combat_conditions as combat_conditions_router
 from routers import enemy_library_router
 from routers import voice_casting as voice_casting_router
 from routers import behavior_trees_router
+from routers import dialogue_stream as dialogue_stream_router
 
 # Create the main app without a prefix
 app = FastAPI(title="Sentient RPG Engine", description="AI-Powered Text RPG Framework")
@@ -4182,6 +4183,7 @@ app.include_router(enemy_library_router.router)       # Enemy library + add-to-c
 app.include_router(behavior_trees_router.router)  # Behavior tree editor API
 app.include_router(equipment_router.router)          # Equipment loadout (slots, free-hand, AC)
 app.include_router(voice_casting_router.router)       # NPC voice casting + emotional TTS
+app.include_router(dialogue_stream_router.router)     # Real-time NPC dialogue streaming (WebSocket)
 app.include_router(character_v2_router)
 app.include_router(character_v2_router_alias)
 

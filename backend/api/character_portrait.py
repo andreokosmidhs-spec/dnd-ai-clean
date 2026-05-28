@@ -1,4 +1,11 @@
-"""Character portrait generation using Gemini (primary) or DALL-E 3 (fallback)."""
+"""Character portrait generation.
+
+Priority chain:
+  1. Replicate (REPLICATE_API_TOKEN) via services.art_service
+  2. Gemini image model (EMERGENT_LLM_KEY)
+  3. DALL-E 3 (OPENAI_API_KEY)
+  4. SVG placeholder avatar — always works, no key needed
+"""
 
 import base64
 import logging
@@ -9,23 +16,17 @@ from typing import Optional
 
 from bson import ObjectId
 from dotenv import load_dotenv
-from emergentintegrations.llm.chat import FileContent, LlmChat, UserMessage
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-_PORTRAIT_MODEL = "gemini-3.1-flash-image-preview"
-
-# Accepted image MIME types for reference uploads
 _ALLOWED_REF_MIME = {"image/jpeg", "image/png", "image/webp"}
 
 
-def _parse_data_url(data_url: str):
-    """Parse a 'data:image/jpeg;base64,...' URL into (mime, base64_payload).
+# ── Prompt builder (shared by Gemini / DALL-E fallbacks) ──────────────────────
 
-    Returns (None, None) on any malformed input so callers can skip cleanly.
-    """
+def _parse_data_url(data_url: str):
     if not data_url or not isinstance(data_url, str):
         return None, None
     match = re.match(r"^data:([^;]+);base64,(.+)$", data_url, re.DOTALL)
@@ -33,7 +34,6 @@ def _parse_data_url(data_url: str):
         return None, None
     mime = match.group(1).strip().lower()
     payload = match.group(2).strip()
-    # Light validation: try a partial decode to ensure it's real base64
     try:
         base64.b64decode(payload[:64], validate=True)
     except Exception:
@@ -47,7 +47,6 @@ def _build_portrait_prompt(character: dict) -> str:
     class_ = character.get("class") or {}
     appearance = character.get("appearance") or {}
 
-    parts = []
     name = identity.get("name") or "adventurer"
     sex = identity.get("sex") or ""
     age_category = appearance.get("ageCategory") or ""
@@ -56,34 +55,22 @@ def _build_portrait_prompt(character: dict) -> str:
     build = appearance.get("build") or ""
     skin = appearance.get("skinTone") or ""
     hair = appearance.get("hairColor") or ""
+    hair_style = appearance.get("hairStyle") or ""
     eyes = appearance.get("eyeColor") or ""
+    facial_hair = appearance.get("facialHair") or ""
     features = appearance.get("notableFeatures") or []
 
-    descriptor = " ".join(
-        filter(None, [age_category, sex, race_name, class_name])
-    ).strip() or f"{race_name} {class_name}"
+    descriptor = " ".join(filter(None, [age_category, sex, race_name, class_name])).strip()
+    parts = [f"Fantasy D&D character portrait of {name}, a {descriptor}."]
 
-    parts.append(
-        f"Fantasy D&D character portrait of {name}, a {descriptor}."
-    )
-    hair_style = appearance.get("hairStyle") or ""
-    facial_hair = appearance.get("facialHair") or ""
-    # Compose a single hair phrase: "long auburn hair (braided)" / "short black hair"
-    hair_phrase = ""
-    if hair or hair_style:
-        hair_phrase = " ".join(filter(None, [hair_style, hair])).strip() + " hair"
-    body = ", ".join(
-        filter(
-            None,
-            [
-                f"{build} build" if build else "",
-                skin and f"{skin} skin",
-                hair_phrase,
-                eyes and f"{eyes} eyes",
-                facial_hair and f"facial hair: {facial_hair}",
-            ],
-        )
-    )
+    hair_phrase = " ".join(filter(None, [hair_style, hair])).strip() + " hair" if (hair or hair_style) else ""
+    body = ", ".join(filter(None, [
+        f"{build} build" if build else "",
+        f"{skin} skin" if skin else "",
+        hair_phrase,
+        f"{eyes} eyes" if eyes else "",
+        f"facial hair: {facial_hair}" if facial_hair else "",
+    ]))
     if body:
         parts.append(body + ".")
     if features:
@@ -95,21 +82,21 @@ def _build_portrait_prompt(character: dict) -> str:
     return " ".join(parts)
 
 
-def _generate_placeholder_portrait(character: dict) -> str:
-    """Generate a deterministic SVG avatar when no image API is available."""
+# ── SVG placeholder (no API needed) ───────────────────────────────────────────
+
+def _svg_placeholder(character: dict) -> str:
     identity = character.get("identity") or {}
     name = identity.get("name") or "?"
-    initial = (name[0].upper()) if name else "?"
-    class_ = character.get("class") or {}
-    class_key = (class_.get("key") or "fighter").lower()
+    initial = name[0].upper() if name else "?"
+    class_key = ((character.get("class") or {}).get("key") or "fighter").lower()
 
-    class_colors = {
+    colors = {
         "fighter": "#8B4513", "barbarian": "#DC143C", "paladin": "#FFD700",
         "ranger": "#228B22", "rogue": "#4B0082", "monk": "#DEB887",
         "wizard": "#4169E1", "sorcerer": "#8A2BE2", "warlock": "#6B0082",
         "cleric": "#C0C0C0", "druid": "#556B2F", "bard": "#FF69B4",
     }
-    bg = class_colors.get(class_key, "#6B7280")
+    bg = colors.get(class_key, "#6B7280")
 
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">'
@@ -121,20 +108,22 @@ def _generate_placeholder_portrait(character: dict) -> str:
         f'text-anchor="middle" dominant-baseline="middle" font-weight="bold">{initial}</text>'
         f'</svg>'
     )
-    b64 = base64.b64encode(svg.encode()).decode()
-    return f"data:image/svg+xml;base64,{b64}"
+    return f"data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()}"
 
 
-async def _generate_portrait_gemini(character: dict, api_key: str) -> Optional[str]:
-    """Generate portrait via Gemini image model using EMERGENT_LLM_KEY."""
+# ── Gemini fallback ────────────────────────────────────────────────────────────
+
+async def _gemini_portrait(character: dict, api_key: str) -> Optional[str]:
+    try:
+        from emergentintegrations.llm.chat import FileContent, LlmChat, UserMessage
+    except ImportError:
+        return None
+
+    _PORTRAIT_MODEL = "gemini-3.1-flash-image-preview"
     prompt = _build_portrait_prompt(character)
     session_id = f"portrait-{character.get('_id') or character.get('id') or uuid.uuid4()}"
 
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=session_id,
-        system_message="You are an expert fantasy illustrator.",
-    )
+    chat = LlmChat(api_key=api_key, session_id=session_id, system_message="You are an expert fantasy illustrator.")
     chat.with_model("gemini", _PORTRAIT_MODEL).with_params(modalities=["image", "text"])
 
     appearance = character.get("appearance") or {}
@@ -144,21 +133,17 @@ async def _generate_portrait_gemini(character: dict, api_key: str) -> Optional[s
         mime, b64 = _parse_data_url(reference_data_url)
         if mime in _ALLOWED_REF_MIME and b64:
             file_contents.append(FileContent(content_type=mime, file_content_base64=b64))
-            prompt = (
-                prompt
-                + " A reference image is provided; use it as visual inspiration for "
+            prompt += (
+                " A reference image is provided; use it as visual inspiration for "
                 "the character's face, hair, and overall mood — but adapt it to the "
-                "described race, class, gear, and fantasy setting. The output must "
-                "be a fresh painted portrait, not a copy of the reference."
+                "described race, class, gear, and fantasy setting."
             )
-        else:
-            logger.warning("[portrait] ignoring malformed/unsupported reference image")
 
     msg = UserMessage(text=prompt, file_contents=file_contents or None)
     try:
         _text, images = await chat.send_message_multimodal_response(msg)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(f"[portrait] Gemini generation failed: {exc}")
+    except Exception as exc:
+        logger.warning(f"[portrait] Gemini failed: {exc}")
         return None
 
     if not images:
@@ -166,13 +151,12 @@ async def _generate_portrait_gemini(character: dict, api_key: str) -> Optional[s
     first = images[0]
     mime = first.get("mime_type") or "image/png"
     data = first.get("data")
-    if not data:
-        return None
-    return f"data:{mime};base64,{data}"
+    return f"data:{mime};base64,{data}" if data else None
 
 
-async def _generate_portrait_dalle(character: dict) -> Optional[str]:
-    """Fallback portrait generation via DALL-E 3 using OPENAI_API_KEY."""
+# ── DALL-E 3 fallback ─────────────────────────────────────────────────────────
+
+async def _dalle_portrait(character: dict) -> Optional[str]:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return None
@@ -181,52 +165,61 @@ async def _generate_portrait_dalle(character: dict) -> Optional[str]:
         oai = AsyncOpenAI(api_key=api_key)
         prompt = _build_portrait_prompt(character) + " Digital oil painting, high detail, fantasy art style."
         response = await oai.images.generate(
-            model="dall-e-3",
-            prompt=prompt,
-            size="1024x1024",
-            quality="standard",
-            response_format="b64_json",
-            n=1,
+            model="dall-e-3", prompt=prompt, size="1024x1024",
+            quality="standard", response_format="b64_json", n=1,
         )
         b64 = response.data[0].b64_json
-        if b64:
-            return f"data:image/png;base64,{b64}"
-    except Exception as exc:  # noqa: BLE001
+        return f"data:image/png;base64,{b64}" if b64 else None
+    except Exception as exc:
         logger.warning(f"[portrait] DALL-E fallback failed: {exc}")
-    return None
+        return None
 
 
-async def generate_character_portrait(character: dict) -> Optional[str]:
-    """Generate a portrait for the character and return a data URL.
+# ── Public API ────────────────────────────────────────────────────────────────
 
-    Tries in order: Gemini (EMERGENT_LLM_KEY) → DALL-E 3 (OPENAI_API_KEY) → SVG placeholder.
-    Always returns a non-None value so the UI always has something to show.
+async def generate_character_portrait(
+    character: dict,
+    reference_data_url: Optional[str] = None,
+) -> str:
+    """Generate a portrait and always return a data URL (never None).
+
+    Pass reference_data_url (the character's stored portraitDataUrl) to
+    re-render the same face with updated gear (Replicate only).
     """
-    # 1. Gemini via Emergent LLM key
+    # 1. Replicate (LoRA / consistent-character)
+    if os.getenv("REPLICATE_API_TOKEN"):
+        try:
+            from services.art_service import generate_character_portrait as _replicate_portrait
+            result = await _replicate_portrait(character, reference_data_url)
+            if result:
+                return result
+            logger.info("[portrait] Replicate returned nothing, trying next provider")
+        except Exception as exc:
+            logger.warning(f"[portrait] Replicate error: {exc}")
+
+    # 2. Gemini
     emergent_key = os.getenv("EMERGENT_LLM_KEY")
     if emergent_key:
-        result = await _generate_portrait_gemini(character, emergent_key)
+        result = await _gemini_portrait(character, emergent_key)
         if result:
             return result
-        logger.info("[portrait] Gemini failed, trying DALL-E fallback")
 
-    # 2. DALL-E 3 via OpenAI key
-    result = await _generate_portrait_dalle(character)
+    # 3. DALL-E 3
+    result = await _dalle_portrait(character)
     if result:
         return result
 
-    # 3. SVG placeholder — always works, no API needed
-    logger.info("[portrait] All API providers unavailable, using SVG placeholder")
-    return _generate_placeholder_portrait(character)
+    # 4. SVG placeholder — always works
+    logger.info("[portrait] All providers unavailable, using SVG placeholder")
+    return _svg_placeholder(character)
 
 
 async def persist_portrait(db, character_id: str, data_url: str, in_memory_store: dict) -> bool:
-    """Store the data URL on the character document. Returns True on success."""
-
+    """Store the portrait data URL on the character document."""
     if db is not None:
         try:
             object_id = ObjectId(character_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
         res = await db["characters_v2"].update_one(
             {"_id": object_id}, {"$set": {"portraitDataUrl": data_url}}
@@ -238,7 +231,6 @@ async def persist_portrait(db, character_id: str, data_url: str, in_memory_store
         stored_dict = stored.model_dump(by_alias=True) if hasattr(stored, "model_dump") else dict(stored)
         stored_dict["portraitDataUrl"] = data_url
         from models.character_v2 import CharacterV2Stored
-
         in_memory_store[character_id] = CharacterV2Stored(
             id=character_id, **{k: v for k, v in stored_dict.items() if k != "id"}
         )

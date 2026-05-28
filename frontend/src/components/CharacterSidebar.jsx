@@ -1,23 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { Progress } from './ui/progress';
 import { 
-  ChevronRight, 
-  ChevronLeft, 
-  User, 
-  Heart, 
-  Zap, 
+  ChevronRight,
+  ChevronLeft,
+  User,
+  Heart,
+  Zap,
   Shield,
-  TrendingUp
+  TrendingUp,
+  RefreshCw,
 } from 'lucide-react';
 import { mockData } from '../data/mockData';
 import { computeArmorClass } from '../utils/ac';
 
-const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
+const API_BASE = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+
+const CharacterSidebar = ({ character, isCollapsed, onToggle, onPortraitRefresh }) => {
   const [showMore, setShowMore] = useState({});
+  const [refreshingPortrait, setRefreshingPortrait] = useState(false);
+
+  const handleRefreshPortrait = useCallback(async () => {
+    const charId = character?.id || character?._id;
+    if (!charId) return;
+    setRefreshingPortrait(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/characters/v2/${charId}/refresh-portrait`, { method: 'POST' });
+      if (!res.ok) throw new Error(await res.text());
+      const { portraitDataUrl } = await res.json();
+      if (onPortraitRefresh) onPortraitRefresh(portraitDataUrl);
+    } catch (err) {
+      console.error('[portrait] refresh failed:', err);
+    } finally {
+      setRefreshingPortrait(false);
+    }
+  }, [character, onPortraitRefresh]);
 
   if (!character) return null;
 
@@ -136,7 +156,7 @@ const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
               images. Switched to `object-contain` so the entire portrait is
               always visible; the frame letterboxes gracefully when the
               source isn't a perfect square. */}
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-1">
             {character.portrait ? (
               <div
                 className="w-full aspect-square rounded-lg border-2 border-amber-500/60 shadow-[0_0_24px_rgba(245,158,11,0.4)] overflow-hidden bg-gray-900/80 flex items-center justify-center"
@@ -158,6 +178,19 @@ const CharacterSidebar = ({ character, isCollapsed, onToggle }) => {
                 <span className="text-xs uppercase tracking-wide">Portrait</span>
                 <span className="text-[10px] text-amber-300/60">generating...</span>
               </div>
+            )}
+            {(character.id || character._id) && (
+              <Button
+                onClick={handleRefreshPortrait}
+                disabled={refreshingPortrait}
+                variant="ghost"
+                size="sm"
+                className="w-full text-[10px] text-amber-400/60 hover:text-amber-300 hover:bg-amber-600/10 h-6"
+                title="Re-render portrait with current gear"
+              >
+                <RefreshCw className={`h-3 w-3 mr-1 ${refreshingPortrait ? 'animate-spin' : ''}`} />
+                {refreshingPortrait ? 'Rendering…' : 'Refresh with gear'}
+              </Button>
             )}
           </div>
 

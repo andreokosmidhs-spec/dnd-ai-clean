@@ -1346,6 +1346,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             unengaged_hooks=_unengaged,
             active_quest_cards=cards,
             recent_narration=_recent_narration,
+            player_action=req.player_action,
         )
     except Exception as _ste:
         logger.warning(f"Scene thread build failed (non-fatal): {_ste}")

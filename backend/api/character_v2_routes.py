@@ -218,27 +218,54 @@ async def delete_character_v2(character_id: str):
         del _in_memory_store[character_id]
 
 
-@router.post("/{character_id}/generate-portrait")
-async def generate_portrait(character_id: str):
-    """Generate an AI portrait via Gemini Nano Banana and persist it to the character."""
-
-    # Load character
+async def _load_character(character_id: str) -> dict:
+    """Load character data dict from DB or in-memory store."""
     if is_db_available():
         collection = get_collection()
         object_id = validate_object_id(character_id)
         doc = await collection.find_one({"_id": object_id})
         if not doc:
             raise HTTPException(status_code=404, detail="Character not found")
-        character_data = doc
-    else:
-        if character_id not in _in_memory_store:
-            raise HTTPException(status_code=404, detail="Character not found")
-        stored = _in_memory_store[character_id]
-        character_data = stored.model_dump(by_alias=True)
+        return doc
+    if character_id not in _in_memory_store:
+        raise HTTPException(status_code=404, detail="Character not found")
+    return _in_memory_store[character_id].model_dump(by_alias=True)
 
+
+@router.post("/{character_id}/generate-portrait")
+async def generate_portrait(character_id: str):
+    """Generate an AI portrait and persist it to the character."""
+    character_data = await _load_character(character_id)
     data_url = await generate_character_portrait(character_data)
     if not data_url:
         raise HTTPException(status_code=502, detail="Portrait generation failed")
+
+    ok = await persist_portrait(
+        _db if is_db_available() else None,
+        character_id,
+        data_url,
+        _in_memory_store,
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="Portrait persist failed")
+
+    return {"portraitDataUrl": data_url}
+
+
+@router.post("/{character_id}/refresh-portrait")
+async def refresh_portrait(character_id: str):
+    """Re-generate portrait using the stored portrait as a face reference.
+
+    Use this after the player equips new gear. The model keeps the same face
+    but renders the new outfit. Falls back to a full re-generation if no stored
+    portrait exists yet.
+    """
+    character_data = await _load_character(character_id)
+    reference = character_data.get("portraitDataUrl") or None
+    data_url = await generate_character_portrait(character_data, reference_data_url=reference)
+
+    if not data_url:
+        raise HTTPException(status_code=502, detail="Portrait refresh failed")
 
     ok = await persist_portrait(
         _db if is_db_available() else None,

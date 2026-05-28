@@ -20,6 +20,7 @@ const FocusedRPGInner = ({
   gameLog,
   addToGameLog,
   character,
+  setCharacter,
   currentLocation,
   onLocationChange,
   inventory,
@@ -30,6 +31,10 @@ const FocusedRPGInner = ({
   const [input, setInput] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [pendingCheck, setPendingCheck] = useState(null);
+
+  const handlePortraitRefresh = (newPortraitDataUrl) => {
+    if (setCharacter) setCharacter(prev => ({ ...prev, portrait: newPortraitDataUrl }));
+  };
   const [showHelp, setShowHelp] = useState(false);
   const [intentMode, setIntentMode] = useState('action');
   const [isAdventureLoading, setIsAdventureLoading] = useState(false);
@@ -169,6 +174,7 @@ const FocusedRPGInner = ({
             character={character}
             isCollapsed={sidebarCollapsed}
             onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+            onPortraitRefresh={handlePortraitRefresh}
           />
         </div>
 

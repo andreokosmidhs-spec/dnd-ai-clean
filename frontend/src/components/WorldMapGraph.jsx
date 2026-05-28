@@ -69,10 +69,27 @@ const WorldMapGraph = ({ campaignId, onQuestAccepted }) => {
     [graph.regions, selectedId]
   );
 
-  const handleVisit = async (regionId) => {
+  const handleVisit = async (regionId, travelMode = 'walk') => {
     if (!campaignId || !regionId) return;
     setBusyRegion(regionId);
     try {
+      // Initiate travel (rolls encounters, dungeon discovery, advances time)
+      const travelRes = await fetch(
+        `${BACKEND_URL}/api/campaigns/${campaignId}/travel`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to_region_id: regionId, mode: travelMode, survival_mod: 0 }),
+        }
+      );
+      if (travelRes.ok) {
+        const travelData = await travelRes.json();
+        if (travelData.dungeon_discovered && travelData.dungeon) {
+          toast.success(`A dungeon was discovered near ${travelData.destination?.name || 'the destination'}!`, { duration: 5000 });
+        }
+      }
+
+      // Now mark region as visited (hydrates event deck, triggers narrative tick)
       const res = await fetch(
         `${BACKEND_URL}/api/campaigns/${campaignId}/world/regions/${regionId}/visit`,
         { method: 'POST' }
@@ -84,7 +101,8 @@ const WorldMapGraph = ({ campaignId, onQuestAccepted }) => {
         regions: g.regions.map((r) => (r.id === regionId ? data.region : r)),
         current_region_id: data.current_region_id,
       }));
-      toast.success(`Traveled to ${data.region?.name || 'the region'}.`);
+      const mode = travelMode === 'ride' ? 'rode' : 'traveled on foot';
+      toast.success(`You ${mode} to ${data.region?.name || 'the region'}.`);
     } catch {
       toast.error('Could not reach that region.');
     } finally {
@@ -321,7 +339,7 @@ const WorldMapGraph = ({ campaignId, onQuestAccepted }) => {
             <RegionPanel
               region={selectedRegion}
               isCurrent={selectedRegion.id === currentId}
-              onVisit={() => handleVisit(selectedRegion.id)}
+              onVisit={(mode) => handleVisit(selectedRegion.id, mode)}
               onAccept={handleAccept}
               onDismiss={handleDismiss}
               busyRegion={busyRegion}
@@ -339,6 +357,7 @@ const WorldMapGraph = ({ campaignId, onQuestAccepted }) => {
 };
 
 const RegionPanel = ({ region, isCurrent, onVisit, onAccept, onDismiss, busyRegion, busyEvent }) => {
+  const [travelMode, setTravelMode] = React.useState('walk');
   const st = biomeStyle(region.biome);
   const Icon = st.icon;
   const visited = region.visited || region.hydrated;
@@ -419,17 +438,35 @@ const RegionPanel = ({ region, isCurrent, onVisit, onAccept, onDismiss, busyRegi
                 </li>
               ))}
             </ul>
+            <div className="mt-3 flex gap-1 mb-2">
+              <Button
+                size="sm"
+                variant={travelMode === 'walk' ? 'default' : 'outline'}
+                className={`flex-1 text-xs ${travelMode === 'walk' ? 'bg-amber-600 text-black' : 'border-amber-600/40 text-amber-300'}`}
+                onClick={() => setTravelMode('walk')}
+              >
+                On Foot
+              </Button>
+              <Button
+                size="sm"
+                variant={travelMode === 'ride' ? 'default' : 'outline'}
+                className={`flex-1 text-xs ${travelMode === 'ride' ? 'bg-amber-600 text-black' : 'border-amber-600/40 text-amber-300'}`}
+                onClick={() => setTravelMode('ride')}
+              >
+                Riding
+              </Button>
+            </div>
             <Button
               size="sm"
-              className="mt-3 w-full bg-amber-600 hover:bg-amber-500 text-black"
-              onClick={onVisit}
+              className="w-full bg-amber-600 hover:bg-amber-500 text-black"
+              onClick={() => onVisit(travelMode)}
               disabled={busyRegion === region.id}
               data-testid="region-visit-btn"
             >
               {busyRegion === region.id ? (
                 <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Traveling…</>
               ) : (
-                <>Travel Here</>
+                <>Travel Here ({travelMode === 'ride' ? 'riding' : 'on foot'})</>
               )}
             </Button>
           </div>
@@ -455,20 +492,40 @@ const RegionPanel = ({ region, isCurrent, onVisit, onAccept, onDismiss, busyRegi
               />
             ))}
             {!isCurrent && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2 w-full border-amber-600/40 text-amber-200 hover:bg-amber-700/20"
-                onClick={onVisit}
-                disabled={busyRegion === region.id}
-                data-testid="region-travel-btn"
-              >
-                {busyRegion === region.id ? (
-                  <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Traveling…</>
-                ) : (
-                  <><MapPin className="h-3.5 w-3.5 mr-1" /> Travel Here</>
-                )}
-              </Button>
+              <div className="mt-2 space-y-1">
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    variant={travelMode === 'walk' ? 'default' : 'outline'}
+                    className={`flex-1 text-xs ${travelMode === 'walk' ? 'bg-amber-600 text-black' : 'border-amber-600/40 text-amber-300'}`}
+                    onClick={() => setTravelMode('walk')}
+                  >
+                    On Foot
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={travelMode === 'ride' ? 'default' : 'outline'}
+                    className={`flex-1 text-xs ${travelMode === 'ride' ? 'bg-amber-600 text-black' : 'border-amber-600/40 text-amber-300'}`}
+                    onClick={() => setTravelMode('ride')}
+                  >
+                    Riding
+                  </Button>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full border-amber-600/40 text-amber-200 hover:bg-amber-700/20"
+                  onClick={() => onVisit(travelMode)}
+                  disabled={busyRegion === region.id}
+                  data-testid="region-travel-btn"
+                >
+                  {busyRegion === region.id ? (
+                    <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Traveling…</>
+                  ) : (
+                    <><MapPin className="h-3.5 w-3.5 mr-1" /> Travel Here ({travelMode === 'ride' ? 'riding' : 'on foot'})</>
+                  )}
+                </Button>
+              </div>
             )}
           </div>
         )}

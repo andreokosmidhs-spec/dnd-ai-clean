@@ -367,6 +367,7 @@ const RPGGame = () => {
           ac: characterForRPG.armorClass || characterForRPG.ac || 10,
           speed: characterForRPG.speed || 30,
           spell_slots: characterForRPG.spell_slots || {},
+          spell_slots_max: characterForRPG.spell_slots || {},
           prepared_spells: characterForRPG.prepared_spells || [],
           cantrips: characterForRPG.cantrips || [],
           conditions: characterForRPG.conditions || [],

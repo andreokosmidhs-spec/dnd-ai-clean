@@ -193,7 +193,7 @@ def _build_pinned_block(pinned_cards: List[dict]) -> str:
     return "\n".join(lines)
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None, pressure_context: str = "") -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None, pressure_context: str = "", scene_thread: str = "", downtime_block: str = "", exhaustion_block: str = "", travel_block: str = "", dungeon_block: str = "") -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -516,7 +516,31 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         f"{canon_block}\n\n"
         f"{obligations_block}\n"
         + (f"{pressure_context}\n\n" if pressure_context else "")
-        + "=== MERCER STYLE — STRICT ===\n"
+        + (f"{exhaustion_block}\n\n" if exhaustion_block else "")
+        + (f"{downtime_block}\n\n" if downtime_block else "")
+        + (f"{travel_block}\n\n" if travel_block else "")
+        + (f"{dungeon_block}\n\n" if dungeon_block else "")
+        + (f"{scene_thread}\n\n" if scene_thread else "")
+        + "=== SCENE THREADING — NON-NEGOTIABLE ===\n"
+        "When the player investigates, follows, or engages any detail from the scene:\n"
+        "1) CLOSE the loop first — deliver the reveal in your FIRST sentence. "
+        "Do not build suspense around the reveal; give it directly.\n"
+        "2) CONNECT — show how the reveal links to something already visible "
+        "(the notice on the door, the watching guard, the person who left). "
+        "The world is coherent; reveals should feel inevitable, not random.\n"
+        "3) PLANT the next hook before the scene ends. Embed it naturally in "
+        "the description — do NOT label it, flag it, or list it. "
+        "The player's brain will find it.\n"
+        "4) CLOSE THE WINDOW — end every response with one thing that is about "
+        "to change, be gone, or demand immediate response. A person at a corner. "
+        "A door starting to close. A guard's hand moving. Plain fact, no editorializing.\n"
+        "5) CARRY FORWARD — open loops that were not engaged last turn still "
+        "exist. If the soldier was watching the checkpoint, he is still watching "
+        "when the player comes back out of the alley. The world does not reset.\n"
+        "NEVER introduce ambient filler (a bread merchant appears, a child laughs) "
+        "when an active investigation thread is live. Every sentence must belong "
+        "to the active thread or advance a connected pressure.\n\n"
+        "=== MERCER STYLE — STRICT ===\n"
         "1) DESCRIBE OUTCOMES, NOT DECISIONS. The player declared an action — narrate "
         "what HAPPENS as a result, in the world. The hero's body executes their stated "
         "intent. You may say \"the door yields\" or \"the latch clicks open\" but NEVER "
@@ -616,24 +640,65 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         "\"tugs at your heart\", \"weighs on your soul\", \"stirs something deep\", \"swirl "
         "like autumn leaves\", \"like fingers across\", \"gleam and promise fortune\", "
         "\"ye olde\", rhetorical questions like \"What better place...?\".\n\n"
+        "=== DIALOGUE MODE — READ THE PLAYER'S INTENT AND SWITCH REGISTER ===\n"
+        "The player's action tells you which mode to use. Read it before writing.\n\n"
+        "ENTERING DIALOGUE MODE (player speaks to, addresses, or approaches an NPC to talk):\n"
+        "  ▸ The NPC responds in their OWN WORDS in double quotes — their actual spoken line.\n"
+        "  ▸ Add ONE physical beat (eye movement, posture, hand position) alongside or after.\n"
+        "  ▸ The NPC speaks in their established voice — same rhythm, accent, verbal tic, "
+        "register as their identity sheet every time. Not approximated. Exact.\n"
+        "  ▸ NPCs have AGENDAS. They don't just answer. They deflect, redirect, test, "
+        "ask their own question, or give a partial answer and wait. They reveal what their "
+        "motive tells them to reveal — no more. They guard their secrets; secrets must be "
+        "extracted by the player through skill, not volunteered by the DM.\n"
+        "  ▸ ONE question or pressure point per NPC turn — not a list of things to respond to.\n"
+        "  ▸ NO scene-reset narration between NPC lines. Don't re-describe the room. "
+        "The conversation IS the scene. Trust the player to remember the setting.\n\n"
+        "STAYING IN DIALOGUE MODE (the back-and-forth is ongoing):\n"
+        "  ▸ Keep each NPC turn to 2-4 spoken lines MAX plus one physical note.\n"
+        "  ▸ The format is: [optional 1-sentence physical beat] \"Spoken line.\" "
+        "[optional 1-sentence reaction or physical beat]. Closing pressure.\n"
+        "  ▸ The closing pressure in dialogue is the NPC's last line OR a physical cue "
+        "that demands response ('He sets down the cup and waits.', '\"Well?\"', "
+        "'Her hand hasn't moved from the door.').\n"
+        "  ▸ Do NOT inject ambient scene detail (other patrons, weather, smells) while "
+        "two characters are mid-exchange. This breaks the conversational spell.\n\n"
+        "EXITING DIALOGUE MODE (back to narration):\n"
+        "  ▸ Player physically moves, turns away, or the conversation reaches a resolution.\n"
+        "  ▸ An external interruption fires (someone enters, noise outside, NPC called away).\n"
+        "  ▸ NPC closes the conversation ('\"That's all I have.\"' + turning away).\n"
+        "  ▸ When exiting, give ONE transition sentence of narration before the closing window.\n\n"
+        "NARRATION MODE (player is moving, investigating, observing — not talking):\n"
+        "  ▸ No NPC speaks unless they're reacting to the player's physical action.\n"
+        "  ▸ Describe environment, surfaces hooks, lets the world move without dialogue.\n"
+        "  ▸ If an NPC reacts (looks up, shifts position, moves away), show the physical "
+        "fact only — no dialogue unless the NPC is SPECIFICALLY being addressed.\n\n"
+        "HARD RULES FOR BOTH MODES:\n"
+        "  ▸ NEVER have an NPC volunteer their secret, motive, or backstory unprompted.\n"
+        "  ▸ NEVER have two NPCs explain the plot to each other while the player watches.\n"
+        "  ▸ NEVER paraphrase what an NPC said ('he explained that…'). Quote or omit.\n"
+        "  ▸ NEVER give the NPC a speech longer than 4 spoken lines in one turn — "
+        "they are talking TO the player, not presenting to them.\n\n"
         "=== LENGTH & FORM ===\n"
         "- 70-130 words, 1-2 tight paragraphs, second person present tense.\n"
+        "- DIALOGUE TURNS: can be shorter (50-100 words) — the NPC's voice does the work.\n"
         "- During active conflict (violence just initiated, guards closing, combat started): "
         "short punchy sentences. Urgency lives in sentence length, not adjectives.\n"
         "- Mix sentence lengths. No headings, no bullet lists, no OOC, no meta.\n\n"
-        "=== ENDING (Mercer's signature — hand agency back) ===\n"
-        "End by giving the player a CLEAR moment of choice. Choose one:\n"
-        "  (A) State 2-3 concrete observable facts UNIQUE to this scene (do not reuse a "
-        "previous reply's set). During conflict, ALL 3 facts must be conflict-relevant "
-        "(guard position, target state, exit status — NOT ambient smells or unrelated NPCs). "
-        "Schematic example only: \"<what the target is doing now>; <where the nearest "
-        "guard is and what they're doing>; <one environmental fact that creates a decision "
-        "point>.\" Stop. Let the player choose.\n"
-        "  (B) Pose ONE sharp specific question rooted in what just changed: "
-        "\"Do you draw, or keep your hands where he can see them?\".\n"
-        "  (C) End with the simple plain handover: \"What do you do?\"\n"
-        "Do NOT prescribe the hero's next action (\"you can duck into...\"). List facts; "
-        "the player invents the verb. NEVER reuse a previous reply's facts."
+        "=== ENDING (hand agency back with urgency) ===\n"
+        "Every response ends with a CLOSING WINDOW — one thing that is about to change, "
+        "disappear, or demand immediate response. Then hand agency back. Two options:\n"
+        "  (A) ONE short sentence stating the closing window as a plain fact "
+        "(\"She is almost at the corner.\", \"His hand moves to the latch.\", "
+        "\"The gate is starting to close.\") — then nothing. The player decides.\n"
+        "  (B) During active conflict: state the closing window + ONE sharp question "
+        "rooted in what just changed: \"The guard's blade is level — do you run or talk?\"\n"
+        "  (C) During dialogue: the NPC's last spoken line OR their physical waiting cue "
+        "IS the closing window — don't add a separate narration sentence after it.\n"
+        "NEVER list 3 ambient facts as the ending. NEVER prescribe the hero's next action. "
+        "NEVER reuse a closing window from a previous reply. "
+        "During conflict, the closing window must be conflict-relevant (guard position, "
+        "target state, exit status) — NOT ambient smells or unrelated detail."
     )
 
 
@@ -1202,6 +1267,119 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     except Exception as _lpce:
         logger.warning(f"Lean DM pressure context failed (non-fatal): {_lpce}")
 
+    # Load game-state character (inventory, conditions, HP) — separate from V2 char.
+    # Used for ration consumption and exhaustion-adjusted HP max. Non-blocking.
+    _game_char_state: Dict = {}
+    try:
+        _game_char_doc = await db.characters.find_one({"character_id": req.character_id})
+        if _game_char_doc:
+            _game_char_state = _game_char_doc.get("character_state") or {}
+    except Exception as _gce:
+        logger.warning(f"Game char state load failed (non-fatal): {_gce}")
+
+    # CON modifier from V2 character (for starvation grace period calculation)
+    def _con_mod_v2(char: dict) -> int:
+        ab = (char.get("abilityScores") or {})
+        con = ab.get("con", 10)
+        return (int(con) - 10) // 2
+
+    # Downtime / breathing room — pacing state, needs, victory feast (non-blocking)
+    _downtime_block = ""
+    _pacing_mutated = False
+    try:
+        from services.downtime_service import (
+            build_downtime_block,
+            check_player_action_for_needs,
+        )
+        _pacing_before = str((campaign.get("world_state") or {}).get("narrative_pacing"))
+        check_player_action_for_needs(req.player_action, campaign, clock_hour)
+
+        # Ration consumption — if meal detected and character has rations, deduct one
+        if _game_char_state:
+            _pacing_now = (campaign.get("world_state") or {}).get("narrative_pacing") or {}
+            _meal_just_recorded = (
+                str(_pacing_now.get("hunger_hours")) == "0"
+                and str(_pacing_before) != str((campaign.get("world_state") or {}).get("narrative_pacing"))
+            )
+            if _meal_just_recorded:
+                try:
+                    from services.ration_service import consume_ration_from_state
+                    _new_inv, _consumed = consume_ration_from_state(_game_char_state)
+                    if _consumed:
+                        _game_char_state["inventory"] = _new_inv
+                        await db.characters.update_one(
+                            {"character_id": req.character_id},
+                            {"$set": {"character_state.inventory": _new_inv}},
+                        )
+                except Exception as _re:
+                    logger.warning(f"Ration consumption failed (non-fatal): {_re}")
+
+        _pacing_after = str((campaign.get("world_state") or {}).get("narrative_pacing"))
+        _pacing_mutated = _pacing_before != _pacing_after
+        _downtime_block = build_downtime_block(campaign, clock_hour, character, current_location)
+    except Exception as _dte:
+        logger.warning(f"Downtime block build failed (non-fatal): {_dte}")
+
+    # Exhaustion block — injected after downtime block so DM sees both
+    _exhaustion_block = ""
+    try:
+        from services.exhaustion_service import build_exhaustion_block
+        _exhaustion_block = build_exhaustion_block(campaign)
+    except Exception as _exe:
+        logger.warning(f"Exhaustion block build failed (non-fatal): {_exe}")
+
+    # Scene thread — close/open loops, wound reveal, continuity (non-blocking)
+    _scene_thread = ""
+    try:
+        from services.scene_thread_service import build_scene_thread_block
+        # Collect recent DM narration for layer detection
+        _recent_narration = " ".join(
+            str(m.get("content") or "")
+            for m in (history or [])[-4:]
+            if m.get("role") == "dm"
+        )
+        # Unengaged hooks = active hooks minus the one just engaged
+        _unengaged = [
+            h for h in active_hooks
+            if not engaged_hook or h.get("id") != engaged_hook.get("id")
+        ]
+        _scene_thread = build_scene_thread_block(
+            engaged_hook=engaged_hook,
+            unengaged_hooks=_unengaged,
+            active_quest_cards=cards,
+            recent_narration=_recent_narration,
+            player_action=req.player_action,
+        )
+    except Exception as _ste:
+        logger.warning(f"Scene thread build failed (non-fatal): {_ste}")
+
+    # Travel context — build if world_state has a last_travel record
+    _travel_block = ""
+    _dungeon_block = ""
+    try:
+        _ws = (campaign.get("world_state") or {})
+        _last_travel = _ws.get("last_travel")
+        if _last_travel and _last_travel.get("travel_result"):
+            from services.travel_service import build_travel_block
+            _travel_block = build_travel_block(
+                _last_travel["travel_result"],
+                _last_travel.get("from_name", "previous location"),
+                _last_travel.get("to_name", "destination"),
+            )
+            # Clear after use so it only fires once per journey
+            _ws.pop("last_travel", None)
+            campaign["world_state"] = _ws
+
+        # Dungeon context — build if there is an active dungeon in progress
+        _active_dungeon = _ws.get("active_dungeon")
+        if _active_dungeon and not _active_dungeon.get("completed", False):
+            _current_room_idx = _active_dungeon.get("current_room", -1)
+            if _current_room_idx >= 0:
+                from services.dungeon_service import build_dungeon_room_block
+                _dungeon_block = build_dungeon_room_block(_active_dungeon, _current_room_idx)
+    except Exception as _tde:
+        logger.warning(f"Travel/dungeon block build failed (non-fatal): {_tde}")
+
     system_prompt = _build_system_prompt(
         campaign, character, cards, clock_hour,
         deck=deck_cards, chaos=chaos_value,
@@ -1210,6 +1388,11 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         canon_scenes=recent_canon,
         current_location=current_location,
         pressure_context=_lean_pressure_ctx,
+        scene_thread=_scene_thread,
+        downtime_block=_downtime_block,
+        exhaustion_block=_exhaustion_block,
+        travel_block=_travel_block,
+        dungeon_block=_dungeon_block,
     )
 
     # Call the LLM
@@ -1338,6 +1521,44 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"Failed to persist clock_hour: {exc}")
+
+    # Advance survival timers by however many in-game hours passed this turn.
+    # This is done AFTER time advance so hunger/thirst accumulates correctly.
+    # Also triggers exhaustion if starvation/dehydration thresholds are crossed.
+    if advance_h > 0:
+        try:
+            from services.downtime_service import advance_survival_timers
+            _survival_warnings = advance_survival_timers(
+                campaign, advance_h, con_mod=_con_mod_v2(character)
+            )
+            if _survival_warnings:
+                for w in _survival_warnings:
+                    logger.info(f"Survival warning: {w}")
+            _pacing_mutated = True  # ensure we persist
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Survival timer advance failed (non-fatal): {exc}")
+
+    # Persist narrative_pacing if anything mutated it
+    if _pacing_mutated:
+        try:
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {"$set": {"world_state.narrative_pacing": (campaign.get("world_state") or {}).get("narrative_pacing") or {}}},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Failed to persist narrative_pacing: {exc}")
+
+        # Sync exhaustion_level onto the game character state so combat/saves pick it up
+        _ex_level = (((campaign.get("world_state") or {}).get("narrative_pacing")) or {}).get("exhaustion_level", 0)
+        if _ex_level != _game_char_state.get("exhaustion_level"):
+            try:
+                await db.characters.update_one(
+                    {"character_id": req.character_id},
+                    {"$set": {"character_state.exhaustion_level": _ex_level}},
+                    upsert=False,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"Failed to sync exhaustion_level to characters: {exc}")
     time_bucket = bucket_for_hour(new_clock_hour)
     # Update in-memory campaign so any downstream code (storyline draft) sees it.
     campaign.setdefault("world_state", {})["clock_hour"] = new_clock_hour
@@ -1521,6 +1742,17 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
             }
             await db.campaign_storylines.insert_one(dict(storyline_doc))
             storyline_payload = storyline_to_dict(storyline_doc)
+
+            # Hook engagement means a thread was resolved — advance pacing counter
+            try:
+                from services.downtime_service import increment_hook_resolutions
+                increment_hook_resolutions(campaign)
+                await db.campaigns.update_one(
+                    {"campaign_id": campaign_id},
+                    {"$set": {"world_state.narrative_pacing": (campaign.get("world_state") or {}).get("narrative_pacing") or {}}},
+                )
+            except Exception as _dhe:
+                logger.warning(f"Downtime hook increment failed (non-fatal): {_dhe}")
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"Storyline auto-draft failed: {exc}")
             storyline_payload = None
@@ -1602,6 +1834,8 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
                 "passive_perception": passive_perception,  # {score, tier, wis_mod, proficient, prof_bonus}
                 "chaos": chaos_payload,                # {value, delta, tier, alignment, drafted_curse}
                 "current_location": current_location,  # {name, card_id} or None
+                "narrative_pacing": (campaign.get("world_state") or {}).get("narrative_pacing") or {},
+                "exhaustion_level": (((campaign.get("world_state") or {}).get("narrative_pacing")) or {}).get("exhaustion_level", 0),
             },
             "player_updates": {},
             "options": [],

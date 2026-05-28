@@ -39,7 +39,10 @@ def roll_saving_throw(
     advantage: bool = False,
     disadvantage: bool = False,
 ) -> Dict[str, Any]:
-    """Roll a saving throw. Returns full result dict."""
+    """Roll a saving throw. Returns full result dict.
+
+    Exhaustion level 3+ adds disadvantage on saving throws (5e PHB).
+    """
     ability = ability.lower()
     abilities = (
         character_state.get("abilities")
@@ -54,6 +57,11 @@ def roll_saving_throw(
     prof_bonus = proficiency_bonus_for_level(level)
     proficient = ability in CLASS_SAVE_PROFICIENCIES.get(class_name, [])
     total_mod = modifier + (prof_bonus if proficient else 0)
+
+    # Exhaustion level 3+ → disadvantage on saving throws
+    exhaustion = int(character_state.get("exhaustion_level", 0))
+    if exhaustion >= 3:
+        disadvantage = True
 
     # Roll with adv/disadv
     r1 = roll_d20()

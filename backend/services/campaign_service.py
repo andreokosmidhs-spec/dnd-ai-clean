@@ -92,6 +92,38 @@ def _format_title(text: str) -> str:
     return text.replace("_", " ").title()
 
 
+def _extract_personality(character: Optional[Dict]) -> Dict:
+    """Extract ideal, bond, flaw from V2 (ideals[]/bonds[]/flaws_detailed[])
+    or legacy (background.personality.*) character format."""
+    empty = {"ideal": "", "bond": "", "flaw": ""}
+    if not character:
+        return empty
+
+    ideal = bond = flaw = ""
+
+    # V2 arrays
+    ideals = character.get("ideals") or []
+    if ideals and isinstance(ideals[0], dict):
+        ideal = (ideals[0].get("principle") or "").strip()
+
+    bonds = character.get("bonds") or []
+    if bonds and isinstance(bonds[0], dict):
+        bond = (bonds[0].get("person_or_cause") or "").strip()
+
+    flaws = character.get("flaws_detailed") or []
+    if flaws and isinstance(flaws[0], dict):
+        flaw = (flaws[0].get("habit") or "").strip()
+
+    # Legacy fallback
+    if not ideal or not bond or not flaw:
+        personality = (character.get("background") or {}).get("personality") or {}
+        ideal = ideal or (personality.get("ideal") or "").strip()
+        bond = bond or (personality.get("bond") or "").strip()
+        flaw = flaw or (personality.get("flaw") or "").strip()
+
+    return {"ideal": ideal, "bond": bond, "flaw": flaw}
+
+
 # Short flavor guidance per D&D class — keeps the AI narrator's language
 # tonally consistent with the hero's archetype without stereotyping.
 _CLASS_FLAVOR = {
@@ -391,9 +423,11 @@ async def generate_world_brief_with_ai(
     character: Optional[Dict],
     setting: Optional[Dict] = None,
 ) -> str:
-    """Macro-zoom narration: geography, history, political climate, cultures,
-    powers at play. Read like a chronicler's preface — the lay of the land
-    BEFORE the camera zooms onto the hero. Falls back to a coherent template.
+    """World-state text: the macro view that opens the campaign.
+    Shows the lay of the land and powers at play through the wound they create —
+    not as a geography lecture but as a living system already in motion.
+    The arrival narration zooms into this world immediately after.
+    Falls back to a coherent template on failure.
     """
     realm_name = (world.get("world_core", {}) or {}).get("name", "the realm")
     location_name = (world.get("startingLocation", {}) or {}).get("name", "a town")
@@ -403,6 +437,19 @@ async def generate_world_brief_with_ai(
     factions = setting.get("factions") or []
     events = setting.get("recent_events") or []
     tension = (setting.get("current_tension") or "").strip()
+
+    personality = _extract_personality(character)
+    ideal = personality["ideal"]
+    bond = personality["bond"]
+
+    class_key = "adventurer"
+    class_name = "adventurer"
+    bg_name = "drifter"
+    if character:
+        cls = character.get("class") or character.get("class_") or {}
+        class_key = (cls.get("key") or "adventurer").lower()
+        class_name = _format_title(class_key)
+        bg_name = _format_title((character.get("background") or {}).get("key", "drifter"))
 
     fallback = (
         f"The {realm_name} sits at a crossroads of trade and trouble. "
@@ -420,52 +467,79 @@ async def generate_world_brief_with_ai(
         faction_lines = "\n".join(
             f"- {f.get('name','')}: {f.get('domain','')}; {f.get('stance','')}"
             for f in factions[:3] if f.get("name")
-        ) or "(none provided — invent two plausible powers)"
+        ) or "(none provided — invent two plausible powers in conflict)"
         event_lines = "\n".join(
             f"- {e.get('title','')}: {e.get('summary','')}"
             for e in events[:2] if e.get("title")
-        ) or "(none provided)"
+        ) or "(none provided — invent one recent event that produced the current tension)"
 
         prompt = (
-            "Write a CHRONICLER'S PREFACE for the start of a Dungeons & Dragons 5e campaign. "
-            "This is the MACRO view — the lay of the land BEFORE the camera zooms onto the hero. "
-            "It will be displayed as a separate opening text, then a second narration zooms into "
-            "the hero's specific arrival.\n\n"
-            "=== REALM ===\n"
-            f"Name: {realm_name}\n"
+            "Write the WORLD STATE TEXT for the opening of a D&D 5e campaign.\n\n"
+            "This is the MACRO VIEW — the lay of the land and powers at play before the "
+            "camera zooms onto the protagonist. Think of the Lord of the Rings prologue: "
+            "you are establishing what the world IS, what is broken in it, and who holds the "
+            "pieces. The hero does not appear here.\n\n"
+            "This text will be immediately followed by an arrival narration that zooms into "
+            f"{location_name} with the protagonist present. Your final sentence must tilt the "
+            f"camera toward {location_name} so the transition feels like a continuous zoom.\n\n"
+            "=== THE WORLD ===\n"
+            f"Realm: {realm_name}\n"
+            f"Starting location: {location_name}\n"
             f"Tone: {intent.tone} | Focus: {intent.focus} | Scope: {intent.scope}\n"
-            f"Era: {era or '(unspecified — establish one)'}\n\n"
+            f"Era: {era or '(establish one)'}\n\n"
             "=== POWERS AT PLAY ===\n"
             f"{faction_lines}\n\n"
             "=== RECENT EVENTS ===\n"
             f"{event_lines}\n\n"
             "=== CURRENT TENSION ===\n"
-            f"{tension or '(unspecified)'}\n\n"
-            f"=== THE STORY TURNS TO === \n{location_name}\n\n"
-            "=== STYLE ===\n"
-            "- 130-180 words, ONE paragraph, third-person omniscient (a chronicler's voice).\n"
-            "- Cover four things briefly, in order: (1) GEOGRAPHY — where this realm sits, its terrain, "
-            "key neighbors; (2) RECENT HISTORY — the recent events compressed into one sentence of cause "
-            "and effect; (3) POLITICAL CLIMATE — who holds power, who opposes them, the current balance; "
-            "(4) CULTURE — one specific custom or texture of daily life that distinguishes this realm.\n"
-            "- ONE concrete sensory detail allowed (a banner color, a dialect phrase, the sound of a "
-            "particular bell). One simile maximum. No purple prose.\n"
-            f"- Match the campaign tone ({intent.tone}). Gritty = scarcity, tired institutions, "
-            "wariness; Heroic = banners returning, hopeful but uncertain; Mystery = secrets, secretive "
-            "guilds, things unsaid in public.\n"
-            "- Do NOT mention or address the hero. The hero does not yet enter the scene.\n"
-            f"- End with EXACTLY ONE short transitional sentence that tilts the camera toward {location_name}, "
-            f"e.g., \"And it is to {location_name}, on this evening, that our story turns.\" Do not invent a "
-            "new transitional location.\n"
-            "- HARD-BAN PHRASES: \"once upon a time\", \"in a land far away\", \"legends speak\", "
-            "\"ancient prophecy\", \"chosen one\", \"dark lord\", \"destiny\", \"in a world\".\n"
-            "- No headings, no quotes around the passage, no OOC. Output ONLY the chronicle paragraph."
+            f"{tension or '(establish one that fits the tone)'}\n\n"
+            "=== THIS CHARACTER'S STAKE (do NOT mention the character — use this to make "
+            "the wound specific to what a person with these values would care about) ===\n"
+            f"Class: {class_name} | Background: {bg_name}\n"
+            f"Ideal: {ideal or '(none — write a wound that any person could care about)'}\n"
+            f"Bond destination: {location_name} — "
+            f"{bond or '(someone or something in this place)'}\n\n"
+            "=== THREE-PART STRUCTURE — FOLLOW EXACTLY ===\n\n"
+            "PART 1 — Geography as stage (2-3 sentences):\n"
+            "Not a map. The terrain, the resources, the economy — as the physical reality the "
+            "struggle is playing out on. What this land produces, who depends on it, what moves "
+            "through it. Ground the reader in a specific place with weight and texture.\n\n"
+            "PART 2 — The wound operating (2-3 sentences):\n"
+            "Who holds power and what it costs everyone else — shown through the mechanism, "
+            "not named as injustice. Name the specific instrument: the tax, the licensing law, "
+            "the debt contract, the conscription order. Show it operating normally, not "
+            "dramatically. The most effective wound is the kind no one bothers to protest "
+            "because it has become the weather. The reader should feel the stakes without "
+            "being told what they are.\n\n"
+            "PART 3 — The camera tilts (1 sentence):\n"
+            f"A single transitional sentence pointing at {location_name}. This closes the "
+            "macro view and begins the zoom toward the arrival narration. "
+            f"Pattern: 'It is to [location], on [time/condition], that this story turns.' "
+            "Vary the phrasing. Use the exact location name.\n\n"
+            "=== RULES ===\n"
+            "- Third-person omniscient. The hero does NOT appear.\n"
+            "- 120-160 words. One paragraph.\n"
+            f"- Match tone: {intent.tone}. Gritty = scarcity, exhausted institutions, "
+            "working-class texture. Heroic = real stakes but not hopeless. "
+            "Mystery = what is unsaid matters as much as what is said.\n"
+            "- The wound is shown through its effect on ordinary life — not stated as "
+            "'the stakes are' or 'injustice reigns.' Show the mechanism; let the reader "
+            "feel the consequence.\n"
+            "- One concrete sensory detail allowed (a color, a sound, a smell).\n"
+            "- Short declarative sentences land harder than complex ones.\n"
+            "- BANNED: 'once upon a time', 'in a land far away', 'legends speak', "
+            "'ancient prophecy', 'chosen one', 'dark lord', 'destiny', 'in a world', "
+            "'the stakes are', 'injustice', 'evil forces'.\n"
+            "- No headings, no quotes around the passage, no OOC.\n"
+            "Output ONLY the paragraph."
         )
 
         response = await call_haiku_async(
-            "You are a chronicler of fantasy realms in the tradition of Tolkien's prologues "
-            "and Critical Role's opening world primers — concise, grounded, specific. "
-            "You compress history, geography, politics, and culture into a single tight paragraph.",
+            "You are a world-state narrator opening a D&D campaign. You establish the lay of "
+            "the land and the powers at play by showing the wound in the world — not through "
+            "exposition but through the mechanism of power operating on ordinary life. "
+            "You write like the Lord of the Rings prologue: grounded, specific, ending with "
+            "the camera beginning its zoom toward where the story starts.",
             prompt,
             max_tokens=400,
             temperature=0.3,
@@ -547,36 +621,33 @@ async def build_starting_scene_with_ai(
                 appearance_bits.append(f"{eyes} eyes")
             if notable:
                 appearance_bits.append("notable: " + ", ".join(notable[:3]))
-            personality = bg.get("personality") or {}
-            ideal = (personality.get("ideal") or "").strip()
-            bond = (personality.get("bond") or "").strip()
-            flaw = (personality.get("flaw") or "").strip()
+        # Use _extract_personality to handle both V2 and legacy character formats
+        _p = _extract_personality(character)
+        ideal = _p["ideal"]
+        bond = _p["bond"]
+        flaw = _p["flaw"]
 
         class_flavor = _CLASS_FLAVOR.get(class_key, _CLASS_FLAVOR["_default"])
         appearance_line = "; ".join(appearance_bits) if appearance_bits else "unremarkable at first glance"
         hero_header = f"{name} — a {age_category or 'adult'} {sex or ''} {race_name} {class_name}, {bg_name} background".replace("  ", " ").strip()
 
-        personality_lines: List[str] = []
-        if ideal:
-            personality_lines.append(f"- Ideal: {ideal}")
-        if bond:
-            personality_lines.append(f"- Bond: {bond}")
-        if flaw:
-            personality_lines.append(f"- Flaw: {flaw}")
-        personality_block = "\n".join(personality_lines) if personality_lines else "- (no personality hooks set)"
-
         # Active quest hook (the opening lead). When present, the intro MUST
         # plant this concretely so the ending choices tie back to it.
         quest_title = ""
         quest_desc = ""
+        quest_scene_hook = ""
         if active_quest:
             quest_title = (active_quest.get("title") or "").strip()
             quest_desc = (active_quest.get("description") or "").strip()
+            quest_scene_hook = (active_quest.get("scene_hook") or "").strip()
         has_quest = bool(quest_title and quest_desc)
         quest_block = (
-            f"- Title: {quest_title}\n- Details: {quest_desc}"
+            f"- Title: {quest_title}\n"
+            f"- Description: {quest_desc}\n"
+            f"- Scene hook (embed this detail naturally in the scene — do NOT label it): "
+            f"{quest_scene_hook or '(derive from the bond destination and world setting)'}"
             if has_quest
-            else "- (no opening lead set; invent a subtle hook aligned with the campaign focus)"
+            else "- (no opening lead — embed one subtle scene detail tied to the bond and world wound)"
         )
 
         # Setting block: the world's actual situation (era, factions, recent
@@ -605,96 +676,91 @@ async def build_starting_scene_with_ai(
         setting_block = "\n".join(setting_lines) if setting_lines else "(no setting context provided)"
 
         system_message = (
-            "You are a master Dungeons & Dragons 5e storyteller in the tradition of "
-            "Matthew Mercer: cinematic but restrained, grounded in concrete sensory "
-            "detail, never melodramatic. You set scenes that HAPPEN AROUND the hero "
-            "while the hero is still — never telling the player what their character "
-            "thinks, perceives, decides, or does. The player owns those choices. "
-            "Your job is to make a place feel real and hand agency back."
+            "You are the opening narrator of a D&D 5e campaign. You pick up where the "
+            "world-state text left off — the macro view has zoomed to the starting location "
+            "and now the protagonist is present. Your job is to land the camera at street "
+            "level, show the character arriving with a reason, and describe a scene where "
+            "the world's wound is visible in the details. You do not tell the player what "
+            "to do. You do not label what is interesting. You trust the player's eye. "
+            "The scene happens around the still protagonist — they arrived, they are here, "
+            "the world is moving. Hand agency back with a closing window and a single question."
         )
 
         prompt = (
-            "Write the OPENING narration of a new D&D 5e campaign in the style of "
-            "Matthew Mercer (Critical Role): cinematic, grounded, restrained.\n\n"
+            "Write the ARRIVAL NARRATION — the second opening text of a D&D 5e campaign.\n\n"
+            "The world-state text has just established the macro view and ended by pointing "
+            f"at {location_name}. This narration picks up that zoom and lands inside it. "
+            "The protagonist is now present. The world's wound from the first text is "
+            "visible here at street level.\n\n"
             "=== CAMPAIGN ===\n"
-            f"Tone: {intent.tone} | Focus: {intent.focus} | Scope: {intent.scope} | Danger: {intent.danger}\n"
-            f"World theme: {world.get('theme', 'mixed')} | World tone: {world.get('tone', 'mixed')}\n\n"
-            "=== LOCATION (use this exact name; do NOT invent a different place) ===\n"
+            f"Tone: {intent.tone} | Focus: {intent.focus} | Scope: {intent.scope} | Danger: {intent.danger}\n\n"
+            "=== LOCATION ===\n"
             f"{location_name} — {location_desc}\n\n"
-            "=== HERO (the player controls them — you do NOT) ===\n"
+            "=== THE PROTAGONIST ===\n"
             f"{hero_header}\n"
-            f"Appearance cues: {appearance_line}\n"
-            f"Class flavor (subtle, optional): {class_flavor}\n"
-            "Personality hooks (may color how an NPC reacts to them — never quote, "
-            "never narrate the hero's inner monologue):\n"
-            f"{personality_block}\n\n"
-            "=== ACTIVE OPENING LEAD (plant as a fact in the world; do NOT hijack the hero into investigating it) ===\n"
+            f"Appearance cues (surface only — never describe their face from outside): {appearance_line}\n"
+            f"Class lens (subtle coloring — how they read the world): {class_flavor}\n"
+            f"Bond — THIS IS WHY THEY ARE HERE: {bond or '(none set — invent a concrete specific reason tied to this location)'}\n"
+            f"Ideal: {ideal or '(none set)'}\n"
+            f"Flaw: {flaw or '(none set)'}\n\n"
+            "=== THE QUEST HOOK (this is what the bond leads them toward — embed it naturally in the scene) ===\n"
             f"{quest_block}\n\n"
-            "=== WORLD SETTING (ground truth — the player must feel they're in this specific world, not generic fantasy) ===\n"
+            "=== WORLD SETTING (what the wound looks like from street level) ===\n"
             f"{setting_block}\n\n"
-            "=== MERCER STYLE — STRICT ===\n"
-            "0) STRUCTURE (Mercer's character-arrival opening, two beats):\n"
-            "   • BEAT ONE — ARRIVAL CONTEXT (1-2 sentences): explain WHY this specific hero is in "
-            "this specific place RIGHT NOW. Anchor it in the hero's BACKGROUND (a soldier mustered out "
-            "with last pay; an entertainer on a circuit between towns; an outlander drawn by a market "
-            "rumor; an acolyte sent on an errand by their order; a criminal lying low after a job), "
-            "their RACE (an elf far from the deep woods, a dwarf among humans, a halfling slipping "
-            "between knees) and their PERSONALITY HOOKS if any (the bond pulls them here, the flaw "
-            "got them here). One concrete who-or-what brought them — a writ, a coin, a letter, a "
-            "rumor, a debt, a pilgrimage — keep it specific. Reference the hero by name once.\n"
-            "   • BEAT TWO — STATIC SCENE (3-4 sentences): now describe the immediate place around "
-            "the still hero — weather, light, time of day, sound, smell, texture. Plant the active "
-            "opening lead as an observable fact in this specific moment. Do NOT repeat material from "
-            "the world brief.\n"
-            "1) STATIC SCENE. The hero is still — arrived, standing, sitting, watching. "
-            "The scene HAPPENS AROUND them after the arrival is established. Show the place: weather, "
-            "light, time of day, a sound, a smell, one specific texture.\n"
-            "2) NEVER narrate what the hero DOES. Forbidden patterns: \"you scan\", \"you step\", "
-            "\"you reach\", \"you decide\", \"you wonder\", \"you feel\" (followed by an emotion), "
-            "\"your eyes\" (eyes are a perception verb in disguise), \"your hand moves\", "
-            "\"you draw\", \"you turn\", \"you smile\", \"you nod\". The PLAYER decides actions.\n"
-            "3) NEVER narrate what the hero THINKS or PERCEIVES as inner state. The narrator does not "
-            "have access to their head. No rhetorical questions to the hero (\"What better place...?\"). "
-            "No \"thoughts\", no \"in the back of your mind\", no \"a part of you...\".\n"
-            "4) ONE simile MAXIMUM in the entire passage. Prefer none. NEVER chain similes "
-            "(\"like X, like Y, like Z\"). Cut metaphor density by 80% from a typical AI default.\n"
-            "5) NPCs appear as silhouettes / voices / postures — \"a hooded figure at the well\", "
-            "\"a man's frantic voice\", \"a watchman thumbing the hilt of his sword\". Do NOT name "
-            "anyone unless the lead already named them. Description first, name later.\n"
-            "6) TIME, WEATHER, LIGHT carry mood. \"Late afternoon. The market is winding down.\" "
-            "Beats \"a heavy weight settles over the square\" every time.\n"
-            "7) TONE-MATCHED PROSE.\n"
-            f"   • Gritty/Grim: short sentences, cold details, working-class smells (smoke, sweat, lamp oil).\n"
-            f"   • Heroic: open vistas, banners, a horn in the distance, but never saccharine.\n"
-            f"   • Mystery: emphasize what is OUT of place — a closed door at midday, a quiet that shouldn't be quiet.\n"
-            f"   Match the campaign tone ({intent.tone}) without naming it.\n"
-            "8) APPEARANCE may surface ONLY through (a) physical sensation the hero would feel "
-            "(weight of armor, cool of a bracer), (b) a reflection they actually see, or "
-            "(c) another character reacting to them. NEVER describe the hero's own face or build "
-            "from outside.\n"
-            "9) HARD-BAN PHRASES: \"a chill runs down your spine\", \"destiny awaits\", \"the adventure begins\", "
-            "\"little did you know\", \"a mysterious stranger\", \"feels personal\", \"pulls at you\", "
-            "\"tugs at your heart\", \"weighs on your soul\", \"stirs something deep\", \"swirl like autumn leaves\", "
-            "\"like fingers across\", \"gleam and promise fortune\", \"ye olde\".\n"
-            "10) Use the location name once naturally. Reference the hero's name once if it fits — never twice.\n\n"
-            "=== LENGTH & FORM ===\n"
-            "- 130-180 words, ONE paragraph, second-person present tense.\n"
-            "- 5-8 sentences across both beats; mix sentence lengths (short, longer, short).\n"
-            "- No headings, no quotes around the passage, no OOC, no stats.\n\n"
-            "=== ENDING (Mercer's signature — hand agency back) ===\n"
-            "End by presenting the WORLD'S facts, not the hero's autopilot. Choose one:\n"
-            "  (A) State 2-3 concrete observable things that are present in THIS scene "
-            "(unique to this location and lead — DO NOT reuse the example below). "
-            "Phrase them as plain world-observations. Schematic example only: "
-            "\"Three things draw the eye: <a specific door/window/figure>, <a specific "
-            "movement or sound>, and <a specific person doing a specific thing>.\" "
-            "Replace each placeholder with details true to THIS opening lead and place. "
-            "Then nothing. Let the player choose.\n"
-            "  (B) End with a single short, plain sentence handing it over: \"What do you do?\" "
-            "Never embellish that line.\n"
-            "Do NOT suggest specific actions phrased as the hero's choices (\"You can duck into...\"). "
-            "List facts; the player invents the verb. NEVER reuse a previous reply's three facts.\n\n"
-            "Output ONLY the narration paragraph."
+            "=== FOUR BEATS — FOLLOW THIS STRUCTURE EXACTLY ===\n\n"
+            "BEAT 1 — ARRIVAL WITH REASON (1-2 sentences):\n"
+            "The bond brought them here. Name the specific destination — the address, the "
+            "building, the institution the bond points toward. One sensory detail specific "
+            "to this place at this moment. Reference the hero by name once. "
+            "The protagonist is still — arrived, standing, looking. They do not move yet.\n\n"
+            "BEAT 2 — WHAT IS WRONG (1 sentence):\n"
+            "Something at or near the bond destination is not what it should be. "
+            "Describe it exactly as a visible fact — no interpretation, no 'something seems off.' "
+            "Show the thing. Let the player's brain supply the meaning. "
+            "Define by negation if it helps: the thing that should be there and isn't, "
+            "or the thing that is there and shouldn't be. "
+            "This detail must be specific to the world's wound and this character's bond.\n\n"
+            "BEAT 3 — THE WORLD MOVING (2-3 sentences):\n"
+            "Two things happening in the scene simultaneously. "
+            "At least one is a person doing something with an unclear purpose. "
+            "At least one connects visibly to the world's wound from the first text. "
+            "Do NOT label these as significant. Do NOT say 'you notice' or 'you see' or "
+            "'three things draw the eye.' Just describe what is there, doing what it is doing. "
+            "The player's brain will find them. These are open loops — the player will want "
+            "to investigate. Investigating one closes it and opens the next. "
+            "Do not resolve any of them.\n\n"
+            "BEAT 4 — THE CLOSING WINDOW (1 sentence, then line break, then the question):\n"
+            "One short sentence that makes one of the loops time-sensitive. Something is "
+            "about to be gone — a person reaching a corner, a door starting to close, "
+            "a moment about to resolve without the player. Specific. Present tense. "
+            "No explanation. Then a line break. Then on its own line: What do you do?\n\n"
+            "=== ABSOLUTE RULES ===\n"
+            "1. Second-person present tense throughout.\n"
+            "2. NEVER narrate what the protagonist thinks, feels, decides, or does. "
+            "Forbidden: 'you notice', 'you see', 'you feel', 'you sense', 'your eyes', "
+            "'you realize', 'you wonder', 'you scan', 'you decide', 'you step'.\n"
+            "3. NPCs are posture and motion before face and name — 'a woman crossing fast' "
+            "before any name or face detail.\n"
+            "4. Hooks are in the description. NEVER label them. No 'three things draw the eye', "
+            "no 'stands out', no 'catches your attention'. Describe the scene; let the player hunt.\n"
+            "5. ONE simile maximum across the entire passage. Prefer none.\n"
+            "6. 'What do you do?' stands on its own line after a line break. Never embellish it.\n"
+            "7. The opening should feel like a continuous zoom from the world-state text — "
+            f"reference the same landmark or street that text used to point toward {location_name}.\n\n"
+            f"=== TONE ===\n"
+            f"Gritty: short sentences, cold details, working-class textures (smoke, lamp oil, worn stone).\n"
+            f"Heroic: specific physical detail, space and light, but never saccharine.\n"
+            f"Mystery: what is OUT of place matters most — a silence that shouldn't be there.\n"
+            f"Match tone '{intent.tone}' without naming it.\n\n"
+            "=== BANNED PHRASES ===\n"
+            "'a chill runs down your spine', 'destiny', 'the adventure begins', "
+            "'little did you know', 'weighs on your soul', 'stirs something inside you', "
+            "'you can't shake the feeling', 'something is wrong', 'three things draw the eye', "
+            "'stands out', 'catches your attention', 'mysterious stranger', 'ye olde'.\n\n"
+            "=== LENGTH ===\n"
+            "6-9 sentences across beats 1-4. Beat 4 ends with 'What do you do?' on its own line.\n"
+            "Mix sentence lengths — short sentences land harder than long ones.\n\n"
+            "Output ONLY the narration. No headings. No explanation."
         )
 
         response = await call_haiku_async(
@@ -804,37 +870,76 @@ async def generate_opening_quest_card_with_ai(
 
         class_flavor = _CLASS_FLAVOR.get(class_key, _CLASS_FLAVOR["_default"])
 
+        personality = _extract_personality(character)
+        ideal = personality["ideal"]
+        bond = personality["bond"]
+        flaw = personality["flaw"]
+
         prompt = (
-            "Design a SPECIFIC, INTRIGUING opening quest hook for a Dungeons & Dragons 5e campaign. "
-            "The player should see this on their Knowledge Deck the moment the campaign begins.\n\n"
+            "Design the OPENING QUEST for a D&D 5e campaign.\n\n"
+            "A quest is a chain of questions, not a task. Each answer reveals the world's "
+            "wound more completely. The title is a question. The first thread is something "
+            "the player can see in the arrival scene. Investigating it closes one loop and "
+            "opens the next — and the next answer is always worse (and more interesting) "
+            "than the surface.\n\n"
             "=== CAMPAIGN ===\n"
             f"Tone: {intent.tone} | Focus: {intent.focus} | Scope: {intent.scope} | Danger: {intent.danger}\n"
             f"Starting location: {location_name} — {starting.get('description', '')}\n\n"
             "=== HERO ===\n"
             f"{hero_name} ({_format_title(class_key)}, {_format_title(bg_key)} background)\n"
-            f"Class flavor: {class_flavor}\n\n"
-            "=== REQUIREMENTS ===\n"
-            f"- The hook MUST feel {intent.focus.lower()}-flavored (e.g., Political Intrigue → a sealed letter, a "
-            "missing witness, a suspicious alliance; Exploration → unmapped ruin, trade route gone silent; "
-            "Combat → raiders hitting caravans; Mystery → a body with no wound).\n"
-            f"- It must be plausible for a level-1 hero to investigate; no epic-tier threats.\n"
-            f"- It must anchor to {location_name} or a specific nearby place the player can reach on foot.\n"
-            "- Give it TEETH: name a concrete first step the player can take (find X, meet Y at Z, inspect Q before dawn).\n"
-            "- No clichés (\"mysterious stranger\", \"ancient prophecy\", \"chosen one\", \"a tavern\").\n"
-            "- Do NOT name NPCs unless essential; if named, give them 1-2 vivid details.\n\n"
+            f"Class: what NPCs see and ask for — {class_flavor}\n"
+            f"Bond (why they are here): {bond or '(none set — invent one tied to this location)'}\n"
+            f"Ideal (what the world must oppose): {ideal or '(none set)'}\n"
+            f"Flaw: {flaw or '(none set)'}\n\n"
+            "=== QUEST DESIGN RULES ===\n"
+            "1. TITLE: a question, 3-5 words. Not a task ('Find the missing priest') — "
+            "a question ('Where Is Father Aldric?'). The player's brain starts predicting "
+            "the answer immediately.\n\n"
+            "2. DESCRIPTION: 2 sentences maximum.\n"
+            "   Sentence 1: The scene-visible surface hook — something the player can see "
+            "or find in the arrival narration (a notice on a door, a person moving fast, "
+            "a building with the wrong sign). Name the specific thing. Root it in the bond "
+            "destination.\n"
+            "   Sentence 2: The first thread — the specific action the player takes to "
+            "start pulling (ask the person at the garrison office, go into the alley after "
+            "the woman, read the notice on the door). Concrete. Achievable immediately.\n\n"
+            "3. SCENE_HOOK: one short phrase — the literal thing visible in the arrival "
+            "scene that connects to this quest. This exact phrase (or close to it) should "
+            "appear naturally in the arrival narration. Keep it under 10 words. "
+            "Example: 'a licensing notice nailed to a stripped door'\n\n"
+            "4. WOUND LAYERS (for context — not shown to player, used by DM to generate "
+            "consistent follow-up):\n"
+            "   Layer 1 (surface): what the player finds when they pull the first thread.\n"
+            "   Layer 2 (mechanism): what that reveals about HOW the world's wound works.\n"
+            "   Layer 3 (structure): what the mechanism reveals about WHO benefits and WHY "
+            "it persists.\n"
+            "The wound layers should escalate — each one is more systemic than the last, "
+            "and harder to fight than the one before.\n\n"
+            "5. No clichés: no 'mysterious stranger', 'ancient prophecy', 'chosen one', "
+            "'dark lord', 'a tavern brawl'.\n"
+            "6. Level-1 appropriate: no epic threats. The first thread is something a "
+            "single person can investigate on foot in one afternoon.\n\n"
             "=== OUTPUT (strict JSON, no prose, no code fence) ===\n"
             "{\n"
-            "  \"title\": \"Short evocative title, 3-6 words, no quotation marks\",\n"
-            "  \"description\": \"1-3 sentences (<=280 chars) describing the hook + the concrete first step.\",\n"
-            "  \"tags\": [\"2-4 lowercase tags, e.g. 'murder', 'dockside', 'political']\"\n"
+            "  \"title\": \"Question-form title, 3-5 words, ends with ?\",\n"
+            "  \"description\": \"2 sentences: scene-visible hook + immediate first thread. <=300 chars.\",\n"
+            "  \"scene_hook\": \"the specific visible thing in the arrival scene, <10 words\",\n"
+            "  \"wound_layers\": {\n"
+            "    \"surface\": \"what the first thread reveals\",\n"
+            "    \"mechanism\": \"how the system works\",\n"
+            "    \"structure\": \"who benefits and why it persists\"\n"
+            "  },\n"
+            "  \"tags\": [\"2-4 lowercase tags\"]\n"
             "}\n"
         )
 
         raw = await call_haiku_async(
-            "You are a senior D&D campaign designer. You generate specific, grounded, player-ready "
-            "quest hooks tailored to the campaign's tone, focus, and hero. Output strict JSON only.",
+            "You are a senior D&D campaign designer. You build opening quests as chains of "
+            "questions — each answer reveals the world's wound more completely. "
+            "The title is a question. The first thread is visible in the arrival scene. "
+            "Output strict JSON only.",
             prompt,
-            max_tokens=300,
+            max_tokens=500,
             temperature=0.5,
         ) or ""
 
@@ -858,6 +963,8 @@ async def generate_opening_quest_card_with_ai(
 
         title = str(data.get("title") or "").strip() or fallback.title
         description = str(data.get("description") or "").strip() or fallback.description
+        scene_hook = str(data.get("scene_hook") or "").strip()
+        wound_layers = data.get("wound_layers") or {}
         tags = data.get("tags") or []
         if not isinstance(tags, list):
             tags = []
@@ -867,11 +974,17 @@ async def generate_opening_quest_card_with_ai(
             tags = [*tags, "opening"]
         if "quest" not in tags:
             tags = [*tags, "quest"]
-        # Trim
         if len(description) > 360:
             description = description[:360].rstrip() + "…"
 
-        return KnowledgeCard(
+        # Build metadata block for DM context (not shown to player directly)
+        metadata: dict = {}
+        if scene_hook:
+            metadata["scene_hook"] = scene_hook
+        if wound_layers and isinstance(wound_layers, dict):
+            metadata["wound_layers"] = wound_layers
+
+        card = KnowledgeCard(
             id=str(uuid4()),
             type="quest",
             title=title[:80],
@@ -879,6 +992,13 @@ async def generate_opening_quest_card_with_ai(
             tags=tags[:6],
             status="active",
         )
+        # Attach metadata if the model supports extra fields
+        if metadata:
+            try:
+                object.__setattr__(card, "metadata", metadata)
+            except Exception:
+                pass
+        return card
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"AI opening quest generation failed, using template: {exc}")
         return fallback

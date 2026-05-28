@@ -10,8 +10,80 @@
  *   personality: { trait, ideal, bond, flaw }
  *   background, mannerisms[], speech_style, secrets[], allegiances[], current_motivation
  */
-import React from 'react';
-import { Lock, Eye, Sword, Heart, ScrollText, EyeOff, History } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Lock, Eye, Sword, Heart, ScrollText, EyeOff, History, Volume2, Loader2 } from 'lucide-react';
+
+const API_BASE = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+
+const EMOTIONS = ['neutral','calm','happy','excited','angry','nervous','fearful','sad','tired','whispering','contemptuous','suspicious'];
+
+const VoicePlayer = ({ card, campaignId }) => {
+  const [emotion, setEmotion] = useState('neutral');
+  const [loading, setLoading] = useState(false);
+  const audioRef = useRef(null);
+
+  const voiceProfile = card?.voiceProfile;
+  if (!voiceProfile?.assignedVoice || !campaignId) return null;
+
+  const npcId = card?.npcId || card?.id || card?.title?.toLowerCase().replace(/\s+/g, '_');
+
+  const handleSpeak = async () => {
+    const text = card?.description || card?.title || '';
+    if (!text || !npcId) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/voices/speak/${campaignId}/${npcId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.slice(0, 300), emotion, tier: 1, useCache: true }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (audioRef.current) {
+        audioRef.current.src = url;
+        audioRef.current.play().catch(() => {});
+      }
+    } catch (e) {
+      console.error('[voice]', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 border-t border-amber-500/20 pt-3">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-stone-400 flex items-center gap-1.5 mb-2">
+        <Volume2 className="w-3 h-3" /> Voice — {voiceProfile.assignedVoice}
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <select
+          value={emotion}
+          onChange={e => setEmotion(e.target.value)}
+          className="text-[10px] bg-stone-900 border border-amber-500/30 text-amber-200 rounded px-1.5 py-0.5"
+        >
+          {EMOTIONS.map(em => <option key={em} value={em}>{em}</option>)}
+        </select>
+        <button
+          onClick={handleSpeak}
+          disabled={loading}
+          className="flex items-center gap-1 text-[10px] text-amber-300 border border-amber-500/40 rounded px-2 py-0.5 hover:bg-amber-600/10 disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Volume2 className="w-3 h-3" />}
+          {loading ? 'Generating…' : 'Listen'}
+        </button>
+        {voiceProfile.voiceTags?.length > 0 && (
+          <div className="flex gap-1 flex-wrap">
+            {voiceProfile.voiceTags.slice(0, 5).map(t => (
+              <span key={t} className="text-[9px] bg-stone-800 text-stone-400 rounded px-1">{t}</span>
+            ))}
+          </div>
+        )}
+      </div>
+      <audio ref={audioRef} className="hidden" />
+    </div>
+  );
+};
 
 const RedactedRow = ({ label, value, revealed, hint, testid }) => {
   if (revealed) {
@@ -43,7 +115,7 @@ const RedactedRow = ({ label, value, revealed, hint, testid }) => {
   );
 };
 
-export const NPCIdentityPanel = ({ card }) => {
+export const NPCIdentityPanel = ({ card, campaignId }) => {
   if (!card || (card.type !== 'character' && card.type !== 'npc')) return null;
   const secret = card.secret_content || {};
   // No sheet generated yet (older NPC cards or generation failed) — skip the
@@ -293,6 +365,8 @@ export const NPCIdentityPanel = ({ card }) => {
           </ol>
         </div>
       )}
+
+      <VoicePlayer card={card} campaignId={campaignId} />
     </div>
   );
 };

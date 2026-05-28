@@ -563,6 +563,20 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         "Intimidation/Persuasion/Deception/Insight. Write their dialogue with their voice "
         "('clipped, drops r's' = clipped, drops r's), drop their physical mannerisms into "
         "the prose. If multiple NPCs are present, their voices must be DISTINCT.\n"
+        "4b-VOICE TAGS (NEW NPC FIRST APPEARANCE ONLY). When you introduce a named NPC "
+        "for the first time (they speak, act, or are described in person for the first time), "
+        "append a JSON block at the very end of your response — AFTER the closing window:\n"
+        "```json\n"
+        "{\"npc_voice_cast\": {\"npc_id\": \"<id_or_slug>\", \"name\": \"<NPC name>\", "
+        "\"voiceTags\": [<semantic tags>], \"emotionalStyle\": \"<default emotion>\"}}\n"
+        "```\n"
+        "Choose voiceTags from PERSONALITY (not voice names). Think: gender, age group, "
+        "energy, class, archetype, accent, emotional color. Examples:\n"
+        "  Tired middle-aged female clerk: [\"female\",\"middle_aged\",\"dry\",\"low_energy\",\"urban\",\"guarded\"]\n"
+        "  Young eager male guard: [\"male\",\"young\",\"energetic\",\"soldier\",\"american\"]\n"
+        "  Noble British elder: [\"male\",\"elderly\",\"british\",\"deep\",\"authoritative\",\"noble\"]\n"
+        "  Shy female merchant: [\"female\",\"young_adult\",\"american\",\"warm\",\"nervous\",\"merchant\"]\n"
+        "Do NOT use Kokoro voice IDs. Do NOT include this block on subsequent appearances.\n"
         "4c) QUOTE NPC SPEECH — NEVER SUMMARIZE IT (HARD RULE). When an NPC speaks, "
         "is overheard, whispers, mutters, prays, sings, or otherwise produces words "
         "the player can hear, you MUST render the actual words in double quotes. "
@@ -1436,6 +1450,46 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         logger.error(f"Lean DM LLM call failed: {exc}")
         raise HTTPException(status_code=502, detail=f"DM generation failed: {exc}") from exc
 
+    # ── Voice cast auto-assignment ────────────────────────────────────────────
+    # If the DM introduced a new NPC it will have appended a ```json npc_voice_cast``` block.
+    # Parse it, strip it from the narration, and permanently assign the voice.
+    _voice_cast_event = None
+    try:
+        import re as _re, json as _json
+        _vc_match = _re.search(
+            r"```json\s*(\{[^`]*\"npc_voice_cast\"[^`]*\})\s*```",
+            narration, _re.DOTALL
+        )
+        if _vc_match:
+            _vc_payload = _json.loads(_vc_match.group(1))
+            _vc_data = _vc_payload.get("npc_voice_cast", {})
+            _vc_npc_id = _vc_data.get("npc_id") or _vc_data.get("name", "").lower().replace(" ", "_")
+            if _vc_npc_id:
+                from services.voice_casting_service import assign_voice_to_npc
+                _vc_profile = assign_voice_to_npc({
+                    "id": _vc_npc_id,
+                    "name": _vc_data.get("name", _vc_npc_id),
+                    "voiceProfile": {
+                        "voiceTags": _vc_data.get("voiceTags", []),
+                        "emotionalStyle": _vc_data.get("emotionalStyle", "neutral"),
+                    },
+                })
+                _ws = campaign.get("world_state") or {}
+                _ws.setdefault("npc_voice_profiles", {})[_vc_npc_id] = _vc_profile
+                await db.campaigns.update_one(
+                    {"campaign_id": campaign_id},
+                    {"$set": {f"world_state.npc_voice_profiles.{_vc_npc_id}": _vc_profile}},
+                )
+                _voice_cast_event = {"npcId": _vc_npc_id, "voiceProfile": _vc_profile}
+                logger.info(f"[voice] Auto-assigned {_vc_profile.get('assignedVoice')} → {_vc_npc_id}")
+            # Strip JSON block from narration so player never sees raw JSON
+            narration = _re.sub(
+                r"\s*```json\s*\{[^`]*\"npc_voice_cast\"[^`]*\}\s*```\s*$",
+                "", narration, flags=_re.DOTALL
+            ).strip()
+    except Exception as _vc_exc:
+        logger.warning(f"[voice] Voice cast parse failed (non-fatal): {_vc_exc}")
+
     # Paused-quest obligation reminder — fire probabilistically based on urgency.
     # Runs after the main narration so it never blocks the primary DM response.
     obligation_reminder = None
@@ -1825,6 +1879,7 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
                     "confidence": intent_hit["confidence"],
                 } if intent_hit else None
             ),
+            "voice_cast_event": _voice_cast_event,
             "world_state_update": {
                 "clock_hour": new_clock_hour,
                 "time_of_day": time_bucket["key"],     # string — legacy compatibility

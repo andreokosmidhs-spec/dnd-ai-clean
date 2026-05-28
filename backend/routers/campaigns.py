@@ -29,6 +29,13 @@ from services.world_graph import generate_world_graph, hydrate_region, generate_
 from services.narrative_importance import score_knowledge_card
 from services.narrative_tick_service import narrative_tick_service
 from utils.entity_mentions import extract_entity_mentions
+from services.travel_service import resolve_travel
+from services.dungeon_service import (
+    generate_dungeon,
+    build_dungeon_room_block,
+    count_completed_quests,
+    pick_theme_for_biome,
+)
 
 import logging
 
@@ -1062,3 +1069,229 @@ async def list_scene_reports(campaignId: str, limit: int = 50):
         if isinstance(r.get("created_at"), datetime):
             r["created_at"] = r["created_at"].isoformat()
     return {"reports": reports}
+
+
+# ---------------------------------------------------------------------------
+# Travel endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/{campaignId}/travel")
+async def travel_to_region(
+    campaignId: str,
+    to_region_id: str = Body(...),
+    mode: str = Body("walk"),   # "walk" or "ride"
+    survival_mod: int = Body(0),
+):
+    """Resolve travel from the current region to a neighbouring region.
+
+    Calculates journey time, rolls encounters, checks for dungeon discovery,
+    and returns a travel_result that lean_dm can use for narration. Also
+    advances game time and saves any discovered dungeon to world_state.
+    """
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.pop("_id", None)
+    campaign = await _ensure_graph(campaign)
+
+    world = campaign.get("world") or {}
+    graph = world.get("graph") or {}
+    regions = graph.get("regions") or []
+    edges = graph.get("edges") or []
+    current_id = graph.get("current_region_id") or ""
+
+    # Validate destination exists
+    dest_region = next((r for r in regions if r.get("id") == to_region_id), None)
+    if not dest_region:
+        raise HTTPException(status_code=404, detail="Destination region not found")
+
+    # Validate edge exists
+    edge = next(
+        (e for e in edges if
+         (e.get("from") == current_id and e.get("to") == to_region_id) or
+         (e.get("to") == current_id and e.get("from") == to_region_id)),
+        None,
+    )
+    edge_difficulty = (edge or {}).get("difficulty", "medium")
+
+    # Origin region metadata
+    origin_region = next((r for r in regions if r.get("id") == current_id), {})
+    biome = dest_region.get("biome", origin_region.get("biome", "plains"))
+
+    # Count completed quests for dungeon probability
+    world_state = campaign.get("world_state") or {}
+    quests_done = count_completed_quests(campaign)
+
+    # Resolve the travel
+    travel_result = resolve_travel(
+        edge_difficulty=edge_difficulty,
+        biome=biome,
+        mode=mode,
+        quests_completed=quests_done,
+        survival_mod=survival_mod,
+    )
+
+    # Store travel result in world_state for DM to use
+    world_state["last_travel"] = {
+        "from_region_id": current_id,
+        "from_name": origin_region.get("name", "previous location"),
+        "to_region_id": to_region_id,
+        "to_name": dest_region.get("name", "destination"),
+        "travel_result": travel_result,
+    }
+
+    # Generate and store dungeon if discovered
+    new_dungeon = None
+    if travel_result["dungeon_found"]:
+        theme = pick_theme_for_biome(biome)
+        new_dungeon = generate_dungeon(
+            theme=theme,
+            biome=biome,
+            region_name=dest_region.get("name", "the region"),
+        )
+        world_state["active_dungeon"] = new_dungeon
+
+    campaign["world_state"] = world_state
+    campaign["updated_at"] = datetime.utcnow()
+    await _save_campaign_doc(campaign)
+
+    return {
+        "ok": True,
+        "travel_result": travel_result,
+        "dungeon_discovered": travel_result["dungeon_found"],
+        "dungeon": new_dungeon,
+        "destination": {
+            "id": to_region_id,
+            "name": dest_region.get("name"),
+            "biome": biome,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Dungeon endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/{campaignId}/dungeon/active")
+async def get_active_dungeon(campaignId: str):
+    """Get the currently active dungeon for this campaign."""
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.pop("_id", None)
+
+    world_state = campaign.get("world_state") or {}
+    dungeon = world_state.get("active_dungeon")
+    if not dungeon:
+        return {"dungeon": None}
+    return {"dungeon": dungeon}
+
+
+@router.post("/{campaignId}/dungeon/enter-room")
+async def enter_dungeon_room(campaignId: str, room_index: int = Body(...)):
+    """Advance to a specific dungeon room. Returns the room's DM context block."""
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.pop("_id", None)
+
+    world_state = campaign.get("world_state") or {}
+    dungeon = world_state.get("active_dungeon")
+    if not dungeon:
+        raise HTTPException(status_code=404, detail="No active dungeon")
+
+    rooms = dungeon.get("rooms") or []
+    if room_index < 0 or room_index >= len(rooms):
+        raise HTTPException(status_code=400, detail=f"Room index out of range (0-{len(rooms)-1})")
+
+    dungeon["current_room"] = room_index
+    world_state["active_dungeon"] = dungeon
+    campaign["world_state"] = world_state
+    campaign["updated_at"] = datetime.utcnow()
+    await _save_campaign_doc(campaign)
+
+    dm_block = build_dungeon_room_block(dungeon, room_index)
+    return {
+        "ok": True,
+        "room": rooms[room_index],
+        "dm_block": dm_block,
+        "current_room": room_index,
+    }
+
+
+@router.post("/{campaignId}/dungeon/complete-room")
+async def complete_dungeon_room(campaignId: str, room_index: int = Body(...)):
+    """Mark a dungeon room as completed."""
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.pop("_id", None)
+
+    world_state = campaign.get("world_state") or {}
+    dungeon = world_state.get("active_dungeon")
+    if not dungeon:
+        raise HTTPException(status_code=404, detail="No active dungeon")
+
+    rooms = dungeon.get("rooms") or []
+    if 0 <= room_index < len(rooms):
+        rooms[room_index]["completed"] = True
+        dungeon["rooms"] = rooms
+        # If boss room completed, mark dungeon done
+        if rooms[room_index].get("is_boss_room"):
+            dungeon["completed"] = True
+            world_state["active_dungeon"] = dungeon
+            # Archive completed dungeon
+            completed = world_state.get("completed_dungeons") or []
+            completed.append({"dungeon_id": dungeon["dungeon_id"], "name": dungeon["name"]})
+            world_state["completed_dungeons"] = completed
+        else:
+            world_state["active_dungeon"] = dungeon
+
+    campaign["world_state"] = world_state
+    campaign["updated_at"] = datetime.utcnow()
+    await _save_campaign_doc(campaign)
+
+    is_complete = dungeon.get("completed", False)
+    return {
+        "ok": True,
+        "room_completed": room_index,
+        "dungeon_complete": is_complete,
+        "next_room": room_index + 1 if not is_complete and room_index + 1 < len(rooms) else None,
+    }
+
+
+@router.post("/{campaignId}/dungeon/generate")
+async def generate_campaign_dungeon(
+    campaignId: str,
+    theme: Optional[str] = Body(None),
+    quest_context: str = Body(""),
+):
+    """Manually generate a dungeon (for quest rewards or DM-triggered discovery)."""
+    campaign = await _get_campaign(campaignId)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.pop("_id", None)
+    campaign = await _ensure_graph(campaign)
+
+    world = campaign.get("world") or {}
+    graph = world.get("graph") or {}
+    regions = graph.get("regions") or []
+    current_id = graph.get("current_region_id") or ""
+    current_region = next((r for r in regions if r.get("id") == current_id), {})
+    biome = current_region.get("biome", "plains")
+
+    dungeon_theme = theme or pick_theme_for_biome(biome)
+    dungeon = generate_dungeon(
+        theme=dungeon_theme,
+        biome=biome,
+        region_name=current_region.get("name", "the region"),
+        quest_context=quest_context,
+    )
+
+    world_state = campaign.get("world_state") or {}
+    world_state["active_dungeon"] = dungeon
+    campaign["world_state"] = world_state
+    campaign["updated_at"] = datetime.utcnow()
+    await _save_campaign_doc(campaign)
+
+    return {"ok": True, "dungeon": dungeon}

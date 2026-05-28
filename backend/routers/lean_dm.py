@@ -193,7 +193,7 @@ def _build_pinned_block(pinned_cards: List[dict]) -> str:
     return "\n".join(lines)
 
 
-def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None, pressure_context: str = "", scene_thread: str = "", downtime_block: str = "", exhaustion_block: str = "") -> str:
+def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clock_hour: int, deck: Optional[List[dict]] = None, chaos: int = 0, recent_feedback: Optional[List[dict]] = None, dm_lessons: Optional[List[dict]] = None, canon_scenes: Optional[List[dict]] = None, current_location: Optional[Dict] = None, pressure_context: str = "", scene_thread: str = "", downtime_block: str = "", exhaustion_block: str = "", travel_block: str = "", dungeon_block: str = "") -> str:
     intent = campaign.get("intent") or {}
     world = campaign.get("world") or {}
     starting = world.get("startingLocation") or {}
@@ -518,6 +518,8 @@ def _build_system_prompt(campaign: dict, character: dict, cards: List[dict], clo
         + (f"{pressure_context}\n\n" if pressure_context else "")
         + (f"{exhaustion_block}\n\n" if exhaustion_block else "")
         + (f"{downtime_block}\n\n" if downtime_block else "")
+        + (f"{travel_block}\n\n" if travel_block else "")
+        + (f"{dungeon_block}\n\n" if dungeon_block else "")
         + (f"{scene_thread}\n\n" if scene_thread else "")
         + "=== SCENE THREADING — NON-NEGOTIABLE ===\n"
         "When the player investigates, follows, or engages any detail from the scene:\n"
@@ -1351,6 +1353,33 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
     except Exception as _ste:
         logger.warning(f"Scene thread build failed (non-fatal): {_ste}")
 
+    # Travel context — build if world_state has a last_travel record
+    _travel_block = ""
+    _dungeon_block = ""
+    try:
+        _ws = (campaign.get("world_state") or {})
+        _last_travel = _ws.get("last_travel")
+        if _last_travel and _last_travel.get("travel_result"):
+            from services.travel_service import build_travel_block
+            _travel_block = build_travel_block(
+                _last_travel["travel_result"],
+                _last_travel.get("from_name", "previous location"),
+                _last_travel.get("to_name", "destination"),
+            )
+            # Clear after use so it only fires once per journey
+            _ws.pop("last_travel", None)
+            campaign["world_state"] = _ws
+
+        # Dungeon context — build if there is an active dungeon in progress
+        _active_dungeon = _ws.get("active_dungeon")
+        if _active_dungeon and not _active_dungeon.get("completed", False):
+            _current_room_idx = _active_dungeon.get("current_room", -1)
+            if _current_room_idx >= 0:
+                from services.dungeon_service import build_dungeon_room_block
+                _dungeon_block = build_dungeon_room_block(_active_dungeon, _current_room_idx)
+    except Exception as _tde:
+        logger.warning(f"Travel/dungeon block build failed (non-fatal): {_tde}")
+
     system_prompt = _build_system_prompt(
         campaign, character, cards, clock_hour,
         deck=deck_cards, chaos=chaos_value,
@@ -1362,6 +1391,8 @@ async def dm_action(campaign_id: str, req: LeanDMRequest):
         scene_thread=_scene_thread,
         downtime_block=_downtime_block,
         exhaustion_block=_exhaustion_block,
+        travel_block=_travel_block,
+        dungeon_block=_dungeon_block,
     )
 
     # Call the LLM

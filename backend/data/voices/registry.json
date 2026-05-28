@@ -1,0 +1,146 @@
+[
+  {
+    "voiceId": "af_heart",
+    "label": "Heart (American Female)",
+    "tags": [
+      "female", "american", "warm", "nurturing", "friendly", "young_adult",
+      "approachable", "hopeful", "kind", "empathetic", "soft", "working_class"
+    ],
+    "basePitch": 0,
+    "baseSpeed": 0.98,
+    "supportedEmotions": ["calm", "happy", "sad", "nervous", "excited", "fearful"],
+    "archetypes": ["healer", "innkeeper", "village_elder_f", "commoner", "mentor"]
+  },
+  {
+    "voiceId": "af_sky",
+    "label": "Sky (American Female)",
+    "tags": [
+      "female", "american", "bright", "energetic", "young", "optimistic",
+      "confident", "merchant", "friendly", "high_energy", "bard"
+    ],
+    "basePitch": 1,
+    "baseSpeed": 1.04,
+    "supportedEmotions": ["happy", "excited", "nervous", "angry", "calm"],
+    "archetypes": ["merchant_f", "bard_f", "young_adventurer_f", "spy_cheerful"]
+  },
+  {
+    "voiceId": "af_bella",
+    "label": "Bella (American Female)",
+    "tags": [
+      "female", "american", "elegant", "sophisticated", "middle_aged",
+      "articulate", "noble", "refined", "upper_class", "controlled"
+    ],
+    "basePitch": 0,
+    "baseSpeed": 0.96,
+    "supportedEmotions": ["calm", "contemptuous", "angry", "impressed", "sad"],
+    "archetypes": ["noble_f", "scholar_f", "court_lady", "archmage_f"]
+  },
+  {
+    "voiceId": "af_nicole",
+    "label": "Nicole (American Female)",
+    "tags": [
+      "female", "american", "calm", "professional", "sharp", "urban",
+      "serious", "guarded", "secretive", "middle_aged", "low_energy"
+    ],
+    "basePitch": -1,
+    "baseSpeed": 0.96,
+    "supportedEmotions": ["serious", "suspicious", "calm", "contemptuous", "nervous"],
+    "archetypes": ["guild_official_f", "investigator", "rogue_f", "spy_serious"]
+  },
+  {
+    "voiceId": "af_sarah",
+    "label": "Sarah (American Female)",
+    "tags": [
+      "female", "american", "warm", "conversational", "casual", "cheerful",
+      "working_class", "approachable", "young_adult", "friendly"
+    ],
+    "basePitch": 0,
+    "baseSpeed": 1.0,
+    "supportedEmotions": ["happy", "sad", "nervous", "excited", "calm", "fearful"],
+    "archetypes": ["tavern_wench", "farmer_f", "market_vendor_f", "messenger_f"]
+  },
+  {
+    "voiceId": "af_jessica",
+    "label": "Jessica (American Female)",
+    "tags": [
+      "female", "american", "dry", "sharp", "urban", "low_energy",
+      "guarded", "secretive", "middle_aged", "tired", "cynical"
+    ],
+    "basePitch": -1,
+    "baseSpeed": 0.95,
+    "supportedEmotions": ["contemptuous", "tired", "suspicious", "angry", "calm", "nervous"],
+    "archetypes": ["clerk_f", "fence", "city_informant", "rogue_veteran_f"]
+  },
+  {
+    "voiceId": "am_adam",
+    "label": "Adam (American Male)",
+    "tags": [
+      "male", "american", "calm", "reliable", "middle_aged", "working_class",
+      "straightforward", "steady", "serious", "trustworthy"
+    ],
+    "basePitch": 0,
+    "baseSpeed": 0.97,
+    "supportedEmotions": ["calm", "serious", "angry", "tired", "sad", "nervous"],
+    "archetypes": ["guard", "farmer_m", "tradesman", "soldier_veteran"]
+  },
+  {
+    "voiceId": "am_michael",
+    "label": "Michael (American Male)",
+    "tags": [
+      "male", "american", "warm", "friendly", "middle_aged", "trustworthy",
+      "casual", "merchant", "approachable", "high_energy"
+    ],
+    "basePitch": 0,
+    "baseSpeed": 1.0,
+    "supportedEmotions": ["happy", "sad", "nervous", "excited", "calm", "angry"],
+    "archetypes": ["innkeeper_m", "merchant_m", "commoner_m", "town_crier"]
+  },
+  {
+    "voiceId": "bf_emma",
+    "label": "Emma (British Female)",
+    "tags": [
+      "female", "british", "eloquent", "educated", "refined", "articulate",
+      "noble", "upper_class", "calm", "measured", "sophisticated"
+    ],
+    "basePitch": 0,
+    "baseSpeed": 0.95,
+    "supportedEmotions": ["calm", "contemptuous", "sad", "impressed", "angry", "serious"],
+    "archetypes": ["noble_f_british", "scholar_f_british", "advisor_f", "diplomat_f"]
+  },
+  {
+    "voiceId": "bf_isabella",
+    "label": "Isabella (British Female)",
+    "tags": [
+      "female", "british", "sophisticated", "upper_class", "elegant",
+      "composed", "noble", "refined", "powerful", "regal", "cold"
+    ],
+    "basePitch": -1,
+    "baseSpeed": 0.93,
+    "supportedEmotions": ["contemptuous", "calm", "angry", "serious", "sad"],
+    "archetypes": ["queen", "aristocrat", "high_priestess_f", "villain_f", "cold_noble"]
+  },
+  {
+    "voiceId": "bm_george",
+    "label": "George (British Male)",
+    "tags": [
+      "male", "british", "deep", "authoritative", "mature", "powerful",
+      "serious", "noble", "commanding", "low_energy", "gravitas", "elder"
+    ],
+    "basePitch": -2,
+    "baseSpeed": 0.94,
+    "supportedEmotions": ["angry", "serious", "sad", "contemptuous", "calm", "tired"],
+    "archetypes": ["king", "general", "high_priest_m", "elder_m", "villain_m", "demon_lord"]
+  },
+  {
+    "voiceId": "bm_lewis",
+    "label": "Lewis (British Male)",
+    "tags": [
+      "male", "british", "confident", "young_adult", "articulate", "educated",
+      "sharp", "energetic", "noble", "ambitious"
+    ],
+    "basePitch": 0,
+    "baseSpeed": 1.0,
+    "supportedEmotions": ["happy", "angry", "nervous", "excited", "calm", "contemptuous"],
+    "archetypes": ["young_knight", "young_noble_m", "scholar_m_british", "rogue_noble"]
+  }
+]

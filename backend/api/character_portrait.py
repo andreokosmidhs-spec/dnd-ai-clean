@@ -1,4 +1,4 @@
-"""Character portrait generation using Gemini Nano Banana (gemini-3.1-flash-image-preview)."""
+"""Character portrait generation using Gemini (primary) or DALL-E 3 (fallback)."""
 
 import base64
 import logging
@@ -95,13 +95,38 @@ def _build_portrait_prompt(character: dict) -> str:
     return " ".join(parts)
 
 
-async def generate_character_portrait(character: dict) -> Optional[str]:
-    """Generate a portrait for the character and return a data URL (or None on failure)."""
+def _generate_placeholder_portrait(character: dict) -> str:
+    """Generate a deterministic SVG avatar when no image API is available."""
+    identity = character.get("identity") or {}
+    name = identity.get("name") or "?"
+    initial = (name[0].upper()) if name else "?"
+    class_ = character.get("class") or {}
+    class_key = (class_.get("key") or "fighter").lower()
 
-    api_key = os.getenv("EMERGENT_LLM_KEY")
-    if not api_key:
-        return None
+    class_colors = {
+        "fighter": "#8B4513", "barbarian": "#DC143C", "paladin": "#FFD700",
+        "ranger": "#228B22", "rogue": "#4B0082", "monk": "#DEB887",
+        "wizard": "#4169E1", "sorcerer": "#8A2BE2", "warlock": "#6B0082",
+        "cleric": "#C0C0C0", "druid": "#556B2F", "bard": "#FF69B4",
+    }
+    bg = class_colors.get(class_key, "#6B7280")
 
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">'
+        f'<rect width="512" height="512" fill="#1a1a2e"/>'
+        f'<circle cx="256" cy="256" r="220" fill="{bg}" opacity="0.15" stroke="{bg}" stroke-width="2"/>'
+        f'<circle cx="256" cy="190" r="90" fill="{bg}" opacity="0.55"/>'
+        f'<ellipse cx="256" cy="390" rx="130" ry="85" fill="{bg}" opacity="0.4"/>'
+        f'<text x="256" y="210" font-family="Georgia,serif" font-size="90" fill="white" '
+        f'text-anchor="middle" dominant-baseline="middle" font-weight="bold">{initial}</text>'
+        f'</svg>'
+    )
+    b64 = base64.b64encode(svg.encode()).decode()
+    return f"data:image/svg+xml;base64,{b64}"
+
+
+async def _generate_portrait_gemini(character: dict, api_key: str) -> Optional[str]:
+    """Generate portrait via Gemini image model using EMERGENT_LLM_KEY."""
     prompt = _build_portrait_prompt(character)
     session_id = f"portrait-{character.get('_id') or character.get('id') or uuid.uuid4()}"
 
@@ -112,8 +137,6 @@ async def generate_character_portrait(character: dict) -> Optional[str]:
     )
     chat.with_model("gemini", _PORTRAIT_MODEL).with_params(modalities=["image", "text"])
 
-    # Optional reference image — when present, attach it as a FileContent so
-    # Nano Banana uses it as visual inspiration alongside the written prompt.
     appearance = character.get("appearance") or {}
     reference_data_url = appearance.get("referenceImage") or ""
     file_contents = []
@@ -135,19 +158,66 @@ async def generate_character_portrait(character: dict) -> Optional[str]:
     try:
         _text, images = await chat.send_message_multimodal_response(msg)
     except Exception as exc:  # noqa: BLE001
-        logger.warning(f"[portrait] generation failed: {exc}")
+        logger.warning(f"[portrait] Gemini generation failed: {exc}")
         return None
 
     if not images:
         return None
-
     first = images[0]
     mime = first.get("mime_type") or "image/png"
     data = first.get("data")
     if not data:
         return None
-    # Already base64-encoded per the playbook; just wrap as a data URL
     return f"data:{mime};base64,{data}"
+
+
+async def _generate_portrait_dalle(character: dict) -> Optional[str]:
+    """Fallback portrait generation via DALL-E 3 using OPENAI_API_KEY."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+    try:
+        from openai import AsyncOpenAI
+        oai = AsyncOpenAI(api_key=api_key)
+        prompt = _build_portrait_prompt(character) + " Digital oil painting, high detail, fantasy art style."
+        response = await oai.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size="1024x1024",
+            quality="standard",
+            response_format="b64_json",
+            n=1,
+        )
+        b64 = response.data[0].b64_json
+        if b64:
+            return f"data:image/png;base64,{b64}"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[portrait] DALL-E fallback failed: {exc}")
+    return None
+
+
+async def generate_character_portrait(character: dict) -> Optional[str]:
+    """Generate a portrait for the character and return a data URL.
+
+    Tries in order: Gemini (EMERGENT_LLM_KEY) → DALL-E 3 (OPENAI_API_KEY) → SVG placeholder.
+    Always returns a non-None value so the UI always has something to show.
+    """
+    # 1. Gemini via Emergent LLM key
+    emergent_key = os.getenv("EMERGENT_LLM_KEY")
+    if emergent_key:
+        result = await _generate_portrait_gemini(character, emergent_key)
+        if result:
+            return result
+        logger.info("[portrait] Gemini failed, trying DALL-E fallback")
+
+    # 2. DALL-E 3 via OpenAI key
+    result = await _generate_portrait_dalle(character)
+    if result:
+        return result
+
+    # 3. SVG placeholder — always works, no API needed
+    logger.info("[portrait] All API providers unavailable, using SVG placeholder")
+    return _generate_placeholder_portrait(character)
 
 
 async def persist_portrait(db, character_id: str, data_url: str, in_memory_store: dict) -> bool:

@@ -95,6 +95,26 @@ export const useTTS = () => {
         })
       });
 
+      // Backend TTS not configured — fall back to browser speech synthesis
+      if (response.status === 503) {
+        console.log('⚠️ TTS backend not configured, falling back to browser speech synthesis');
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const clean = text.replace(/[*_~`#>]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').trim();
+          const utterance = new SpeechSynthesisUtterance(clean);
+          utterance.rate = 0.9;
+          utterance.pitch = 1.0;
+          utterance.volume = 1.0;
+          const voices = window.speechSynthesis.getVoices();
+          const preferred = voices.find(v => /daniel|george|arthur|oliver|en-gb/i.test(v.name + v.lang))
+            || voices.find(v => /en/i.test(v.lang));
+          if (preferred) utterance.voice = preferred;
+          window.speechSynthesis.speak(utterance);
+          console.log('✅ Browser speech synthesis started');
+        }
+        return null;
+      }
+
       if (!response.ok) {
         throw new Error(`TTS generation failed: ${response.statusText}`);
       }

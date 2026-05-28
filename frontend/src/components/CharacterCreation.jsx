@@ -1111,6 +1111,9 @@ const CharacterCreation = ({ onCharacterCreated }) => {
                           <span className="text-gray-200 text-sm font-semibold">{ideal.name}</span>
                           <span className="text-amber-400 text-xs ml-2">({ideal.alignment})</span>
                           <p className="text-gray-400 text-xs mt-1">{ideal.description}</p>
+                          {ideal.chaosNote && (
+                            <p className="text-purple-400 text-xs mt-1 italic">⚖ {ideal.chaosNote}</p>
+                          )}
                         </div>
                       </label>
                     ))}
@@ -1121,26 +1124,35 @@ const CharacterCreation = ({ onCharacterCreated }) => {
                 <div className="bg-green-900/20 p-6 rounded border border-green-600/30">
                   <Label className="text-green-400 text-lg mb-3 block">Sacred Bond (Choose 1)</Label>
                   <div className="space-y-2">
-                    {selectedBg.bonds.map((bond, idx) => (
-                      <label key={idx} className="flex items-start gap-3 p-3 bg-gray-800/30 rounded hover:bg-gray-800/50 cursor-pointer transition-colors">
-                        <input
-                          type="radio"
-                          name="bond"
-                          checked={character.bonds[0]?.person_or_cause === bond}
-                          onChange={() => {
-                            setCharacter(prev => ({
-                              ...prev,
-                              bonds: [{ 
-                                person_or_cause: bond, 
-                                shared_event: `Connected through my ${selectedBg.name} past` 
-                              }]
-                            }));
-                          }}
-                          className="mt-1"
-                        />
-                        <span className="text-gray-200 text-sm">{bond}</span>
-                      </label>
-                    ))}
+                    {selectedBg.bonds.map((bond, idx) => {
+                      const bondText = typeof bond === 'object' ? bond.text : bond;
+                      const bondDesc = typeof bond === 'object' ? bond.description : null;
+                      const bondChaos = typeof bond === 'object' ? bond.chaosNote : null;
+                      return (
+                        <label key={idx} className="flex items-start gap-3 p-3 bg-gray-800/30 rounded hover:bg-gray-800/50 cursor-pointer transition-colors">
+                          <input
+                            type="radio"
+                            name="bond"
+                            checked={character.bonds[0]?.person_or_cause === bondText}
+                            onChange={() => {
+                              setCharacter(prev => ({
+                                ...prev,
+                                bonds: [{
+                                  person_or_cause: bondText,
+                                  shared_event: `Connected through my ${selectedBg.name} past`
+                                }]
+                              }));
+                            }}
+                            className="mt-1"
+                          />
+                          <div>
+                            <span className="text-gray-200 text-sm">{bondText}</span>
+                            {bondDesc && <p className="text-gray-400 text-xs mt-1">{bondDesc}</p>}
+                            {bondChaos && <p className="text-purple-400 text-xs mt-1 italic">⚖ {bondChaos}</p>}
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -1148,27 +1160,36 @@ const CharacterCreation = ({ onCharacterCreated }) => {
                 <div className="bg-red-900/20 p-6 rounded border border-red-600/30">
                   <Label className="text-red-400 text-lg mb-3 block">Fatal Flaw (Choose 1)</Label>
                   <div className="space-y-2">
-                    {selectedBg.flaws.map((flaw, idx) => (
-                      <label key={idx} className="flex items-start gap-3 p-3 bg-gray-800/30 rounded hover:bg-gray-800/50 cursor-pointer transition-colors">
-                        <input
-                          type="radio"
-                          name="flaw"
-                          checked={character.flaws_detailed[0]?.habit === flaw}
-                          onChange={() => {
-                            setCharacter(prev => ({
-                              ...prev,
-                              flaws_detailed: [{ 
-                                habit: flaw, 
-                                interference: 'This flaw often causes problems in social situations and decision-making',
-                                intensity: 0.6
-                              }]
-                            }));
-                          }}
-                          className="mt-1"
-                        />
-                        <span className="text-gray-200 text-sm">{flaw}</span>
-                      </label>
-                    ))}
+                    {selectedBg.flaws.map((flaw, idx) => {
+                      const flawText = typeof flaw === 'object' ? flaw.text : flaw;
+                      const flawDesc = typeof flaw === 'object' ? flaw.description : null;
+                      const flawChaos = typeof flaw === 'object' ? flaw.chaosNote : null;
+                      return (
+                        <label key={idx} className="flex items-start gap-3 p-3 bg-gray-800/30 rounded hover:bg-gray-800/50 cursor-pointer transition-colors">
+                          <input
+                            type="radio"
+                            name="flaw"
+                            checked={character.flaws_detailed[0]?.habit === flawText}
+                            onChange={() => {
+                              setCharacter(prev => ({
+                                ...prev,
+                                flaws_detailed: [{
+                                  habit: flawText,
+                                  interference: 'This flaw often causes problems in social situations and decision-making',
+                                  intensity: 0.6
+                                }]
+                              }));
+                            }}
+                            className="mt-1"
+                          />
+                          <div>
+                            <span className="text-gray-200 text-sm">{flawText}</span>
+                            {flawDesc && <p className="text-gray-400 text-xs mt-1">{flawDesc}</p>}
+                            {flawChaos && <p className="text-purple-400 text-xs mt-1 italic">⚖ {flawChaos}</p>}
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

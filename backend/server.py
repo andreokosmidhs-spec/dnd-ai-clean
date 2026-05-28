@@ -3969,45 +3969,61 @@ async def roll_dice(request: DiceRollRequest):
 
 @api_router.post("/tts/generate")
 async def generate_tts(request: TTSRequest):
+    """Generate TTS audio for DM narration.
+
+    Priority: Kokoro (local, no API key) → OpenAI TTS (OPENAI_TTS_KEY) → 503.
+    Returns WAV when Kokoro is used, MP3 when OpenAI is used.
     """
-    Generate Text-to-Speech audio for DM narration using OpenAI TTS API
-    Returns audio as streaming MP3
-    """
-    if not tts_client:
-        raise HTTPException(status_code=503, detail="TTS API not configured. Please provide OPENAI_TTS_KEY.")
-    
+    valid_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+    if request.voice not in valid_voices:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid voice. Must be one of: {', '.join(valid_voices)}"
+        )
+
     logger.info(f"🎙️ TTS request: voice={request.voice}, text_length={len(request.text)}")
-    
+
+    # 1. Try Kokoro local TTS (no API key needed)
     try:
-        # Validate voice
-        valid_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
-        if request.voice not in valid_voices:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid voice. Must be one of: {', '.join(valid_voices)}"
+        import asyncio
+        from services.tts_service import generate_speech_bytes
+        audio_bytes = await asyncio.get_event_loop().run_in_executor(
+            None, generate_speech_bytes, request.text, request.voice
+        )
+        if audio_bytes:
+            logger.info("✅ TTS generated via Kokoro (local)")
+            return StreamingResponse(
+                iter([audio_bytes]),
+                media_type="audio/wav",
+                headers={"Content-Disposition": "inline; filename=narration.wav",
+                         "Cache-Control": "no-cache"},
             )
-        
-        # Call OpenAI TTS API using separate TTS client
-        response = tts_client.audio.speech.create(
-            model=request.model,
-            voice=request.voice,
-            input=request.text
-        )
-        
-        # Return audio as streaming response
-        logger.info(f"✅ TTS generated successfully")
-        return StreamingResponse(
-            iter([response.content]),
-            media_type="audio/mpeg",
-            headers={
-                "Content-Disposition": "inline; filename=narration.mp3",
-                "Cache-Control": "no-cache"
-            }
-        )
-        
-    except Exception as e:
-        logger.error(f"❌ TTS generation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        logger.warning(f"[TTS] Kokoro unavailable: {exc}")
+
+    # 2. Fall back to OpenAI TTS if key is configured
+    if tts_client:
+        try:
+            response = tts_client.audio.speech.create(
+                model=request.model,
+                voice=request.voice,
+                input=request.text,
+            )
+            logger.info("✅ TTS generated via OpenAI")
+            return StreamingResponse(
+                iter([response.content]),
+                media_type="audio/mpeg",
+                headers={"Content-Disposition": "inline; filename=narration.mp3",
+                         "Cache-Control": "no-cache"},
+            )
+        except Exception as exc:
+            logger.error(f"❌ OpenAI TTS error: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    raise HTTPException(
+        status_code=503,
+        detail="TTS unavailable. Install kokoro-onnx on the server or set OPENAI_TTS_KEY."
+    )
 
 # Helper functions
 def _get_racial_traits(race: str) -> List[str]:

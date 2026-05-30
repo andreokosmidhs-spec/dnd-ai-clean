@@ -23,8 +23,6 @@ import os
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
-
 logger = logging.getLogger(__name__)
 
 # ── Registry ─────────────────────────────────────────────────────────────────
@@ -225,19 +223,18 @@ def get_supported_emotions() -> list[str]:
 
 # ── Pitch shifting (numpy-based, no extra deps) ───────────────────────────────
 
-def _pitch_shift(samples: np.ndarray, sample_rate: int, semitones: float) -> np.ndarray:
+def _pitch_shift(samples, sample_rate: int, semitones: float):
     """Pitch shift via resampling. Duration preserved via second resample."""
+    import numpy as np
     if abs(semitones) < 0.25:
         return samples
 
     factor = 2.0 ** (semitones / 12.0)
     target_len = max(1, int(round(len(samples) / factor)))
 
-    # Resample to change pitch (also changes speed)
     indices = np.linspace(0, len(samples) - 1, target_len)
     shifted = np.interp(indices, np.arange(len(samples)), samples)
 
-    # Resample back to original length to restore speed
     restore_indices = np.linspace(0, len(shifted) - 1, len(samples))
     return np.interp(restore_indices, np.arange(len(shifted)), shifted)
 
@@ -291,6 +288,7 @@ def generate_npc_speech(
         return None
 
     try:
+        import numpy as np
         import soundfile as sf
 
         samples, sample_rate = kokoro.create(

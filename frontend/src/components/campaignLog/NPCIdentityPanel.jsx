@@ -11,7 +11,8 @@
  *   background, mannerisms[], speech_style, secrets[], allegiances[], current_motivation
  */
 import React, { useState, useRef } from 'react';
-import { Lock, Eye, Sword, Heart, ScrollText, EyeOff, History, Volume2, Loader2 } from 'lucide-react';
+import { Lock, Eye, Sword, Heart, ScrollText, EyeOff, History, Volume2, Loader2, MessageCircle } from 'lucide-react';
+import { NpcDialogueStream } from '../NpcDialogueStream';
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
@@ -114,6 +115,39 @@ const RedactedRow = ({ label, value, revealed, hint, testid }) => {
     </div>
   );
 };
+
+const TalkButton = ({ card, campaignId }) => {
+  const [open, setOpen] = useState(false);
+  if (!campaignId) return null;
+
+  const npcId = card?.npcId || card?.id || (card?.title || '').toLowerCase().replace(/\s+/g, '_');
+  if (!npcId) return null;
+
+  return (
+    <div className="mt-3 border-t border-amber-500/20 pt-3">
+      {!open ? (
+        <button
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-1.5 text-[11px] text-amber-300 border border-amber-500/40 rounded px-3 py-1.5 hover:bg-amber-600/10 transition-colors w-full justify-center"
+        >
+          <MessageCircle className="w-3.5 h-3.5" />
+          Talk to {card?.title || npcId}
+        </button>
+      ) : (
+        <div className="h-[420px]">
+          <NpcDialogueStream
+            campaignId={campaignId}
+            npcId={npcId}
+            npcName={card?.title}
+            npcPortrait={card?.portraitUrl || card?.imageUrl}
+            onClose={() => setOpen(false)}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 export const NPCIdentityPanel = ({ card, campaignId }) => {
   if (!card || (card.type !== 'character' && card.type !== 'npc')) return null;
@@ -367,6 +401,8 @@ export const NPCIdentityPanel = ({ card, campaignId }) => {
       )}
 
       <VoicePlayer card={card} campaignId={campaignId} />
+
+      <TalkButton card={card} campaignId={campaignId} />
     </div>
   );
 };

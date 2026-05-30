@@ -2,9 +2,10 @@
 
 Priority chain:
   1. Replicate (REPLICATE_API_TOKEN) via services.art_service
-  2. Gemini image model (EMERGENT_LLM_KEY)
-  3. DALL-E 3 (OPENAI_API_KEY)
-  4. SVG placeholder avatar — always works, no key needed
+  2. Local SD — A1111_URL or SD_LOCAL=true  (free, runs on your machine)
+  3. Gemini image model (EMERGENT_LLM_KEY)
+  4. DALL-E 3 (OPENAI_API_KEY)
+  5. SVG placeholder avatar — always works, no key needed
 """
 
 import base64
@@ -197,19 +198,31 @@ async def generate_character_portrait(
         except Exception as exc:
             logger.warning(f"[portrait] Replicate error: {exc}")
 
-    # 2. Gemini
+    # 2. Local SD (A1111 or diffusers — free, no API cost)
+    if os.getenv("A1111_URL") or os.getenv("SD_LOCAL"):
+        try:
+            from services.local_sd_service import generate_portrait as _local_portrait
+            prompt = _build_portrait_prompt(character)
+            result = await _local_portrait(prompt)
+            if result:
+                return result
+            logger.info("[portrait] Local SD returned nothing, trying next provider")
+        except Exception as exc:
+            logger.warning(f"[portrait] Local SD error: {exc}")
+
+    # 3. Gemini
     emergent_key = os.getenv("EMERGENT_LLM_KEY")
     if emergent_key:
         result = await _gemini_portrait(character, emergent_key)
         if result:
             return result
 
-    # 3. DALL-E 3
+    # 4. DALL-E 3
     result = await _dalle_portrait(character)
     if result:
         return result
 
-    # 4. SVG placeholder — always works
+    # 5. SVG placeholder — always works
     logger.info("[portrait] All providers unavailable, using SVG placeholder")
     return _svg_placeholder(character)
 

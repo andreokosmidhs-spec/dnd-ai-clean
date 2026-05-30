@@ -103,3 +103,40 @@ body.cursor-target-search,
 body.cursor-target-search * {
   cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><circle cx='11' cy='11' r='8' fill='none' stroke='%23fbbf24' stroke-width='2'/><circle cx='11' cy='11' r='5' fill='%23fbbf2433'/><line x1='17' y1='17' x2='25' y2='25' stroke='%23fbbf24' stroke-width='2.4' stroke-linecap='round'/></svg>") 11 11, crosshair;
 }
+
+/* ============================================================
+   NPC Dialogue Stream — cinematic word fade-in + karaoke
+   ============================================================ */
+@keyframes fadeInWord {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+    filter: blur(1.5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.dialogue-word {
+  display: inline;
+  animation: fadeInWord 180ms ease-out both;
+}
+
+.dialogue-word--pending {
+  opacity: 0;
+}
+
+.dialogue-word--speaking {
+  color: #ffffff;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.85), 0 0 16px rgba(251, 191, 36, 0.4);
+  transition: color 80ms ease, text-shadow 80ms ease;
+}
+
+.dialogue-word--spoken {
+  color: #fde68a;
+  text-shadow: none;
+  transition: color 200ms ease;
+}

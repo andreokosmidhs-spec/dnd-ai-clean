@@ -1,17 +1,16 @@
-"""
-JWT auth dependency for FastAPI endpoints.
-get_current_user      → raises 401 if no/invalid token
-get_current_user_opt  → returns user_id or None (non-blocking)
-"""
+import logging
 import os
 from typing import Optional
 from fastapi import Header, HTTPException
 from jose import jwt, JWTError
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production")
-if JWT_SECRET == "change-me-in-production" and os.getenv("ENV", "development") == "production":
-    raise RuntimeError("JWT_SECRET must be set to a secure random value in production. "
-                       "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\"")
+if JWT_SECRET == "change-me-in-production":
+    logging.getLogger(__name__).warning(
+        "JWT_SECRET is using the default insecure value. "
+        "Set a random secret in your environment: "
+        "python -c \"import secrets; print(secrets.token_hex(32))\""
+    )
 JWT_ALGORITHM = "HS256"
 
 

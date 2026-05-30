@@ -1188,7 +1188,7 @@ const RPGGame = () => {
 
   return (
     <div 
-      className="min-h-screen transition-all duration-1000 ease-in-out overflow-hidden"
+      className="min-h-screen transition-all duration-1000 ease-in-out overflow-auto"
       style={{ background: getBackgroundStyle() }}
     >
       {/* Game Controls - Floating */}

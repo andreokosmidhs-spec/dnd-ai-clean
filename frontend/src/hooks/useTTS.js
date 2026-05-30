@@ -6,7 +6,7 @@ const BROWSER_TTS_KEY = 'dnd_browser_tts_enabled';
 // ── Browser Speech Synthesis (free, no backend needed) ────────────────────────
 export const useBrowserTTS = () => {
   const [enabled, setEnabled] = useState(() => {
-    try { return localStorage.getItem(BROWSER_TTS_KEY) === 'true'; } catch { return false; }
+    try { const s = localStorage.getItem(BROWSER_TTS_KEY); return s === null ? true : s === 'true'; } catch { return true; }
   });
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
 
@@ -47,9 +47,9 @@ export const useTTS = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isTTSEnabled, setIsTTSEnabled] = useState(() => {
-    // Load TTS preference from localStorage
+    // Load TTS preference from localStorage — default ON
     const saved = localStorage.getItem('rpg-tts-enabled');
-    return saved === 'true';
+    return saved === null ? true : saved === 'true';
   });
   const audioRef = useRef(null);
   const audioCache = useRef(new Map()); // Cache audio URLs by narration text

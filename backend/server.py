@@ -1359,12 +1359,6 @@ Three paths lie before you, each beckoning with its own promise..."""
         
         return DMChatResponse(
             narration=narration,
-            options=[
-                "Approach the nervous merchant whose stall stands unusually empty",
-                "Follow the cloaked figure watching you from the tavern doorway",
-                "Investigate the crowd gathering near the town notice board",
-                "Trust your instincts and explore the shadowed alley to your left"
-            ],
             session_notes=["Arrived in town square", "Sensed something unusual"],
             scene_status={
                 "Location": "Town Square",
@@ -1379,13 +1373,7 @@ Three paths lie before you, each beckoning with its own promise..."""
     # Adaptive response based on character state
     if not char_state:
         return DMChatResponse(
-            narration="The world responds to your words, shaping itself around your intent. The path ahead remains unclear, but you sense that your choices carry weight here.",
-            options=[
-                "Look around carefully and assess the situation",
-                "Speak up and make your presence known",
-                "Move cautiously forward",
-                "Wait and observe what happens next"
-            ]
+            narration="The world responds to your words, shaping itself around your intent. The path ahead remains unclear, but you sense that your choices carry weight here."
         )
     
     # Generate adaptive narration and options
@@ -1401,7 +1389,6 @@ Three paths lie before you, each beckoning with its own promise..."""
     
     return DMChatResponse(
         narration=narration,
-        options=options,
         session_notes=new_notes
     )
 
@@ -4209,6 +4196,7 @@ canon_scenes_router.set_database(db)
 mission_types_router.set_database(db)
 scene_refresh_router.set_database(db)
 pressure_engine_router.set_database(db)  # Living Campaign Pressure Engine
+behavior_trees_router.set_database(db)
 equipment_router.set_db(db)
 set_character_v2_database(db)
 

@@ -38,8 +38,8 @@ _MAX_ART_BYTES = 600 * 1024
 
 
 def _db():
-    cli = AsyncIOMotorClient(os.environ["MONGO_URL"])
-    return cli[os.environ["DB_NAME"]]
+    cli = AsyncIOMotorClient(os.getenv("MONGO_URL", ""))
+    return cli[os.getenv("DB_NAME", "dnd_ai_clean")]
 
 
 async def _load_art_library(db) -> dict:

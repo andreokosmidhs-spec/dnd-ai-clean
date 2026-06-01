@@ -65,6 +65,7 @@ const applyAbilityBonuses = (baseAbilities, bonusByAbility) => {
 
 const ReviewStep = ({ wizardState, onBack, steps, goToStep, onClearDraft }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [warmingUp, setWarmingUp] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(null);
   const navigate = useNavigate();
@@ -104,8 +105,22 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep, onClearDraft }) => {
     setSubmitError(null);
     setSubmitSuccess(null);
 
-    const payload = buildCharacterPayload(wizardState);
     const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
+
+    // Wake up the Render free-tier service before the heavy POST.
+    // If it's sleeping, the health ping will hold open the connection
+    // for up to 60 s while the container starts — then the actual
+    // character-creation request arrives at a live server.
+    setWarmingUp(true);
+    try {
+      const wakeCtrl = new AbortController();
+      const wakeTimer = setTimeout(() => wakeCtrl.abort(), 60000);
+      await fetch(`${backendUrl}/health`, { signal: wakeCtrl.signal });
+      clearTimeout(wakeTimer);
+    } catch (_) { /* ignore — proceed anyway */ }
+    setWarmingUp(false);
+
+    const payload = buildCharacterPayload(wizardState);
     // Two endpoints serve the same handler. If one is blocked by a stale
     // cache / proxy rule, fall back to the alias so users aren't stuck.
     const endpoints = [
@@ -278,7 +293,7 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep, onClearDraft }) => {
       onNext={handleSubmit}
       backDisabled={isSubmitting}
       nextDisabled={!canSubmit || isSubmitting}
-      nextLabel={isSubmitting ? "Creating… (may take ~60s on first load)" : "Create Character"}
+      nextLabel={warmingUp ? "Waking up server…" : isSubmitting ? "Creating character…" : "Create Character"}
     >
       <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg text-slate-100 space-y-6">
         <h2 className="text-2xl font-bold text-amber-400">Step 7 – Review & Submit</h2>

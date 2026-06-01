@@ -119,8 +119,9 @@ else:
 # OpenAI client for world generation (using Emergent key)
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-# Separate OpenAI client for TTS (using real OpenAI key)
-tts_client = OpenAI(api_key=OPENAI_TTS_KEY) if OPENAI_TTS_KEY else None
+# TTS client: prefer OPENAI_TTS_KEY, fall back to OPENAI_API_KEY (already present for GPT-4o)
+_tts_api_key = OPENAI_TTS_KEY or OPENAI_API_KEY
+tts_client = OpenAI(api_key=_tts_api_key) if _tts_api_key else None
 
 # Import DUNGEON FORGE router, quest router, and debug router
 from routers import dungeon_forge

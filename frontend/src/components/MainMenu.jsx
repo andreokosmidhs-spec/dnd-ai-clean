@@ -253,12 +253,22 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
 
             {showLegacySavedCampaign ? (
               <Button
-                onClick={onContinueCampaign}
-                className="w-full bg-gradient-to-r from-green-700 to-emerald-700 hover:from-green-600 hover:to-emerald-600 text-white font-bold text-xl py-8 shadow-lg shadow-green-600/50 border-2 border-green-400/50"
+                onClick={handleLoadLastCampaign}
+                disabled={isLoadingCampaign}
+                className="w-full bg-gradient-to-r from-green-700 to-emerald-700 hover:from-green-600 hover:to-emerald-600 text-white font-bold text-xl py-8 shadow-lg shadow-green-600/50 border-2 border-green-400/50 disabled:opacity-70"
                 size="lg"
               >
-                <Play className="h-6 w-6 mr-3" />
-                Continue Campaign
+                {isLoadingCampaign ? (
+                  <>
+                    <div className="animate-spin h-5 w-5 mr-3 border-2 border-white border-t-transparent rounded-full" />
+                    Loading…
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-6 w-6 mr-3" />
+                    Continue Campaign
+                  </>
+                )}
               </Button>
             ) : (
               <Button
@@ -295,7 +305,8 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
               </Button>
             )}
             
-            {/* Load Last Campaign Button */}
+            {/* Load Last Campaign — only show when the green Continue button isn't already visible */}
+            {!showLegacySavedCampaign && (
             <Button
               onClick={handleLoadLastCampaign}
               disabled={isLoadingCampaign}
@@ -316,6 +327,7 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
                 </>
               )}
             </Button>
+            )}
           </div>
 
           {/* Confirm Delete Dialog */}

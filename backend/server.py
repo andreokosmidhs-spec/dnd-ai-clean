@@ -1,3 +1,11 @@
+import sys
+import io
+# Force UTF-8 stdout/stderr so emoji print() calls don't crash on Windows or Render
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 from fastapi import FastAPI, APIRouter, HTTPException, Header
 from uuid import uuid4
 from typing import List
@@ -86,9 +94,9 @@ CHAR_CREATION_MODE = os.getenv('CHAR_CREATION_MODE', 'hybrid')
 if not OPENAI_API_KEY and not EMERGENT_LLM_KEY:
     print("WARNING: Neither OPENAI_API_KEY nor EMERGENT_LLM_KEY found. AI features will use fallback.")
 elif EMERGENT_LLM_KEY:
-    print("✅ Emergent LLM key loaded successfully")
+    print("[OK] Emergent LLM key loaded successfully")
 elif OPENAI_API_KEY:
-    print("✅ OpenAI API key loaded successfully")
+    print("[OK] OpenAI API key loaded successfully")
 
 # MongoDB connection (optional for local/dev environments)
 mongo_url = os.getenv('MONGO_URL')

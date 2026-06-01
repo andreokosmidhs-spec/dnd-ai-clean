@@ -4359,7 +4359,7 @@ async def health_check():
 @app.on_event("startup")
 async def _ensure_indexes():
     """Create MongoDB indexes needed for correctness and performance."""
-    if not db:
+    if db is None:
         return
     try:
         await db.users.create_index("email", unique=True)

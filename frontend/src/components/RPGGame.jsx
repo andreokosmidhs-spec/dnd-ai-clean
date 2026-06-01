@@ -225,6 +225,7 @@ const RPGGame = () => {
         try {
           // Fetch character by ID (this is the main data we need)
           const characterRes = await fetch(`${BACKEND_URL}/api/v2/characters/${activeCharacterId}`);
+          if (!characterRes.ok) throw new Error(`Character fetch failed: ${characterRes.status}`);
           const characterData = await characterRes.json();
           
           console.log('🌉 Bridge: Fetched character:', characterData?.identity?.name || characterData?.name || 'Unknown');
@@ -329,22 +330,35 @@ const RPGGame = () => {
           console.log('🌉 Bridge: Built character:', characterForRPG.name, characterForRPG.race, characterForRPG.class);
         } catch (err) {
           console.warn('🌉 Bridge: Failed to fetch character, using fallback:', err);
-          characterForRPG = {
-            id: activeCharacterId,
-            name: 'Adventurer',
-            class: 'Unknown',
-            race: 'Unknown',
-            level: 1,
-            hp: 10,
-            maxHp: 10,
-            stats: {
-              STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10,
-              strength: 10, dexterity: 10, constitution: 10,
-              intelligence: 10, wisdom: 10, charisma: 10,
+          // Try to reuse whatever was already in localStorage so we don't overwrite
+          // good character data with blank placeholders when the backend is cold.
+          try {
+            const existing = localStorage.getItem('rpg-campaign-character');
+            if (existing) {
+              const parsed = JSON.parse(existing);
+              if (parsed?.name && parsed.name !== 'Adventurer') {
+                characterForRPG = { ...parsed, id: activeCharacterId };
+              }
             }
-          };
+          } catch (_) { /* ignore */ }
+          if (!characterForRPG) {
+            characterForRPG = {
+              id: activeCharacterId,
+              name: 'Adventurer',
+              class: 'Unknown',
+              race: 'Unknown',
+              level: 1,
+              hp: 10,
+              maxHp: 10,
+              stats: {
+                STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10,
+                strength: 10, dexterity: 10, constitution: 10,
+                intelligence: 10, wisdom: 10, charisma: 10,
+              }
+            };
+          }
         }
-        
+
         // Set character state
         setCharacter(characterForRPG);
 
@@ -377,9 +391,12 @@ const RPGGame = () => {
           active_quests: characterForRPG.active_quests || [],
         });
 
-        // Bridge to legacy storage for compatibility with other components
-        localStorage.setItem('rpg-campaign-character', JSON.stringify(characterForRPG));
-        console.log('🌉 Bridge: Character data set and saved to legacy storage');
+        // Bridge to legacy storage for compatibility with other components.
+        // Only persist if we have real character data (not the cold-start fallback).
+        if (characterForRPG.name !== 'Adventurer' || characterForRPG.race !== 'Unknown') {
+          localStorage.setItem('rpg-campaign-character', JSON.stringify(characterForRPG));
+          console.log('🌉 Bridge: Character data set and saved to legacy storage');
+        }
 
         // If the portrait isn't ready yet (Nano Banana generation runs in the
         // background), trigger generation (self-healing in case the initial

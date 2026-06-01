@@ -225,7 +225,9 @@ const MainMenu = ({ onNewCampaign, onContinueCampaign, onLoadLastCampaign }) => 
               <div className="text-white ml-8">
                 <div className="font-bold text-lg">{savedCharacter.name}</div>
                 <div className="text-sm text-gray-300">
-                  Level {savedCharacter.level} {savedCharacter.race} {savedCharacter.class}
+                  Level {savedCharacter.level || 1}{' '}
+                  {(typeof savedCharacter.race === 'string' ? savedCharacter.race : savedCharacter.race?.key) || ''}{' '}
+                  {(typeof savedCharacter.class === 'string' ? savedCharacter.class : savedCharacter.class?.key) || ''}
                 </div>
                 {savedCharacter.background && (
                   <div className="text-xs text-gray-400">

@@ -135,8 +135,9 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep, onClearDraft }) => {
     // Response or {status, detail} on failure. Larger payloads (e.g. a
     // reference image) get a more generous timeout so slow uplinks don't
     // surface as "All endpoints failed".
+    // NOTE: Render free tier takes ~50s to wake from sleep, so we use 65s.
     const hasReferenceImage = !!payload?.appearance?.referenceImage;
-    const perAttemptTimeoutMs = hasReferenceImage ? 30000 : 12000;
+    const perAttemptTimeoutMs = hasReferenceImage ? 90000 : 65000;
     const tryOnce = async (url) => {
       const ctrl = new AbortController();
       const timeoutId = setTimeout(() => ctrl.abort(), perAttemptTimeoutMs);
@@ -162,8 +163,8 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep, onClearDraft }) => {
       for (const url of endpoints) {
         const result = await tryOnce(url);
         if (result.ok) return { res: result.res };
-        // 5xx, 502, 503 + transient network are worth retrying after a beat
-        if (result.status === 0 || result.status === 404 || result.status >= 500) {
+        // 405 from Render = service is waking from sleep; 5xx/404/network = transient
+        if (result.status === 0 || result.status === 404 || result.status === 405 || result.status >= 500) {
           // Continue to next endpoint; the FOR loop will exhaust and we'll retry
           continue;
         }
@@ -277,7 +278,7 @@ const ReviewStep = ({ wizardState, onBack, steps, goToStep, onClearDraft }) => {
       onNext={handleSubmit}
       backDisabled={isSubmitting}
       nextDisabled={!canSubmit || isSubmitting}
-      nextLabel={isSubmitting ? "Creating..." : "Create Character"}
+      nextLabel={isSubmitting ? "Creating… (may take ~60s on first load)" : "Create Character"}
     >
       <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg text-slate-100 space-y-6">
         <h2 className="text-2xl font-bold text-amber-400">Step 7 – Review & Submit</h2>

@@ -202,38 +202,14 @@ export const useTTS = () => {
         }
       }
 
-      // ── 3. OpenAI / server TTS ──────────────────────────────────────────────
-      console.log('🌐 Fetching TTS from server API...');
-      const response = await fetch(`${API_BASE_URL}/api/tts/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice, model: 'tts-1-hd' }),
-      });
-
-      if (response.status === 503) {
-        // Server TTS not configured — silent graceful fallback
-        console.log('⚠️ Server TTS unavailable, using speechSynthesis fallback');
-        _speakFallback(text);
-        return null;
-      }
-
-      if (!response.ok) throw new Error(`TTS generation failed: ${response.statusText}`);
-
-      const audioBlob = await response.blob();
-      const url = URL.createObjectURL(audioBlob);
-      audioCache.current.set(cacheKey, { type: 'url', url });
-      console.log('✅ TTS via OpenAI server');
-
-      if (autoPlay && audioRef.current) {
-        audioRef.current.src = url;
-        await audioRef.current.play().catch(() => {});
-      }
-      return url;
+      // ── 3. Free browser speechSynthesis fallback (Kokoro unavailable) ────────
+      console.log('⚠️ Kokoro unavailable, using free browser speechSynthesis');
+      _speakFallback(text);
+      return null;
 
     } catch (err) {
       setError(err.message);
       console.error('TTS Error:', err);
-      // Last-resort fallback so the game isn't silent on error
       try { _speakFallback(text); } catch (_) {}
       return null;
     } finally {

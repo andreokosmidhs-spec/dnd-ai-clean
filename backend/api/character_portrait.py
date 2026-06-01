@@ -210,19 +210,37 @@ async def generate_character_portrait(
         except Exception as exc:
             logger.warning(f"[portrait] Local SD error: {exc}")
 
-    # 3. Gemini
+    # 3. Pollinations (free — Kontext for consistency, basic FLUX for initial portrait)
+    try:
+        from services.pollinations_service import generate_kontext, generate_image
+        prompt = _build_portrait_prompt(character)
+        if reference_data_url:
+            result = await generate_kontext(
+                f"{prompt} Maintain the same face and identity. Fantasy RPG portrait.",
+                reference_data_url,
+                width=768, height=1024,
+            )
+        else:
+            result = await generate_image(prompt, width=768, height=1024, model="flux")
+        if result:
+            return result
+        logger.info("[portrait] Pollinations returned nothing, trying next provider")
+    except Exception as exc:
+        logger.warning(f"[portrait] Pollinations error: {exc}")
+
+    # 4. Gemini
     emergent_key = os.getenv("EMERGENT_LLM_KEY")
     if emergent_key:
         result = await _gemini_portrait(character, emergent_key)
         if result:
             return result
 
-    # 4. DALL-E 3
+    # 5. DALL-E 3
     result = await _dalle_portrait(character)
     if result:
         return result
 
-    # 5. SVG placeholder — always works
+    # 6. SVG placeholder — always works
     logger.info("[portrait] All providers unavailable, using SVG placeholder")
     return _svg_placeholder(character)
 

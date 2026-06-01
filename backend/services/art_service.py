@@ -1,8 +1,10 @@
 """Unified art generation.
 
 Provider priority (first available wins):
-  1. Replicate API  — REPLICATE_API_TOKEN  (cloud, best quality, ~$0.003–0.05/img)
-  2. Local SD       — A1111_URL or SD_LOCAL=true  (free, runs on your machine)
+  1. Replicate API      — REPLICATE_API_TOKEN  (cloud, best quality, ~$0.003–0.05/img)
+  2. Pollinations Kontext — free, uses FLUX Kontext for character consistency
+                           (reference portrait → same face in new scene)
+  3. Local SD           — A1111_URL or SD_LOCAL=true  (free, runs on your machine)
 
 Optional env var:
   ART_LORA_URL  — HuggingFace .safetensors LoRA URL applied to all Replicate
@@ -10,12 +12,18 @@ Optional env var:
 
 Generation strategy
 ───────────────────
-Character / NPC portraits
-  Replicate: fofr/consistent-character (+ IP-Adapter for gear refresh)
+Character / NPC portraits (initial)
+  Replicate: fofr/consistent-character
+  Pollinations: FLUX text-to-image (free)
   Local SD:  portrait prompt → local_sd_service.generate_portrait()
+
+Character portraits (with existing reference → consistency)
+  Replicate: fofr/consistent-character + subject_image_0
+  Pollinations: FLUX Kontext — same face preserved in new scene (free)
 
 Location / item cards
   Replicate: flux-schnell (fast) or flux-dev-lora (with LoRA)
+  Pollinations: FLUX text-to-image (free)
   Local SD:  scene / square prompts via local_sd_service
 """
 
@@ -163,9 +171,26 @@ async def generate_character_portrait(
         except Exception as exc:
             logger.warning(f"[art] Replicate portrait failed, trying local SD: {exc}")
 
+    full_prompt = f"portrait of {subject}, {gear}, {_STYLE}, plain dark background"
+
+    # 2. Pollinations Kontext (free) — consistent face if reference available,
+    #    otherwise plain text-to-image
+    try:
+        from services.pollinations_service import generate_kontext, generate_image
+        if reference_data_url:
+            result = await generate_kontext(
+                f"The same character, {gear}, fantasy RPG portrait, head and shoulders, {_STYLE}, plain dark background",
+                reference_data_url,
+            )
+        else:
+            result = await generate_image(full_prompt, width=768, height=1024, model="flux")
+        if result:
+            return result
+    except Exception as exc:
+        logger.warning(f"[art] Pollinations portrait failed, trying local SD: {exc}")
+
     try:
         from services.local_sd_service import generate_portrait as _local_portrait
-        full_prompt = f"portrait of {subject}, {gear}, {_STYLE}, plain dark background"
         return await _local_portrait(full_prompt)
     except Exception as exc:
         logger.error(f"[art] local SD portrait failed: {exc}")
@@ -195,7 +220,15 @@ async def generate_npc_art(name: str, description: str, role: str = "") -> Optio
             if result:
                 return result
         except Exception as exc:
-            logger.warning(f"[art] Replicate NPC art failed, trying local SD: {exc}")
+            logger.warning(f"[art] Replicate NPC art failed, trying Pollinations: {exc}")
+
+    try:
+        from services.pollinations_service import generate_image as _poll
+        result = await _poll(prompt, width=768, height=1024, model="flux")
+        if result:
+            return result
+    except Exception as exc:
+        logger.warning(f"[art] Pollinations NPC art failed, trying local SD: {exc}")
 
     try:
         from services.local_sd_service import generate_portrait as _local_portrait
@@ -230,7 +263,15 @@ async def generate_place_art(name: str, description: str, biome: str = "") -> Op
             if result:
                 return result
         except Exception as exc:
-            logger.warning(f"[art] Replicate place art failed, trying local SD: {exc}")
+            logger.warning(f"[art] Replicate place art failed, trying Pollinations: {exc}")
+
+    try:
+        from services.pollinations_service import generate_image as _poll
+        result = await _poll(prompt, width=1280, height=720, model="flux")
+        if result:
+            return result
+    except Exception as exc:
+        logger.warning(f"[art] Pollinations place art failed, trying local SD: {exc}")
 
     try:
         from services.local_sd_service import generate_scene as _local_scene
@@ -269,7 +310,15 @@ async def generate_item_art(name: str, description: str, rarity: str = "common")
             if result:
                 return result
         except Exception as exc:
-            logger.warning(f"[art] Replicate item art failed, trying local SD: {exc}")
+            logger.warning(f"[art] Replicate item art failed, trying Pollinations: {exc}")
+
+    try:
+        from services.pollinations_service import generate_image as _poll
+        result = await _poll(prompt, width=1024, height=1024, model="flux")
+        if result:
+            return result
+    except Exception as exc:
+        logger.warning(f"[art] Pollinations item art failed, trying local SD: {exc}")
 
     try:
         from services.local_sd_service import generate_square as _local_square

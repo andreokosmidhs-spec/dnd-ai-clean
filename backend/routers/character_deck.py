@@ -281,6 +281,8 @@ async def draw_card(character_id: str, body: DrawCardBody):
         char = await _load_character(character_id)
         await _load_or_seed_deck(char)
         doc = await db.character_decks.find_one({"character_id": character_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Character deck not found")
 
     from services.character_deck import _new_card  # local import to keep module clean
     card = _new_card(

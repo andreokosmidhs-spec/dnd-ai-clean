@@ -696,7 +696,9 @@ async def generate_world_graph(
                 regions[0]["events"] = _seed_events_for_region(regions[0], events_per_region, rng=rng, intent=intent.model_dump() if intent else None)
 
         # Edges: starter→each neighbor, plus 60% neighbor chain
-        starter = next((r for r in regions if r["is_starting"]), regions[0])
+        starter = next((r for r in regions if r["is_starting"]), regions[0] if regions else None)
+        if not starter:
+            raise ValueError("No regions generated for world graph")
         edges: List[Dict] = []
         for r in regions:
             if r["id"] == starter["id"]:

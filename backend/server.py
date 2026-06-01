@@ -2891,14 +2891,14 @@ PRIORITIES
         
         if char_state:
             context_parts.append(f"Character: {char_state.name}, Level {char_state.level} {char_state.race} {char_state.class_}")
-            context_parts.append(f"HP: {char_state.hp['current']}/{char_state.hp['max']}, AC: {char_state.ac}")
+            context_parts.append(f"HP: {char_state.hp.get('current','?')}/{char_state.hp.get('max','?')}, AC: {char_state.ac}")
             context_parts.append(f"BACKGROUND: {char_state.background} (IMPORTANT: Use this background for contextual action suggestions)")
-            
+
             if char_state.conditions:
                 context_parts.append(f"Active Conditions: {', '.join(char_state.conditions)}")
-            
+
             if char_state.equipped:
-                equipped_items = [f"{item['name']} ({', '.join(item['tags'])})" for item in char_state.equipped[:3]]
+                equipped_items = [f"{item.get('name','')} ({', '.join(item.get('tags', []))})" for item in char_state.equipped[:3]]
                 context_parts.append(f"Equipped: {'; '.join(equipped_items)}")
             
             if char_state.virtues:
@@ -3608,7 +3608,7 @@ def _build_dm_context(char_state, world_state, threat_level, session_notes):
     
     context_parts = [
         f"Character: {char_state.name}, Level {char_state.level} {char_state.race} {char_state.class_}",
-        f"HP: {char_state.hp['current']}/{char_state.hp['max']} | AC: {char_state.ac}",
+        f"HP: {char_state.hp.get('current','?')}/{char_state.hp.get('max','?')} | AC: {char_state.ac}",
     ]
     
     if char_state.conditions:
@@ -3629,7 +3629,7 @@ def _generate_adaptive_content(player_message, char_state, world_state, threat_l
     """Generate adaptive narration and options based on character state and message intent"""
     
     # Analyze character capabilities
-    is_low_hp = char_state.hp['current'] < char_state.hp['max'] * 0.3
+    is_low_hp = char_state.hp.get('current', 0) < char_state.hp.get('max', 1) * 0.3
     has_healing = any('healing' in item.get('tags', []) for item in char_state.equipped)
     is_stealth_proficient = 'stealth' in (char_state.proficiencies or [])
     is_ranger = 'ranger' in char_state.class_.lower()

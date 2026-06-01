@@ -11,7 +11,10 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
  */
 export const fetchCharacterCount = async () => {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/characters/v2/`);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch(`${BACKEND_URL}/api/characters/v2/`, { signal: ctrl.signal });
+    clearTimeout(timer);
     if (!res.ok) return -1;
     const data = await res.json();
     return Array.isArray(data) ? data.length : -1;

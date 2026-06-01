@@ -100,19 +100,22 @@ async def call_sonnet_async(
     """
     anthropic_key = _get_anthropic_key()
     if anthropic_key:
-        from litellm import acompletion
-        system = _cached_system(system_prompt) if cache else system_prompt
-        response = await acompletion(
-            model=SONNET,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_content},
-            ],
-            max_tokens=max_tokens,
-            temperature=temperature,
-            api_key=anthropic_key,
-        )
-        return response.choices[0].message.content.strip()
+        try:
+            from litellm import acompletion
+            system = _cached_system(system_prompt) if cache else system_prompt
+            response = await acompletion(
+                model=SONNET,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_content},
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature,
+                api_key=anthropic_key,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as exc:
+            logger.warning(f"⚠️  Anthropic API call failed ({exc}) — falling back to GPT-4o")
 
     logger.warning("⚠️  ANTHROPIC_API_KEY not set — falling back to GPT-4o via OpenAI/Emergent")
     return await _call_openai_fallback_async(_OPENAI_SONNET_FALLBACK, system_prompt, user_content, max_tokens, temperature)
@@ -127,18 +130,21 @@ async def call_haiku_async(
     """Claude Haiku 4.5 — async. Falls back to GPT-4o-mini if no Anthropic key."""
     anthropic_key = _get_anthropic_key()
     if anthropic_key:
-        from litellm import acompletion
-        response = await acompletion(
-            model=HAIKU,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-            max_tokens=max_tokens,
-            temperature=temperature,
-            api_key=anthropic_key,
-        )
-        return response.choices[0].message.content.strip()
+        try:
+            from litellm import acompletion
+            response = await acompletion(
+                model=HAIKU,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature,
+                api_key=anthropic_key,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as exc:
+            logger.warning(f"⚠️  Anthropic API call failed ({exc}) — falling back to GPT-4o-mini")
 
     logger.warning("⚠️  ANTHROPIC_API_KEY not set — falling back to GPT-4o-mini via OpenAI/Emergent")
     return await _call_openai_fallback_async(_OPENAI_HAIKU_FALLBACK, system_prompt, user_content, max_tokens, temperature)
@@ -156,19 +162,22 @@ def call_sonnet_sync(
     """Claude Sonnet 4.6 — sync. Falls back to GPT-4o if no Anthropic key."""
     anthropic_key = _get_anthropic_key()
     if anthropic_key:
-        from litellm import completion
-        system = _cached_system(system_prompt) if cache else system_prompt
-        response = completion(
-            model=SONNET,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_content},
-            ],
-            max_tokens=max_tokens,
-            temperature=temperature,
-            api_key=anthropic_key,
-        )
-        return response.choices[0].message.content.strip()
+        try:
+            from litellm import completion
+            system = _cached_system(system_prompt) if cache else system_prompt
+            response = completion(
+                model=SONNET,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_content},
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature,
+                api_key=anthropic_key,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as exc:
+            logger.warning(f"⚠️  Anthropic API call failed ({exc}) — falling back to GPT-4o")
 
     logger.warning("⚠️  ANTHROPIC_API_KEY not set — falling back to GPT-4o via OpenAI/Emergent")
     return _call_openai_fallback_sync(_OPENAI_SONNET_FALLBACK, system_prompt, user_content, max_tokens, temperature)
@@ -183,18 +192,21 @@ def call_haiku_sync(
     """Claude Haiku 4.5 — sync. Falls back to GPT-4o-mini if no Anthropic key."""
     anthropic_key = _get_anthropic_key()
     if anthropic_key:
-        from litellm import completion
-        response = completion(
-            model=HAIKU,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-            max_tokens=max_tokens,
-            temperature=temperature,
-            api_key=anthropic_key,
-        )
-        return response.choices[0].message.content.strip()
+        try:
+            from litellm import completion
+            response = completion(
+                model=HAIKU,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature,
+                api_key=anthropic_key,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as exc:
+            logger.warning(f"⚠️  Anthropic API call failed ({exc}) — falling back to GPT-4o-mini")
 
     logger.warning("⚠️  ANTHROPIC_API_KEY not set — falling back to GPT-4o-mini via OpenAI/Emergent")
     return _call_openai_fallback_sync(_OPENAI_HAIKU_FALLBACK, system_prompt, user_content, max_tokens, temperature)

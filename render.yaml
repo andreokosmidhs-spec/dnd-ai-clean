@@ -18,3 +18,5 @@ services:
         value: "1"
       - key: JWT_SECRET
         generateValue: true
+      - key: FRONTEND_URL
+        value: https://andreokosmidhs-spec.github.io

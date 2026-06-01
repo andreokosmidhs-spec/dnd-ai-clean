@@ -4254,7 +4254,11 @@ _frontend_url = os.getenv("FRONTEND_URL", "")
 _cors_origins = (
     [o.strip() for o in _frontend_url.split(",") if o.strip()]
     if _frontend_url
-    else ["http://localhost:3000", "http://localhost:3001"]
+    else [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://andreokosmidhs-spec.github.io",
+    ]
 )
 app.add_middleware(
     CORSMiddleware,

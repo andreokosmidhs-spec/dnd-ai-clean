@@ -76,7 +76,11 @@ class FromPromptBody(BaseModel):
 
 @router.get("")
 async def list_types(campaign_id: Optional[str] = None):
-    docs = await list_mission_types(_get_db(), campaign_id=campaign_id)
+    if _db is None:
+        # DB not connected — return built-in defaults so campaign setup still works
+        from services.mission_types import SYSTEM_MISSION_TYPES
+        return {"mission_types": [_to_out(d) for d in SYSTEM_MISSION_TYPES]}
+    docs = await list_mission_types(_db, campaign_id=campaign_id)
     return {"mission_types": [_to_out(d) for d in docs]}
 
 

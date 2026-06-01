@@ -7,9 +7,9 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
+import bcrypt as _bcrypt
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from passlib.context import CryptContext
 from jose import jwt
 from bson import ObjectId
 
@@ -19,8 +19,19 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 JWT_EXPIRE_DAYS = 30
+
+
+def _hash_password(plain: str) -> str:
+    return _bcrypt.hashpw(plain.encode(), _bcrypt.gensalt()).decode()
+
+
+def _verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return _bcrypt.checkpw(plain.encode(), hashed.encode())
+    except Exception:
+        return False
+
 
 _db = None
 
@@ -65,7 +76,7 @@ async def register(req: RegisterRequest):
 
     user_doc = {
         "email": req.email.lower(),
-        "hashed_password": pwd_context.hash(req.password),
+        "hashed_password": _hash_password(req.password),
         "plan": "free",
         "created_at": datetime.utcnow(),
     }
@@ -79,7 +90,7 @@ async def register(req: RegisterRequest):
 @router.post("/login")
 async def login(req: LoginRequest):
     user = await _db.users.find_one({"email": req.email.lower()})
-    if not user or not pwd_context.verify(req.password, user["hashed_password"]):
+    if not user or not _verify_password(req.password, user["hashed_password"]):
         raise HTTPException(401, "Invalid email or password")
 
     return {"token": _make_token(str(user["_id"])), "user": _safe_user(user)}

@@ -27,7 +27,6 @@ motor==3.7.1
 multidict==6.7.0
 openai==1.99.9
 packaging==25.0
-passlib==1.7.4
 propcache==0.4.1
 pydantic==2.12.5
 pydantic_core==2.41.5

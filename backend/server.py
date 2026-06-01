@@ -101,10 +101,14 @@ elif OPENAI_API_KEY:
 # MongoDB connection (optional for local/dev environments)
 mongo_url = os.getenv('MONGO_URL')
 db_name = os.getenv("DB_NAME")
-mongo_client = AsyncIOMotorClient(mongo_url) if mongo_url and db_name else None
-if mongo_client and db_name:
+try:
+    mongo_client = AsyncIOMotorClient(mongo_url) if mongo_url and db_name else None
+except Exception as _mongo_init_err:
+    logging.getLogger(__name__).warning(f"MongoDB client init failed (bad URL?): {_mongo_init_err}")
+    mongo_client = None
+if mongo_client is not None and db_name:
     db = mongo_client[db_name]
-    logging.getLogger(__name__).info(f"MongoDB enabled: {mongo_url}/{db_name}")
+    logging.getLogger(__name__).info(f"MongoDB enabled: {db_name}")
 else:
     db = None
     logging.getLogger(__name__).info(

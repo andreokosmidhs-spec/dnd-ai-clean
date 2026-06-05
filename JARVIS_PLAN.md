@@ -1,54 +1,57 @@
-# JARVIS Plan — dnd-ai-clean
+# JARVIS Plan — DND-AI-Clean
 
 ## Game Overview
-The game is a text-based implementation of Dungeons & Dragons, where players can create characters and engage in combat with monsters.
+The game is a text-based implementation of Dungeons & Dragons, where the player interacts with a monster using a command-line interface.
 
 ## Mechanics Inventory
-### **Combat System**
-- **Name**: Handles player and monster turns, damage calculation, and victory/defeat conditions.
-- **File**: `combat.js:10`
-- **Expected behaviour**: When a player attacks a monster, the monster's current HP is reduced by the attack's damage. If the monster's HP falls to 0 or below, it is defeated.
-- **Failure modes**: Monster HP not updated correctly, incorrect damage calculation.
 
-### **Character Creation**
-- **Name**: Allows players to create characters with attributes and skills.
-- **File**: `character.js:20`
-- **Expected behaviour**: When a player creates a character, the character's attributes (e.g. strength, intelligence) are set to default values, and their skills are initialized as empty arrays.
-- **Failure modes**: Character attributes not set correctly, skills not initialized.
+### **Monster Combat**
+- **Name**: Engage in combat with a monster.
+- **File**: `monster.js:10`
+- **Expected behaviour**: When the player attacks the monster, the monster's current HP should decrease by 1. The game state should be updated to reflect this change.
+- **Failure modes**: If the player's attack roll is less than or equal to the monster's AC, the attack should miss and no damage should be dealt.
 
-### **Monster Generation**
-- **Name**: Generates random monsters with attributes and HP.
-- **File**: `monster.js:15`
-- **Expected behaviour**: When a monster is generated, its attributes (e.g. strength, intelligence) are randomly assigned within certain ranges, and its HP is set to a value based on its attributes.
-- **Failure modes**: Monster attributes not generated correctly, incorrect HP calculation.
+### **Player Turn**
+- **Name**: Take a turn in combat with the monster.
+- **File**: `player.js:20`
+- **Expected behaviour**: When the player takes their turn, they should be prompted to enter an action (e.g. "attack", "heal"). The game state should be updated based on the player's input.
+- **Failure modes**: If the player enters an invalid action, the game should display an error message and prompt the player to try again.
+
+### **Monster Turn**
+- **Name**: Take a turn in combat with the monster.
+- **File**: `monster.js:30`
+- **Expected behaviour**: When it's the monster's turn, it should attack the player. The player's current HP should decrease by 1 if the attack hits.
+- **Failure modes**: If the monster misses its attack, no damage should be dealt to the player.
 
 ## Test Cases
-### TC-001 — Combat System
-- Precondition: Player has a character with 10 HP, monster has 20 HP.
-- Steps:
-  1. Player attacks monster with 5 damage.
-  2. Check if monster's current HP is 15.
-- Expected result: Monster's current HP is 15.
-- State assertion: `monster.currentHP === 15`
 
-### TC-002 — Character Creation
-- Precondition: No characters created.
+### TC-001 — Monster Combat
+- Precondition: Player and monster are in combat.
 - Steps:
-  1. Create a character with default attributes and skills.
-  2. Check if character's attributes are set correctly.
-- Expected result: Character's attributes are set to default values, skills are initialized as empty arrays.
-- State assertion: `character.attributes === { strength: 10, intelligence: 10 } && character.skills.length === 0`
+  1. Player attacks the monster with a roll of 10.
+  2. Verify that the monster's current HP has decreased by 1.
+- Expected result: Monster's current HP is 9.
+- State assertion: `window.gameState?.monster?.hp === 9`
 
-### TC-003 — Monster Generation
-- Precondition: No monsters generated.
+### TC-002 — Player Turn
+- Precondition: Player and monster are in combat, player's turn.
 - Steps:
-  1. Generate a random monster with attributes and HP.
-  2. Check if monster's attributes are within the correct ranges.
-- Expected result: Monster's attributes are randomly assigned within certain ranges, HP is set correctly based on attributes.
-- State assertion: `monster.attributes.strength >= 5 && monster.attributes.intelligence <= 15`
+  1. Player enters an action of "attack".
+  2. Verify that the game state has been updated to reflect the player's attack.
+- Expected result: Game state reflects player's attack.
+- State assertion: `window.gameState?.player?.action === 'attack'`
+
+### TC-003 — Monster Turn
+- Precondition: Player and monster are in combat, monster's turn.
+- Steps:
+  1. Verify that the monster attacks the player with a roll of 10.
+  2. Verify that the player's current HP has decreased by 1 if the attack hits.
+- Expected result: Player's current HP is 9 if the attack hits.
+- State assertion: `window.gameState?.player?.hp === 9`
 
 ## Incomplete / Broken Code
-* `combat.js:25`: Incorrect damage calculation formula, causing inconsistent results.
+
+* `monster.js:40`: The monster's AI logic is incomplete and does not handle all possible scenarios.
 
 ## Cannot Test
 None. All mechanics have a browser entry point.

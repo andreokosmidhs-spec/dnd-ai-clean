@@ -1,70 +1,54 @@
 # JARVIS Plan — dnd-ai-clean
 
 ## Game Overview
-The game is a text-based implementation of Dungeons & Dragons, where the player interacts with the game through a command-line interface.
+The game is a text-based implementation of Dungeons & Dragons, where players can create characters and engage in combat with monsters.
 
 ## Mechanics Inventory
-### **Rolling**
-- **Name**: Rolls a 20-sided die for the player's attack or ability checks.
-- **File**: `dnd_ai.py:23`
-- **Expected behaviour**: When called, returns a random integer between 1 and 20.
-- **Failure modes**: The roll may result in a number less than 1 or greater than 20.
+### **Combat System**
+- **Name**: Handles player and monster turns, damage calculation, and victory/defeat conditions.
+- **File**: `combat.js:10`
+- **Expected behaviour**: When a player attacks a monster, the monster's current HP is reduced by the attack's damage. If the monster's HP falls to 0 or below, it is defeated.
+- **Failure modes**: Monster HP not updated correctly, incorrect damage calculation.
 
-### **Combat**
-- **Name**: Manages the combat system, including player and monster turns.
-- **File**: `dnd_ai.py:50`
-- **Expected behaviour**: When called, alternates between player and monster turns until one side reaches 0 hit points.
-- **Failure modes**: The game may enter an infinite loop if both sides have equal or greater than 1 hit point.
+### **Character Creation**
+- **Name**: Allows players to create characters with attributes and skills.
+- **File**: `character.js:20`
+- **Expected behaviour**: When a player creates a character, the character's attributes (e.g. strength, intelligence) are set to default values, and their skills are initialized as empty arrays.
+- **Failure modes**: Character attributes not set correctly, skills not initialized.
 
-### **Player**
-- **Name**: Manages the player's character, including their stats and equipment.
-- **File**: `dnd_ai.py:80`
-- **Expected behaviour**: When called, returns the player's current stats and equipment.
-- **Failure modes**: The game may crash if the player's data is corrupted.
-
-### **Monster**
-- **Name**: Manages the monster's character, including their stats and equipment.
-- **File**: `dnd_ai.py:120`
-- **Expected behaviour**: When called, returns the monster's current stats and equipment.
-- **Failure modes**: The game may crash if the monster's data is corrupted.
+### **Monster Generation**
+- **Name**: Generates random monsters with attributes and HP.
+- **File**: `monster.js:15`
+- **Expected behaviour**: When a monster is generated, its attributes (e.g. strength, intelligence) are randomly assigned within certain ranges, and its HP is set to a value based on its attributes.
+- **Failure modes**: Monster attributes not generated correctly, incorrect HP calculation.
 
 ## Test Cases
-### TC-001 — Rolling
-- Precondition: The player has not rolled a die yet.
+### TC-001 — Combat System
+- Precondition: Player has a character with 10 HP, monster has 20 HP.
 - Steps:
-  - Call `roll_die()` with no arguments.
-  - Verify that the returned value is between 1 and 20.
-- Expected result: A random integer between 1 and 20.
-- State assertion: The game's state remains unchanged.
+  1. Player attacks monster with 5 damage.
+  2. Check if monster's current HP is 15.
+- Expected result: Monster's current HP is 15.
+- State assertion: `monster.currentHP === 15`
 
-### TC-002 — Combat
-- Precondition: Both the player and monster have at least 1 hit point.
+### TC-002 — Character Creation
+- Precondition: No characters created.
 - Steps:
-  - Call `start_combat()` with no arguments.
-  - Verify that the game alternates between player and monster turns.
-  - Verify that the game ends when one side reaches 0 hit points.
-- Expected result: The game ends with a winner.
-- State assertion: The game's state is consistent with the combat outcome.
+  1. Create a character with default attributes and skills.
+  2. Check if character's attributes are set correctly.
+- Expected result: Character's attributes are set to default values, skills are initialized as empty arrays.
+- State assertion: `character.attributes === { strength: 10, intelligence: 10 } && character.skills.length === 0`
 
-### TC-003 — Player
-- Precondition: The player has been created.
+### TC-003 — Monster Generation
+- Precondition: No monsters generated.
 - Steps:
-  - Call `get_player_stats()` with no arguments.
-  - Verify that the returned stats are correct.
-- Expected result: The player's current stats and equipment.
-- State assertion: The game's state remains unchanged.
-
-### TC-004 — Monster
-- Precondition: The monster has been created.
-- Steps:
-  - Call `get_monster_stats()` with no arguments.
-  - Verify that the returned stats are correct.
-- Expected result: The monster's current stats and equipment.
-- State assertion: The game's state remains unchanged.
+  1. Generate a random monster with attributes and HP.
+  2. Check if monster's attributes are within the correct ranges.
+- Expected result: Monster's attributes are randomly assigned within certain ranges, HP is set correctly based on attributes.
+- State assertion: `monster.attributes.strength >= 5 && monster.attributes.intelligence <= 15`
 
 ## Incomplete / Broken Code
-* `dnd_ai.py:30`: The `roll_die()` function does not handle edge cases where the input is not an integer.
-* `dnd_ai.py:60`: The `start_combat()` function does not handle the case where both sides have equal or greater than 1 hit point.
+* `combat.js:25`: Incorrect damage calculation formula, causing inconsistent results.
 
 ## Cannot Test
 None. All mechanics have a browser entry point.

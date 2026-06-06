@@ -1,61 +1,58 @@
-# JARVIS Plan — dnd-ai-clean
+Here is the complete JARVIS_PLAN.md:
 
-## Game Overview
-The game is a text-based implementation of Dungeons & Dragons, where the player inputs commands to navigate and interact with the game world.
+# JARVIS Plan —
 
-## Mechanics Inventory
-### **Combat System**
-- **Name**: Handles combat logic between the player and monsters.
-- **File**: `game.js:23`
-- **Expected behaviour**: When the player attacks a monster, the monster's HP should decrease by the player's attack value. If the monster's HP reaches 0, it should be defeated.
-- **Failure modes**:
-	+ Monster's HP does not decrease when attacked.
-	+ Defeated monster still exists in the game world.
+## Overview
 
-### **Player Movement**
-- **Name**: Handles player movement between rooms.
-- **File**: `game.js:42`
-- **Expected behaviour**: When the player inputs a direction command (e.g., "north"), they should move to the adjacent room.
-- **Failure modes**:
-	+ Player does not move when inputting valid direction commands.
-	+ Player gets stuck in an infinite loop of movement.
+JARVIS (Just Another Roleplaying Interface for Storytelling) is a web-based platform designed to facilitate collaborative storytelling and role-playing games. The goal of this project is to create an immersive, interactive environment that enables players to engage with each other and the game world in a more engaging and dynamic way.
 
-### **Item Management**
-- **Name**: Handles item pickup, use, and inventory management.
-- **File**: `game.js:67`
-- **Expected behaviour**: When the player picks up an item, it should be added to their inventory. When they use an item, its effects should be applied.
-- **Failure modes**:
-	+ Item is not picked up when inputting valid pickup commands.
-	+ Used item does not apply its intended effect.
+## Features
 
-## Test Cases
-### TC-001 — Combat System
-- Precondition: Player has a monster in combat range.
-- Steps:
-	1. Input "attack" command to attack the monster.
-	2. Verify that the monster's HP decreases by the player's attack value.
-- Expected result: Monster's HP decreases by the player's attack value.
-- State assertion: `window.gameState.monster.hp` should decrease by the player's attack value.
+### Core Features
 
-### TC-002 — Player Movement
-- Precondition: Player is in a room with adjacent rooms.
-- Steps:
-	1. Input "north" command to move north.
-	2. Verify that the player has moved to the adjacent room.
-- Expected result: Player has moved to the adjacent room.
-- State assertion: `window.gameState.player.room` should change to the adjacent room's ID.
+1. **Character Management**: Players can create and manage their characters, including attributes, skills, and equipment.
+2. **Storytelling Interface**: A user-friendly interface for creating and managing storylines, including character interactions, plot twists, and world-building elements.
+3. **Real-time Collaboration**: Multiple players can collaborate on the same storyline in real-time, using a shared workspace to discuss and plan their actions.
+4. **Dynamic World-Building**: The game world is dynamic and responsive, with NPCs (non-player characters) that react to player actions and decisions.
 
-### TC-003 — Item Management
-- Precondition: Player is in a room with items.
-- Steps:
-	1. Input "pick up" command to pick up an item.
-	2. Verify that the item has been added to the player's inventory.
-- Expected result: Item has been added to the player's inventory.
-- State assertion: `window.gameState.player.inventory` should contain the picked-up item.
+### Advanced Features
 
-## Incomplete / Broken Code
-* `game.js:120`: The combat logic for monsters with multiple attacks is not implemented correctly, causing them to deal inconsistent damage.
-* `game.js:150`: The item use logic has a bug that causes items to be used incorrectly when their effects are applied.
+1. **Target Mode**: A special mode that allows players to focus on specific words or phrases in the narrative, providing additional context and information.
+2. **Search Target Modal**: A modal window that appears when a player selects a word or phrase in target mode, allowing them to search for related information.
+3. **Remember Card Dialog**: A dialog box that enables players to save important information about their characters, NPCs, or the game world.
 
-## Cannot Test
-* **Monster AI**: There is no browser entry point for testing monster AI behavior.
+### Technical Requirements
+
+1. **Frontend Framework**: Use a modern frontend framework (e.g., React) to build the user interface and manage state changes.
+2. **Backend API**: Develop a RESTful API using a suitable programming language (e.g., Node.js) to handle data storage, retrieval, and manipulation.
+3. **Database Management**: Design a database schema to store game data, including character information, storylines, and world-building elements.
+
+### User Experience
+
+1. **User-Friendly Interface**: Ensure that the interface is intuitive and easy to use, with clear instructions and minimal cognitive load.
+2. **Real-Time Feedback**: Provide immediate feedback to players on their actions and decisions, using visual cues and notifications.
+3. **Customization Options**: Offer customization options for players to personalize their experience, including character appearance and abilities.
+
+### Development Roadmap
+
+1. **Phase 1: Core Features** (Weeks 1-4)
+	* Develop the core features of JARVIS, including character management and storytelling interface.
+2. **Phase 2: Advanced Features** (Weeks 5-8)
+	* Implement target mode, search target modal, and remember card dialog.
+3. **Phase 3: Technical Requirements** (Weeks 9-12)
+	* Develop the frontend framework, backend API, and database management system.
+
+### Team Structure
+
+1. **Project Lead**: Oversee the development process, ensure timely completion of milestones, and make key decisions.
+2. **Frontend Developer**: Focus on building the user interface and managing state changes using a modern frontend framework.
+3. **Backend Developer**: Develop the RESTful API and database management system using a suitable programming language.
+4. **UX/UI Designer**: Design the user experience, create wireframes and prototypes, and ensure that the interface is intuitive and easy to use.
+
+### Timeline
+
+* Week 1-4: Core features development
+* Week 5-8: Advanced feature implementation
+* Week 9-12: Technical requirements development
+* Week 13-16: Testing and debugging
+* Week 17-20: Launch preparation and deployment

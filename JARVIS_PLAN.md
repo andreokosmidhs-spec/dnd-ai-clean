@@ -56,3 +56,59 @@ JARVIS (Just Another Roleplaying Interface for Storytelling) is a web-based plat
 * Week 9-12: Technical requirements development
 * Week 13-16: Testing and debugging
 * Week 17-20: Launch preparation and deployment
+
+## 4. Test Cases
+
+### TC-001 — Character Creation
+- Precondition: User is on the landing page and has not created a character yet.
+- Steps: 
+  1. Click on the "Create Character" button.
+  2. Fill out the character creation form with valid input.
+  3. Submit the form.
+- Expected result: The user sees their newly created character's profile panel.
+- Assertion: VISUAL_CHECK: Verify that the character's name, class, and level are displayed correctly on the profile panel.
+
+### TC-002 — Character Selection
+- Precondition: User has multiple characters in their account.
+- Steps:
+  1. Click on the "Characters" tab in the top navigation menu.
+  2. Select a character from the list of available characters.
+  3. Click on the "View" button next to the selected character.
+- Expected result: The user sees the selected character's profile panel with their stats and equipment.
+- Assertion: VISUAL_CHECK: Verify that the character's name, class, level, and equipment are displayed correctly on the profile panel.
+
+### TC-003 — Combat Round
+- Precondition: User is in a combat scenario with an enemy NPC.
+- Steps:
+  1. Click on the "Initiate Combat" button to start the combat round.
+  2. Select an action (e.g., attack, cast spell) from the available options.
+  3. Confirm the action by clicking the "Confirm" button.
+- Expected result: The user sees the outcome of their action, including any damage dealt or effects applied.
+- Assertion: VISUAL_CHECK: Verify that the combat log displays the correct outcome of the action.
+
+### TC-004 — Inventory Management
+- Precondition: User has items in their inventory.
+- Steps:
+  1. Click on the "Inventory" tab in the top navigation menu.
+  2. Select an item from the list of available items.
+  3. Click on the "Use" button next to the selected item.
+- Expected result: The user sees the effects of using the item, including any changes to their stats or equipment.
+- Assertion: VISUAL_CHECK: Verify that the inventory displays the correct quantity and status of each item.
+
+### TC-005 — Quest System
+- Precondition: User has a quest in progress.
+- Steps:
+  1. Click on the "Quests" tab in the top navigation menu.
+  2. Select the active quest from the list of available quests.
+  3. Complete the quest by fulfilling its requirements (e.g., killing an enemy, collecting items).
+- Expected result: The user sees a notification indicating that the quest has been completed and rewards have been earned.
+- Assertion: VISUAL_CHECK: Verify that the quest log displays the correct completion status and rewards.
+
+### TC-006 — Save/Load
+- Precondition: User has saved their game state previously.
+- Steps:
+  1. Click on the "Save" button to save the current game state.
+  2. Close the browser or navigate away from the page.
+  3. Reopen the page and click on the "Load" button to load the saved game state.
+- Expected result: The user sees their previously saved game state, including their character's stats and equipment.
+- Assertion: VISUAL_CHECK: Verify that the loaded game state matches the original save.

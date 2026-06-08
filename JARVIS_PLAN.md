@@ -2,60 +2,70 @@ Here is the complete JARVIS_PLAN.md:
 
 # JARVIS Plan —
 
+## Table of Contents
+
+* [Overview](#overview)
+* [Core Features](#core-features)
+	+ [Knowledge Deck](#knowledge-deck)
+	+ [Target Mode](#target-mode)
+	+ [Search Target Modal](#search-target-modal)
+	+ [Remember Card Dialog](#remember-card-dialog)
+	+ [Target Mode Banner](#target-mode-banner)
+* [Technical Requirements](#technical-requirements)
+* [Implementation Roadmap](#implementation-roadmap)
+
 ## Overview
 
-JARVIS (Just Another Roleplaying Interface for Storytelling) is a web-based platform designed to facilitate collaborative storytelling and role-playing games. The goal of this project is to create an immersive, interactive environment that enables players to engage with each other and the game world in a more engaging and dynamic way.
+JARVIS (Just Another Roleplaying Interface for Storytelling) is a web-based platform designed to enhance the tabletop role-playing game experience. It aims to provide a seamless and immersive environment for players and Dungeon Masters (DMs) to collaborate, share knowledge, and create engaging stories.
 
-## Features
+## Core Features
 
-### Core Features
+### Knowledge Deck
 
-1. **Character Management**: Players can create and manage their characters, including attributes, skills, and equipment.
-2. **Storytelling Interface**: A user-friendly interface for creating and managing storylines, including character interactions, plot twists, and world-building elements.
-3. **Real-time Collaboration**: Multiple players can collaborate on the same storyline in real-time, using a shared workspace to discuss and plan their actions.
-4. **Dynamic World-Building**: The game world is dynamic and responsive, with NPCs (non-player characters) that react to player actions and decisions.
+* A digital repository of world-building information, character backstories, and other relevant details.
+* Players can contribute to the deck by adding new entries or editing existing ones.
+* DMs can access and manage the deck to keep track of game lore and settings.
 
-### Advanced Features
+### Target Mode
 
-1. **Target Mode**: A special mode that allows players to focus on specific words or phrases in the narrative, providing additional context and information.
-2. **Search Target Modal**: A modal window that appears when a player selects a word or phrase in target mode, allowing them to search for related information.
-3. **Remember Card Dialog**: A dialog box that enables players to save important information about their characters, NPCs, or the game world.
+* A feature that allows players to focus on specific aspects of the game world during exploration.
+* When in target mode, players can click on words in the DM's narration to inspect them, revealing additional information about the environment, NPCs, or objects.
+* The target mode banner provides a visual indicator and affordance for players to cancel this feature.
 
-### Technical Requirements
+### Search Target Modal
 
-1. **Frontend Framework**: Use a modern frontend framework (e.g., React) to build the user interface and manage state changes.
-2. **Backend API**: Develop a RESTful API using a suitable programming language (e.g., Node.js) to handle data storage, retrieval, and manipulation.
-3. **Database Management**: Design a database schema to store game data, including character information, storylines, and world-building elements.
+* A modal window that appears when a player clicks on a word while in search mode.
+* It prompts the player to enter what they are looking for, allowing them to specify their investigation goals.
+* The DM can then receive this information and respond accordingly.
 
-### User Experience
+### Remember Card Dialog
 
-1. **User-Friendly Interface**: Ensure that the interface is intuitive and easy to use, with clear instructions and minimal cognitive load.
-2. **Real-Time Feedback**: Provide immediate feedback to players on their actions and decisions, using visual cues and notifications.
-3. **Customization Options**: Offer customization options for players to personalize their experience, including character appearance and abilities.
+* A dialog box that allows players to save important beats or events from the game session.
+* Players can add a title, type (e.g., event, NPC, location), and description for each entry.
+* Saved entries are stored in the Knowledge Deck and can be accessed by both players and DMs.
 
-### Development Roadmap
+### Target Mode Banner
 
-1. **Phase 1: Core Features** (Weeks 1-4)
-	* Develop the core features of JARVIS, including character management and storytelling interface.
-2. **Phase 2: Advanced Features** (Weeks 5-8)
-	* Implement target mode, search target modal, and remember card dialog.
-3. **Phase 3: Technical Requirements** (Weeks 9-12)
-	* Develop the frontend framework, backend API, and database management system.
+* A small floating banner that appears at the top of the chat surface when target mode is active.
+* It displays a visual indicator and provides an affordance to cancel target mode.
 
-### Team Structure
+## Technical Requirements
 
-1. **Project Lead**: Oversee the development process, ensure timely completion of milestones, and make key decisions.
-2. **Frontend Developer**: Focus on building the user interface and managing state changes using a modern frontend framework.
-3. **Backend Developer**: Develop the RESTful API and database management system using a suitable programming language.
-4. **UX/UI Designer**: Design the user experience, create wireframes and prototypes, and ensure that the interface is intuitive and easy to use.
+* Frontend: Build using React, with a focus on accessibility and responsive design.
+* Backend: Utilize a Node.js server with a database (e.g., MongoDB) for storing game data and user interactions.
+* APIs: Establish RESTful APIs for communication between the frontend and backend components.
+* Security: Implement authentication and authorization mechanisms to ensure secure access to game data.
 
-### Timeline
+## Implementation Roadmap
 
-* Week 1-4: Core features development
-* Week 5-8: Advanced feature implementation
-* Week 9-12: Technical requirements development
-* Week 13-16: Testing and debugging
-* Week 17-20: Launch preparation and deployment
+1. **Week 1-2:** Design and implement the Knowledge Deck feature, including user interface and database schema.
+2. **Week 3-4:** Develop Target Mode functionality, including word inspection and search target modal.
+3. **Week 5-6:** Implement Remember Card Dialog and integrate it with the Knowledge Deck.
+4. **Week 7-8:** Complete Target Mode Banner feature and refine overall user experience.
+5. **Week 9-10:** Conduct thorough testing and debugging of all features.
+6. **Week 11:** Launch JARVIS platform and gather feedback from users.
+
+Note: This roadmap is a rough estimate and may be adjusted based on the team's progress and any unforeseen challenges that arise during development.
 
 ## 4. Test Cases
 
@@ -84,7 +94,7 @@ JARVIS (Just Another Roleplaying Interface for Storytelling) is a web-based plat
   2. Select an action (e.g., attack, cast spell) from the available options.
   3. Confirm the action by clicking the "Confirm" button.
 - Expected result: The user sees the outcome of their action, including any damage dealt or effects applied.
-- Assertion: VISUAL_CHECK: Verify that the combat log displays the correct outcome of the action.
+- Assertion: VISUAL_CHECK: Verify that the combat log displays the correct outcome of the user's action.
 
 ### TC-004 — Inventory Management
 - Precondition: User has items in their inventory.
@@ -93,22 +103,22 @@ JARVIS (Just Another Roleplaying Interface for Storytelling) is a web-based plat
   2. Select an item from the list of available items.
   3. Click on the "Use" button next to the selected item.
 - Expected result: The user sees the effects of using the item, including any changes to their stats or equipment.
-- Assertion: VISUAL_CHECK: Verify that the inventory displays the correct quantity and status of each item.
+- Assertion: VISUAL_CHECK: Verify that the inventory displays the correct quantity and effects of the used item.
 
-### TC-005 — Quest System
-- Precondition: User has a quest in progress.
+### TC-005 — Save/Load
+- Precondition: User has saved a game session previously.
 - Steps:
-  1. Click on the "Quests" tab in the top navigation menu.
-  2. Select the active quest from the list of available quests.
-  3. Complete the quest by fulfilling its requirements (e.g., killing an enemy, collecting items).
-- Expected result: The user sees a notification indicating that the quest has been completed and rewards have been earned.
-- Assertion: VISUAL_CHECK: Verify that the quest log displays the correct completion status and rewards.
-
-### TC-006 — Save/Load
-- Precondition: User has saved their game state previously.
-- Steps:
-  1. Click on the "Save" button to save the current game state.
+  1. Click on the "Save" button to save the current game session.
   2. Close the browser or navigate away from the page.
-  3. Reopen the page and click on the "Load" button to load the saved game state.
-- Expected result: The user sees their previously saved game state, including their character's stats and equipment.
-- Assertion: VISUAL_CHECK: Verify that the loaded game state matches the original save.
+  3. Return to the page and click on the "Load" button.
+- Expected result: The user sees their saved game session loaded, including any progress made since saving.
+- Assertion: VISUAL_CHECK: Verify that the game state is restored correctly, including character stats and inventory.
+
+### TC-006 — AI Behavior
+- Precondition: User has enabled AI behavior for an NPC in the combat scenario.
+- Steps:
+  1. Click on the "Initiate Combat" button to start the combat round.
+  2. Observe the AI-controlled NPC's actions, including any attacks or spells cast.
+  3. Verify that the NPC's behavior is consistent with its programmed AI script.
+- Expected result: The user sees the AI-controlled NPC behaving as intended, including any scripted behaviors or patterns.
+- Assertion: VISUAL_CHECK: Verify that the NPC's actions are consistent with its AI script and do not deviate from expected behavior.

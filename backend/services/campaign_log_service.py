@@ -30,6 +30,8 @@ from models.log_models import (
 
 logger = logging.getLogger(__name__)
 
+from services.narrative_importance import score_lead, score_quest
+
 
 class CampaignLogService:
     """Service for managing campaign logs"""
@@ -158,6 +160,7 @@ class CampaignLogService:
             if quest_delta.id in log.quests:
                 existing = log.quests[quest_delta.id]
                 self._merge_quest(existing, quest_delta)
+                existing.narrative_importance = score_quest(existing)
             else:
                 log.quests[quest_delta.id] = QuestKnowledge(
                     id=quest_delta.id,
@@ -168,6 +171,7 @@ class CampaignLogService:
                     status=quest_delta.status or "active",
                     objectives=quest_delta.new_objectives
                 )
+                log.quests[quest_delta.id].narrative_importance = score_quest(log.quests[quest_delta.id])
         
         # Add Rumors (always new entries)
         for rumor_delta in delta.rumors:
@@ -214,6 +218,7 @@ class CampaignLogService:
                 # Update existing lead (status changes, notes additions)
                 existing = log.leads[lead_delta.id]
                 self._merge_lead(existing, lead_delta)
+                existing.narrative_importance = score_lead(existing)
             else:
                 # Create new lead entry
                 log.leads[lead_delta.id] = LeadEntry(
@@ -227,6 +232,7 @@ class CampaignLogService:
                     related_location_ids=lead_delta.related_location_ids,
                     related_faction_ids=lead_delta.related_faction_ids
                 )
+                log.leads[lead_delta.id].narrative_importance = score_lead(log.leads[lead_delta.id])
         
         # Save updated log
         await self.save_log(log)

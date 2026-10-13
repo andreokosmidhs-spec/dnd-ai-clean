@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Dict, Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -69,6 +69,7 @@ class KnowledgeCard(BaseModel):
     # Optional status — primarily used by quest-type cards: 'active'|'completed'|'failed'
     status: Optional[str] = None
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    narrative_importance: Dict[str, Any] = Field(default_factory=dict)
 
 
 class CampaignDocument(BaseModel):

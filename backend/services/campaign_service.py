@@ -4,6 +4,7 @@ from uuid import uuid4
 import logging
 
 from models.campaign_models import CampaignIntent, KnowledgeCard
+from services.narrative_importance import score_knowledge_card
 from utils.entity_mentions import extract_entity_mentions
 
 logger = logging.getLogger(__name__)
@@ -377,6 +378,8 @@ def setting_knowledge_cards(setting: Dict) -> List[KnowledgeCard]:
                 tags=["tension", "setting", "mood"],
             )
         )
+    for card in cards:
+        card.narrative_importance = score_knowledge_card(card.model_dump())
     return cards
 
 
@@ -782,6 +785,8 @@ def generate_initial_cards(campaign_id: str, intent: CampaignIntent, world: Dict
         ),
     ]
 
+    for card in cards:
+        card.narrative_importance = score_knowledge_card(card.model_dump())
     return cards
 
 
@@ -789,7 +794,7 @@ def _template_opening_quest(intent: CampaignIntent, world: Dict, character: Dict
     """Deterministic fallback used when the LLM is unavailable."""
     starting_location = world.get("startingLocation", {})
     class_name = _format_title((character.get("class", {}) or character.get("class_", {})).get("key", "adventurer")) if character else "adventurer"
-    return KnowledgeCard(
+    card = KnowledgeCard(
         id=str(uuid4()),
         type="quest",
         title="Opening Lead",
@@ -800,6 +805,8 @@ def _template_opening_quest(intent: CampaignIntent, world: Dict, character: Dict
         tags=["quest", intent.danger.lower(), "opening"],
         status="active",
     )
+    card.narrative_importance = score_knowledge_card(card.model_dump())
+    return card
 
 
 async def generate_opening_quest_card_with_ai(
@@ -904,7 +911,7 @@ async def generate_opening_quest_card_with_ai(
         if len(description) > 360:
             description = description[:360].rstrip() + "…"
 
-        return KnowledgeCard(
+        card = KnowledgeCard(
             id=str(uuid4()),
             type="quest",
             title=title[:80],
@@ -912,6 +919,8 @@ async def generate_opening_quest_card_with_ai(
             tags=tags[:6],
             status="active",
         )
+        card.narrative_importance = score_knowledge_card(card.model_dump())
+        return card
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"AI opening quest generation failed, using template: {exc}")
         return fallback

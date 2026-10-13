@@ -143,6 +143,7 @@ class QuestKnowledge(BaseModel):
     # Discovery
     discovered: datetime = Field(default_factory=lambda: datetime.utcnow())
     last_updated: datetime = Field(default_factory=lambda: datetime.utcnow())
+    narrative_importance: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RumorKnowledge(BaseModel):
@@ -249,6 +250,7 @@ class LeadEntry(BaseModel):
     # Timestamps
     created_at: datetime = Field(default_factory=lambda: datetime.utcnow())
     updated_at: datetime = Field(default_factory=lambda: datetime.utcnow())
+    narrative_importance: Dict[str, Any] = Field(default_factory=dict)
 
 
 # ═══════════════════════════════════════════════════════════════════════
